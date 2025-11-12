@@ -12,51 +12,6 @@
 
     <main class="modern-main">
       <div class="role-selection-container">
-        <!-- Show welcome content only on /auth route -->
-        <div v-if="$route.path === '/auth'">
-          <h1>Welcome to Payroll System</h1>
-          <p class="subtitle">Choose your access level or sign in to continue</p>
-
-          <div class="action-buttons">
-            <router-link to="/auth/login" class="action-btn action-primary">
-              <i class="icon-login">🔐</i>
-              <h2>Sign In</h2>
-              <p>Access your existing account</p>
-            </router-link>
-
-            <router-link to="/auth/register" class="action-btn action-secondary">
-              <i class="icon-register">👤</i>
-              <h2>Create Account</h2>
-              <p>Register for a new account</p>
-            </router-link>
-          </div>
-
-          <div class="divider">
-            <span>Or choose your role</span>
-          </div>
-
-          <div class="role-cards">
-            <router-link to="/employee/dashboard" class="role-card role-employee">
-              <i class="icon-employee">👤</i>
-              <h2>Employee Access</h2>
-              <p>View your tasks, schedules, and personal information</p>
-            </router-link>
-
-            <router-link to="/manager/dashboard" class="role-card role-manager">
-              <i class="icon-manager">💼</i>
-              <h2>Manager Portal</h2>
-              <p>Manage teams, approve requests, and review progress</p>
-            </router-link>
-
-            <router-link to="/admin/dashboard" class="role-card role-admin">
-              <i class="icon-admin">⚙️</i>
-              <h2>Administrator</h2>
-              <p>Full system configuration and user management</p>
-            </router-link>
-          </div>
-        </div>
-
-        <!-- This is where Login, Register, etc. will render -->
         <router-view />
       </div>
     </main>
@@ -70,8 +25,7 @@ export default {
 </script>
 
 <style scoped>
-/* Keep all your existing CSS styles - they're fine */
-/* 1. CSS Variables for Modern Design */
+/* CSS Variables for Modern Design */
 :root {
   --color-primary: #1e40af;
   --color-secondary: #10b981;
@@ -84,7 +38,7 @@ export default {
   --border-radius: 0.75rem;
 }
 
-/* 2. Base Layout */
+/* Base Layout */
 .modern-layout {
   min-height: 100vh;
   display: flex;
@@ -94,7 +48,7 @@ export default {
   line-height: 1.6;
 }
 
-/* 3. Modern Header */
+/* Modern Header */
 .modern-header {
   background: var(--color-white);
   border-bottom: 1px solid var(--color-border);
@@ -146,13 +100,13 @@ export default {
   transform: translateY(-1px);
 }
 
-/* 4. Main Content Area */
+/* Main Content Area - REMOVED PADDING */
 .modern-main {
   flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem;
+  /* Removed: padding: 2rem; */
 }
 
 .role-selection-container {
@@ -174,7 +128,7 @@ export default {
   margin-bottom: 3rem;
 }
 
-/* 5. Action Buttons (Login/Register) */
+/* Action Buttons (Login/Register) */
 .action-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -232,7 +186,7 @@ export default {
   color: var(--color-secondary);
 }
 
-/* 6. Divider */
+/* Divider */
 .divider {
   position: relative;
   margin: 2.5rem 0;
@@ -258,7 +212,7 @@ export default {
   z-index: 2;
 }
 
-/* 7. Role Cards */
+/* Role Cards */
 .role-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -324,8 +278,6 @@ export default {
     grid-template-columns: 1fr;
   }
   
-  .modern-main {
-    padding: 1rem;
-  }
+  /* Removed: .modern-main { padding: 1rem; } */
 }
 </style>

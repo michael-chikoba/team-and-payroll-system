@@ -6,7 +6,7 @@
         <span class="logo-icon">💼</span>
         <span class="logo-text">Payroll System</span>
       </div>
-      
+     
       <div class="header-right">
         <div class="user-info">
           <span class="user-name">{{ user?.name || 'Admin User' }}</span>
@@ -23,47 +23,47 @@
             <span class="nav-icon">📊</span>
             <span class="nav-text">Dashboard</span>
           </router-link>
-          
+         
           <router-link to="/admin/employees" class="nav-item">
             <span class="nav-icon">👥</span>
             <span class="nav-text">Employees</span>
           </router-link>
-          
+         
           <router-link to="/admin/payroll" class="nav-item">
             <span class="nav-icon">💰</span>
             <span class="nav-text">Payroll</span>
           </router-link>
-          
+         
           <router-link to="/admin/payslips" class="nav-item">
             <span class="nav-icon">📄</span>
             <span class="nav-text">Payslips</span>
           </router-link>
-          
+         
           <router-link to="/admin/attendance" class="nav-item">
             <span class="nav-icon">⏰</span>
             <span class="nav-text">Attendance</span>
           </router-link>
-          
+         
           <router-link to="/admin/leaves" class="nav-item">
             <span class="nav-icon">🏖️</span>
             <span class="nav-text">Leave Management</span>
           </router-link>
-          
+         
           <router-link to="/admin/tax" class="nav-item">
             <span class="nav-icon">📋</span>
             <span class="nav-text">Tax Configuration</span>
           </router-link>
-          
+         
           <router-link to="/admin/reports" class="nav-item">
             <span class="nav-icon">📈</span>
             <span class="nav-text">Reports</span>
           </router-link>
-          
+         
           <router-link to="/admin/audit-logs" class="nav-item">
             <span class="nav-icon">🔍</span>
             <span class="nav-text">Audit Logs</span>
           </router-link>
-          
+         
           <router-link to="/admin/settings" class="nav-item">
             <span class="nav-icon">⚙️</span>
             <span class="nav-text">Settings</span>
@@ -86,11 +86,11 @@ export default {
   name: 'AdminLayout',
   setup() {
     const authStore = useAuthStore()
-    
+   
     const logout = async () => {
       await authStore.logout()
     }
-    
+   
     return {
       logout,
       user: authStore.user
@@ -113,6 +113,11 @@ export default {
 
 /* Header */
 .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   padding: 1rem 2rem;
@@ -168,17 +173,22 @@ export default {
 
 /* Layout Body */
 .layout-body {
+  margin-top: 4rem;
   display: flex;
   flex: 1;
-  overflow: hidden;
 }
 
 /* Sidebar */
 .sidebar {
+  position: fixed;
+  top: 4rem;
+  left: 0;
   width: 260px;
+  height: calc(100vh - 4rem);
   background: white;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
   overflow-y: auto;
+  z-index: 90;
 }
 
 .sidebar-nav {
@@ -223,27 +233,35 @@ export default {
 
 /* Main Content */
 .main-content {
+  margin-left: 260px;
+  margin-top: 0;
   flex: 1;
   padding: 2rem;
   overflow-y: auto;
   background: #f5f7fa;
+  min-height: calc(100vh - 4rem);
 }
 
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
     width: 80px;
+    left: 0;
   }
-  
+
   .nav-text {
     display: none;
   }
-  
+
   .nav-item {
     justify-content: center;
     padding: 1rem;
   }
-  
+
+  .main-content {
+    margin-left: 80px;
+  }
+
   .logo-text {
     display: none;
   }

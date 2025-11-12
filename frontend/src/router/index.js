@@ -8,7 +8,6 @@ import employeeRoutes from './routes/employee'
 import managerRoutes from './routes/manager'
 import adminRoutes from './routes/admin'
 import publicRoutes from './routes/public'
-import taskRoutes from './routes/tasks' // ← ADD THIS IMPORT
 
 const routes = [
   // PUBLIC ROUTES FIRST (includes root redirect)
@@ -21,7 +20,7 @@ const routes = [
   ...employeeRoutes,
   ...managerRoutes,
   ...adminRoutes,
-  ...taskRoutes, 
+ 
   
   // Catch all route - 404 (MUST BE LAST)
   {
