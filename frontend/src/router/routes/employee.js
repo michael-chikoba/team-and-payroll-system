@@ -35,17 +35,16 @@ export default [
         name: 'EmployeeProfile',
         component: () => import('../../views/employee/Profile.vue')
       },
-      {
-     path: '/employee/tasks',
-    name: 'EmployeeTasks',
-    component: () => import('../../components/common/TaskBoard.vue'),
-    meta: { 
-      requiresAuth: true,
-      roles: ['employee'],
-      title: 'My Tasks'
-
+          {
+        path: 'tasks',  // ✅ Simple relative path
+        name: 'TaskBoard',  // ✅ MUST match :to="{ name: 'TaskBoard' }" in your layout
+        component: () => import('../../views/employee/TaskAssigned.vue'),  // ✅ Fixed missing closing quote
+        meta: { 
+          requiresAuth: true,
+          roles: ['employee'],  // Added manager & admin
+          title: 'My Tasks'
+        }
       }
-    }
     ]
   }
 ]

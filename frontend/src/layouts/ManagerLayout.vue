@@ -5,7 +5,6 @@
         <span class="logo-icon">📊</span>
         <h1 class="title">Manager Hub</h1>
       </div>
-
       <nav class="nav">
         <router-link to="/manager/dashboard" class="nav-link" active-class="active">
           <span class="link-icon">🏠</span>
@@ -31,9 +30,11 @@
           <span class="link-icon">⚡</span>
           Productivity
         </router-link>
-        <router-link to="/manager/Task" class="nav-item">Assign Tasks</router-link>
+        <router-link to="/manager/tasks" class="nav-link" active-class="active">
+          <span class="link-icon">📋</span>
+          Assign Tasks
+        </router-link>
       </nav>
-
       <div class="sidebar-footer">
         <router-link to="/auth/login" class="logout-link">
           <span class="link-icon">🚪</span>
@@ -41,7 +42,6 @@
         </router-link>
       </div>
     </aside>
-
     <div class="content-area">
       <header class="top-bar">
         <div class="user-profile">
@@ -68,7 +68,7 @@ export default {
   --primary-color: #007bff; /* Vibrant professional blue */
   --background-color: #f4f7f9; /* Soft background */
   --sidebar-dark-blue: #2c3e50; /* New Darkish blue color for the sidebar */
-  --sidebar-text-color: rgba(255, 255, 255, 0.8); /* Light text for dark background */
+  --sidebar-text-color: #ffffff; /* Fully white text for better visibility on dark background */
   --text-color: #343a40;
   --text-light: #6c757d;
   --border-color: #e9ecef;
@@ -116,7 +116,7 @@ export default {
   font-size: 1.4rem;
   font-weight: 600;
   /* MODIFICATION: Ensure title is visible */
-  color: white; 
+  color: white;
 }
 
 /* Navigation Links */
@@ -124,33 +124,36 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex-grow: 1; 
+  flex-grow: 1;
 }
 
 .nav-link {
   display: flex;
   align-items: center;
   gap: 12px;
-  /* MODIFICATION: Light text color for dark background */
-  color: var(--sidebar-text-color); 
+  /* MODIFICATION: Fully white text color for dark background */
+  color: var(--sidebar-text-color);
   text-decoration: none;
   padding: 1rem 1.25rem;
-  border-radius: 8px; 
+  border-radius: 8px;
   font-weight: 500;
   transition: all 0.2s ease;
   font-size: 0.95rem;
 }
 
 .nav-link:hover {
-  /* MODIFICATION: Subtle hover effect on dark background */
-  background-color: rgba(255, 255, 255, 0.1); 
-  color: white;
+  /* MODIFICATION: Subtle hover effect on dark background, maintain text color for visibility */
+  background-color: rgba(255, 255, 255, 0.1);
+  /* Removed color: white; to maintain base color */
 }
 
 .nav-link.active {
   background-color: var(--primary-color);
-  color: white;
+  /* MODIFICATION: Ensure text is always visible for active links */
+  color: white !important;
   box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+  /* MODIFICATION: Add font weight for better visibility */
+  font-weight: 600;
 }
 
 .nav-link.active .link-icon {
@@ -159,8 +162,8 @@ export default {
 
 .link-icon {
   font-size: 1.1rem;
-  /* MODIFICATION: Light icon color for dark background */
-  color: var(--sidebar-text-color); 
+  /* MODIFICATION: Fully white icon color for dark background */
+  color: var(--sidebar-text-color);
   transition: color 0.2s;
 }
 
@@ -168,7 +171,7 @@ export default {
 .sidebar-footer {
   padding-top: 1.5rem;
   /* MODIFICATION: Lighter border for dark background */
-  border-top: 1px solid rgba(255, 255, 255, 0.1); 
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .logout-link {
@@ -198,11 +201,11 @@ export default {
 /* Top Bar/Header */
 .top-bar {
   /* Background remains white for separation */
-  background-color: white; 
+  background-color: white;
   padding: 1rem 3rem;
   border-bottom: 1px solid var(--border-color);
   display: flex;
-  justify-content: flex-end; 
+  justify-content: flex-end;
   align-items: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
@@ -217,7 +220,7 @@ export default {
     width: 35px;
     height: 35px;
     border-radius: 50%;
-    background-color: #50e3c2; 
+    background-color: #50e3c2;
     color: var(--text-color);
     display: flex;
     align-items: center;
@@ -244,34 +247,34 @@ export default {
     width: 70px; /* Collapse sidebar to icon-only */
     padding: 1rem 0.5rem;
   }
-  
+
   .title, .user-name {
     display: none; /* Hide text, only show icons */
   }
-
+  
   .logo-section {
     justify-content: center;
     margin-bottom: 1rem;
   }
-
+  
   .nav-link {
     justify-content: center;
     padding: 0.75rem;
   }
-  
+
   .nav-link span:not(.link-icon), .logout-link span:not(.link-icon) {
     display: none;
   }
-
+  
   .logout-link {
     justify-content: center;
     padding: 0.75rem;
   }
-
+  
   .main {
     padding: 1.5rem;
   }
-  
+
   .top-bar {
     padding: 1rem 1.5rem;
   }
