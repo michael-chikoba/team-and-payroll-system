@@ -1,14 +1,11 @@
 <?php
 // Updated Payslip model with missing fields for database compatibility
 namespace App\Models;
-
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-
 class Payslip extends Model
 {
     use HasFactory;
-
     protected $fillable = [
         'employee_id',
         'payroll_id',
@@ -34,7 +31,6 @@ class Payslip extends Model
         'is_sent',
         'breakdown',
     ];
-
     protected $casts = [
         'pay_period_start' => 'date',
         'pay_period_end' => 'date',
@@ -59,12 +55,10 @@ class Payslip extends Model
         'is_sent' => 'boolean',
         'payroll_id' => 'integer',
     ];
-
     public function employee()
     {
         return $this->belongsTo(Employee::class);
     }
-
     public function payroll()
     {
         return $this->belongsTo(Payroll::class);

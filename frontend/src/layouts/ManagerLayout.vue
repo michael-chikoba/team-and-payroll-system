@@ -5,6 +5,10 @@
         <span class="logo-icon">📊</span>
         <h1 class="title">Manager Hub</h1>
       </div>
+      <!-- Attendance Toggle Button Section -->
+      <div class="attendance-toggle-section">
+        <AttendanceToggle />
+      </div>
       <nav class="nav">
         <router-link to="/manager/dashboard" class="nav-link" active-class="active">
           <span class="link-icon">🏠</span>
@@ -57,8 +61,12 @@
 </template>
 
 <script>
+import AttendanceToggle from '../components/common/Toggle.vue'
 export default {
-  name: 'ManagerLayout'
+  name: 'ManagerLayout',
+  components: {
+    AttendanceToggle
+  }
 }
 </script>
 
@@ -67,14 +75,13 @@ export default {
 :root {
   --primary-color: #007bff; /* Vibrant professional blue */
   --background-color: #f4f7f9; /* Soft background */
-  --sidebar-dark-blue: #2c3e50; /* New Darkish blue color for the sidebar */
+  --sidebar-dark-blue: #001f5b; /* Darker blue for the sidebar */
   --sidebar-text-color: #ffffff; /* Fully white text for better visibility on dark background */
   --text-color: #343a40;
   --text-light: #6c757d;
   --border-color: #e9ecef;
   --logout-color: #dc3545;
 }
-
 /* Base Layout */
 .modern-manager-layout {
   display: flex;
@@ -82,7 +89,6 @@ export default {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: var(--background-color);
 }
-
 /* Sidebar Styling */
 .sidebar {
   width: 240px;
@@ -97,28 +103,30 @@ export default {
   top: 0;
   height: 100vh;
 }
-
 /* Logo Section */
 .logo-section {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 2.5rem;
+  margin-bottom: 1rem; /* Reduced margin to make space for toggle */
   color: var(--primary-color);
 }
-
 .logo-icon {
   font-size: 1.8rem;
 }
-
 .title {
   margin: 0;
   font-size: 1.4rem;
   font-weight: 600;
   /* MODIFICATION: Ensure title is visible */
-  color: white;
+  color: rgb(27, 97, 154) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
-
+/* Attendance Toggle Section */
+.attendance-toggle-section {
+  margin-bottom: 1.5rem; /* Space below the toggle */
+  padding: 0 0.25rem; /* Slight padding to align with nav links */
+}
 /* Navigation Links */
 .nav {
   display: flex;
@@ -126,54 +134,49 @@ export default {
   gap: 0.5rem;
   flex-grow: 1;
 }
-
 .nav-link {
   display: flex;
   align-items: center;
   gap: 12px;
   /* MODIFICATION: Fully white text color for dark background */
-  color: var(--sidebar-text-color);
+  color: var(--sidebar-text-color) !important;
   text-decoration: none;
   padding: 1rem 1.25rem;
   border-radius: 8px;
   font-weight: 500;
   transition: all 0.2s ease;
   font-size: 0.95rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
-
 .nav-link:hover {
   /* MODIFICATION: Subtle hover effect on dark background, maintain text color for visibility */
   background-color: rgba(255, 255, 255, 0.1);
   /* Removed color: white; to maintain base color */
 }
-
 .nav-link.active {
   background-color: var(--primary-color);
   /* MODIFICATION: Ensure text is always visible for active links */
-  color: white !important;
+  color: rgb(68, 31, 142) !important;
   box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
   /* MODIFICATION: Add font weight for better visibility */
   font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
-
 .nav-link.active .link-icon {
   color: white;
 }
-
 .link-icon {
   font-size: 1.1rem;
   /* MODIFICATION: Fully white icon color for dark background */
   color: var(--sidebar-text-color);
   transition: color 0.2s;
 }
-
 /* Sidebar Footer (Logout) */
 .sidebar-footer {
   padding-top: 1.5rem;
   /* MODIFICATION: Lighter border for dark background */
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
-
 .logout-link {
   width: 100%;
   display: flex;
@@ -185,19 +188,17 @@ export default {
   border-radius: 8px;
   font-weight: 500;
   transition: all 0.2s ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
-
 .logout-link:hover {
   background-color: rgba(220, 53, 69, 0.2); /* Adjusted for dark theme */
 }
-
 /* Content Area */
 .content-area {
   flex: 1;
   display: flex;
   flex-direction: column;
 }
-
 /* Top Bar/Header */
 .top-bar {
   /* Background remains white for separation */
@@ -209,13 +210,11 @@ export default {
   align-items: center;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
-
 .user-profile {
     display: flex;
     align-items: center;
     gap: 10px;
 }
-
 .user-avatar {
     width: 35px;
     height: 35px;
@@ -228,40 +227,41 @@ export default {
     font-size: 0.9rem;
     font-weight: 600;
 }
-
 .user-name {
     font-weight: 500;
     color: var(--text-color);
 }
-
 /* Main Content Wrapper */
 .main {
   flex: 1;
   padding: 2rem 3rem;
   overflow-y: auto;
 }
-
 /* Responsive Adjustments (for Tablets and Mobile) */
-@media (max-width: 992px) {
+@media (max-width: 768px) {
   .sidebar {
     width: 70px; /* Collapse sidebar to icon-only */
     padding: 1rem 0.5rem;
   }
-
   .title, .user-name {
     display: none; /* Hide text, only show icons */
   }
   
   .logo-section {
     justify-content: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem; /* Adjust for toggle */
   }
   
+  .attendance-toggle-section {
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+  }
+
   .nav-link {
     justify-content: center;
     padding: 0.75rem;
   }
-
   .nav-link span:not(.link-icon), .logout-link span:not(.link-icon) {
     display: none;
   }
@@ -274,7 +274,6 @@ export default {
   .main {
     padding: 1.5rem;
   }
-
   .top-bar {
     padding: 1rem 1.5rem;
   }

@@ -1,7 +1,23 @@
 <template>
   <div class="reports-management">
     <div class="page-header">
-      <h1>My Team Reports</h1>
+      <div class="header-content">
+        <h1>My Team Reports</h1>
+        <div class="filter-section">
+          <div class="filter-group">
+            <label for="employee-filter">Select Employee (Optional):</label>
+            <select id="employee-filter" v-model="selectedEmployeeId" @change="handleEmployeeFilter">
+              <option value="">All Team Members</option>
+              <option v-for="employee in managedEmployees" :key="employee.id" :value="employee.id">
+                {{ employee.name }}
+              </option>
+            </select>
+          </div>
+          <div v-if="selectedEmployeeId" class="filter-info">
+            <p>Viewing reports for: {{ getEmployeeName(selectedEmployeeId) }}</p>
+          </div>
+        </div>
+      </div>
       <div class="header-actions">
         <button 
           @click="generateTeamReport" 
@@ -16,6 +32,21 @@
           :disabled="generatingReport"
         >
           <span>📈</span> {{ generatingReport ? 'Generating...' : 'Productivity Report' }}
+        </button>
+        <button 
+          v-if="selectedEmployeeId"
+          @click="generateEmployeeReport" 
+          class="btn-success"
+          :disabled="generatingReport"
+        >
+          <span>👤</span> {{ generatingReport ? 'Generating...' : 'Employee Specific Report' }}
+        </button>
+        <button 
+          v-if="selectedEmployeeId"
+          @click="editPerformanceMetrics(selectedEmployeeId)" 
+          class="btn-info"
+        >
+          <span>✏️</span> Edit Performance
         </button>
       </div>
     </div>
@@ -39,7 +70,7 @@
     <!-- Error State -->
     <div v-else-if="error" class="error-message">
       {{ error }}
-      <button @click="retryFetch" class="btn-primary" style="margin-top: 1rem;">Retry</button>
+      <button @click="retryFetch" class="btn-primary">Retry</button>
     </div>
 
     <!-- Reports Dashboard -->
@@ -47,7 +78,7 @@
       <!-- Manager Info -->
       <div class="manager-info">
         <h2>👨‍💼 Managing Team</h2>
-        <p class="manager-subtitle">Team overview and performance metrics for your direct reports</p>
+        <p class="manager-subtitle">Team overview and performance metrics for your direct reports{{ selectedEmployeeId ? ` - Focusing on ${getEmployeeName(selectedEmployeeId)}` : '' }}</p>
       </div>
 
       <!-- Quick Stats -->
@@ -167,6 +198,30 @@
             <button @click="generateProductivityReport" class="btn-primary">Generate Report</button>
           </div>
         </div>
+
+        <!-- Employee Specific Report (shown when employee selected) -->
+        <div v-if="selectedEmployeeId" class="report-section">
+          <div class="section-header">
+            <h2>Employee Specific Report</h2>
+            <button @click="viewEmployeeReport" class="btn-view">View Full Report</button>
+          </div>
+          <div v-if="employeeReport" class="report-preview">
+            <div class="preview-content">
+              <h4>{{ getEmployeeName(selectedEmployeeId) }} Overview</h4>
+              <p>Period: {{ formatDate(employeeReport.period_start) }} - {{ formatDate(employeeReport.period_end) }}</p>
+              <div class="preview-stats">
+                <span class="preview-stat">Tasks Completed: {{ employeeReport.tasks_completed }}</span>
+                <span class="preview-stat">Total Hours Worked: {{ employeeReport.total_hours }}h</span>
+                <span class="preview-stat">Attendance Rate: {{ employeeReport.attendance_rate }}%</span>
+                <span class="preview-stat">Productivity Score: {{ employeeReport.productivity_score }}%</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="empty-preview">
+            <p>No employee report generated yet.</p>
+            <button @click="generateEmployeeReport" class="btn-primary">Generate Report</button>
+          </div>
+        </div>
       </div>
 
       <!-- Pending Actions -->
@@ -192,6 +247,40 @@
         </div>
       </div>
     </div>
+
+    <!-- Performance Metrics Edit Modal -->
+    <div v-if="showPerformanceModal" class="modal-overlay" @click.self="closePerformanceModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Edit Performance Metrics for {{ getEmployeeName(selectedEmployeeId) }}</h2>
+          <button @click="closePerformanceModal" class="close-btn">✕</button>
+        </div>
+        <div class="modal-body">
+          <form @submit.prevent="savePerformanceMetrics">
+            <div class="form-group">
+              <label>Performance Rating (1-5):</label>
+              <input type="number" v-model="performanceData.rating" min="1" max="5" required>
+            </div>
+            <div class="form-group">
+              <label>Productivity Score (%):</label>
+              <input type="number" v-model="performanceData.productivity" min="0" max="100" required>
+            </div>
+            <div class="form-group">
+              <label>Total Tasks Completed:</label>
+              <input type="number" v-model="performanceData.tasks_completed" min="0" required>
+            </div>
+            <div class="form-group">
+              <label>Notes:</label>
+              <textarea v-model="performanceData.notes" rows="4" placeholder="Performance notes..."></textarea>
+            </div>
+            <div class="modal-footer">
+              <button type="submit" class="btn-primary">Save Metrics</button>
+              <button type="button" @click="closePerformanceModal" class="btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -212,13 +301,22 @@ export default {
       loading: false,
       generatingReport: false,
       error: null,
+      selectedEmployeeId: null,
       managedEmployees: [],
       teamStats: {},
       teamReport: null,
       productivityReport: null,
+      employeeReport: null,
       pendingLeavesCount: 0,
       attendanceIssuesCount: 0,
-      retryCount: 0
+      retryCount: 0,
+      showPerformanceModal: false,
+      performanceData: {
+        rating: 0,
+        productivity: 0,
+        tasks_completed: 0,
+        notes: ''
+      }
     }
   },
   
@@ -241,6 +339,15 @@ export default {
       this.fetchManagerData()
     },
     
+    handleEmployeeFilter() {
+      this.refreshReports()
+    },
+    
+    getEmployeeName(employeeId) {
+      const employee = this.managedEmployees.find(emp => emp.id === employeeId)
+      return employee ? employee.name : ''
+    },
+    
     async fetchManagerData() {
       this.loading = true
       this.error = null
@@ -248,7 +355,6 @@ export default {
       try {
         console.log('Fetching manager team data...')
         
-        // Fetch manager's team data using actual API endpoints
         const [employeesRes, leavesRes, attendanceRes] = await Promise.all([
           axios.get('/api/manager/employees'),
           axios.get('/api/manager/leaves/pending'),
@@ -259,20 +365,11 @@ export default {
         console.log('Pending leaves response:', leavesRes.data)
         console.log('Attendance response:', attendanceRes.data)
         
-        // Process managed employees
         this.managedEmployees = this.processEmployeesData(employeesRes.data)
-        
-        // Process pending leaves
         this.pendingLeavesCount = this.processLeavesData(leavesRes.data)
-        
-        // Process attendance data
         const attendanceData = this.processAttendanceData(attendanceRes.data)
-        
-        // Calculate team stats
         this.calculateTeamStats(attendanceData)
-        
-        // Generate reports from real data
-        await this.generateReportsFromData()
+        await this.refreshReports()
         
       } catch (err) {
         console.error('Fetch error:', err)
@@ -282,8 +379,190 @@ export default {
       }
     },
     
+    async refreshReports() {
+      await Promise.all([
+        this.generateTeamReport(),
+        this.generateProductivityReport()
+      ])
+      
+      if (this.selectedEmployeeId) {
+        await this.generateEmployeeReport()
+      }
+    },
+    
+    async generateTeamReport() {
+      this.generatingReport = true
+      try {
+        const params = { employee_id: this.selectedEmployeeId || null }
+        const response = await axios.get('/api/manager/reports/team', { params })
+        this.teamReport = this.processTeamReportData(response.data)
+        
+        this.$notify({
+          type: 'success',
+          title: 'Success',
+          text: 'Team report generated successfully!'
+        })
+      } catch (error) {
+        console.error('Error generating team report:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to generate team report.'
+        })
+      } finally {
+        this.generatingReport = false
+      }
+    },
+    
+    async generateProductivityReport() {
+      this.generatingReport = true
+      try {
+        const params = { 
+          employee_id: this.selectedEmployeeId || null,
+          start_date: new Date().toISOString().split('T')[0],
+          end_date: new Date().toISOString().split('T')[0]
+        }
+        const response = await axios.get('/api/manager/reports/productivity', { params })
+        this.productivityReport = this.processProductivityData(response.data)
+        
+        this.$notify({
+          type: 'success',
+          title: 'Success',
+          text: 'Productivity report generated successfully!'
+        })
+      } catch (error) {
+        console.error('Error generating productivity report:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to generate productivity report.'
+        })
+      } finally {
+        this.generatingReport = false
+      }
+    },
+    
+    async generateEmployeeReport() {
+      this.generatingReport = true
+      try {
+        const params = { 
+          employee_id: this.selectedEmployeeId,
+          start_date: new Date().toISOString().split('T')[0],
+          end_date: new Date().toISOString().split('T')[0]
+        }
+        // Fetch comprehensive employee report combining attendance, tasks, leaves
+        const [attendanceRes, tasksRes, leavesRes, productivityRes] = await Promise.all([
+          axios.get('/api/reports/attendance', { params }),
+          axios.get(`/api/manager/employees/${this.selectedEmployeeId}/tasks`, { params }),
+          axios.get('/api/reports/leave', { params }),
+          axios.get('/api/manager/reports/productivity', { params })
+        ])
+        
+        this.employeeReport = {
+          period_start: params.start_date,
+          period_end: params.end_date,
+          tasks_completed: tasksRes.data.data?.length || 0,
+          total_hours: attendanceRes.data.summary?.total_hours || 0,
+          attendance_rate: attendanceRes.data.summary?.attendance_rate || 0,
+          productivity_score: productivityRes.data.summary?.average_productivity_score || 0,
+          leave_days: leavesRes.data.summary?.total_days || 0
+        }
+        
+        this.$notify({
+          type: 'success',
+          title: 'Success',
+          text: 'Employee report generated successfully!'
+        })
+      } catch (error) {
+        console.error('Error generating employee report:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to generate employee report.'
+        })
+      } finally {
+        this.generatingReport = false
+      }
+    },
+    
+    editPerformanceMetrics(employeeId) {
+      // Load current metrics for the employee
+      this.selectedEmployeeId = employeeId
+      this.loadPerformanceData(employeeId)
+      this.showPerformanceModal = true
+    },
+    
+    async loadPerformanceData(employeeId) {
+      try {
+        const response = await axios.get(`/api/manager/employees/${employeeId}/performance`)
+        const data = response.data
+        this.performanceData = {
+          rating: data.rating || 0,
+          productivity: data.productivity || 0,
+          tasks_completed: data.tasks_completed || 0,
+          notes: data.notes || ''
+        }
+      } catch (error) {
+        console.error('Error loading performance data:', error)
+        this.performanceData = { rating: 0, productivity: 0, tasks_completed: 0, notes: '' }
+      }
+    },
+    
+    async savePerformanceMetrics() {
+      try {
+        await axios.post(`/api/manager/employees/${this.selectedEmployeeId}/performance`, this.performanceData)
+        this.$notify({
+          type: 'success',
+          title: 'Success',
+          text: 'Performance metrics updated successfully!'
+        })
+        this.closePerformanceModal()
+        // Refresh reports to include updated metrics
+        await this.refreshReports()
+      } catch (error) {
+        console.error('Error saving performance metrics:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to update performance metrics.'
+        })
+      }
+    },
+    
+    closePerformanceModal() {
+      this.showPerformanceModal = false
+      this.performanceData = { rating: 0, productivity: 0, tasks_completed: 0, notes: '' }
+    },
+    
+    viewTeamReport() {
+      if (this.teamReport) {
+        this.$router.push({ 
+          name: 'report-details', 
+          query: { type: 'team', manager: true, employee_id: this.selectedEmployeeId } 
+        })
+      }
+    },
+    
+    viewProductivityReport() {
+      if (this.productivityReport) {
+        this.$router.push({ 
+          name: 'report-details', 
+          query: { type: 'productivity', manager: true, employee_id: this.selectedEmployeeId } 
+        })
+      }
+    },
+    
+    viewEmployeeReport() {
+      if (this.employeeReport) {
+        this.$router.push({ 
+          name: 'report-details', 
+          query: { type: 'employee', manager: true, employee_id: this.selectedEmployeeId } 
+        })
+      }
+    },
+    
+    // ... (other methods remain the same: processEmployeesData, processLeavesData, etc.)
     processEmployeesData(data) {
-      // Handle different response formats
       const employees = data.data || data || []
       return employees.map(emp => ({
         id: emp.id,
@@ -291,12 +570,11 @@ export default {
         position: emp.position || emp.job_title || 'Employee',
         department: emp.department || 'General',
         email: emp.email,
-        status: 'present' // Default status, will be updated by attendance data
+        status: 'present'
       }))
     },
     
     processLeavesData(data) {
-      // Handle different response formats for pending leaves
       if (Array.isArray(data)) {
         return data.length
       } else if (data.data && Array.isArray(data.data)) {
@@ -308,10 +586,8 @@ export default {
     },
     
     processAttendanceData(data) {
-      // Process attendance data from API response
       const today = new Date().toISOString().split('T')[0]
       
-      // Handle different response formats
       let attendances = []
       if (Array.isArray(data)) {
         attendances = data
@@ -321,7 +597,6 @@ export default {
         attendances = data.attendances
       }
       
-      // Filter today's attendances and create a map for quick lookup
       const todayAttendances = attendances.filter(att => {
         const attDate = new Date(att.date || att.created_at).toISOString().split('T')[0]
         return attDate === today
@@ -337,17 +612,14 @@ export default {
     calculateTeamStats(attendanceData) {
       const { todayAttendances, summary } = attendanceData
       
-      // Count present employees today
       const presentEmployees = todayAttendances.filter(att => 
         att.status === 'present' || att.status === 'completed'
       ).length
       
-      // Count late employees today
       const lateEmployees = todayAttendances.filter(att => 
         att.status === 'late'
       ).length
       
-      // Update employee statuses based on attendance
       this.managedEmployees.forEach(employee => {
         const employeeAttendance = todayAttendances.find(att => 
           att.employee_id === employee.id || att.employee?.id === employee.id
@@ -355,54 +627,20 @@ export default {
         employee.status = employeeAttendance ? employeeAttendance.status : 'absent'
       })
       
-      // Count attendance issues (absent + late)
       this.attendanceIssuesCount = this.managedEmployees.filter(emp => 
         ['absent', 'late'].includes(emp.status)
       ).length
       
-      // Calculate team stats
       this.teamStats = {
         team_size: this.managedEmployees.length,
-        present_today: presentEmployees + lateEmployees, // Include late as present
+        present_today: presentEmployees + lateEmployees,
         pending_leaves: this.pendingLeavesCount,
         avg_productivity: summary.avg_productivity || 
                          Math.round((presentEmployees / this.managedEmployees.length) * 100) || 0
       }
     },
     
-    async generateReportsFromData() {
-      const today = new Date().toISOString().split('T')[0]
-      const presentCount = this.managedEmployees.filter(emp => 
-        ['present', 'completed', 'late'].includes(emp.status)
-      ).length
-      
-      // Generate team report from real data
-      this.teamReport = {
-        period_start: today,
-        period_end: today,
-        total_employees: this.managedEmployees.length,
-        active_employees: presentCount,
-        on_leave: this.pendingLeavesCount,
-        attendance_rate: Math.round((presentCount / this.managedEmployees.length) * 100) || 0
-      }
-      
-      // Try to fetch productivity report from API, fallback to calculated data
-      try {
-        const productivityRes = await axios.get('/api/manager/reports/productivity')
-        this.productivityReport = this.processProductivityData(productivityRes.data)
-      } catch (error) {
-        console.log('Using calculated productivity data:', error)
-        this.productivityReport = {
-          generated_at: new Date().toISOString(),
-          avg_productivity: this.teamStats.avg_productivity,
-          total_tasks_completed: 0, // This would need task data from your system
-          avg_attendance_rate: this.teamReport.attendance_rate
-        }
-      }
-    },
-    
     processProductivityData(data) {
-      // Process productivity report data from API
       return {
         generated_at: data.generated_at || new Date().toISOString(),
         avg_productivity: data.avg_productivity || data.average_productivity || 0,
@@ -411,60 +649,7 @@ export default {
       }
     },
     
-    async generateTeamReport() {
-      this.generatingReport = true
-      try {
-        // Generate fresh team report from API
-        const response = await axios.get('/api/manager/reports/team')
-        this.teamReport = this.processTeamReportData(response.data)
-        
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Team report generated successfully!'
-        })
-      } catch (error) {
-        console.error('Error generating team report:', error)
-        this.$notify({
-          type: 'error',
-          title: 'Error',
-          text: 'Failed to generate team report. Using current data.'
-        })
-        // Fallback to current data
-        await this.generateReportsFromData()
-      } finally {
-        this.generatingReport = false
-      }
-    },
-    
-    async generateProductivityReport() {
-      this.generatingReport = true
-      try {
-        // Generate fresh productivity report from API
-        const response = await axios.get('/api/manager/reports/productivity')
-        this.productivityReport = this.processProductivityData(response.data)
-        
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Productivity report generated successfully!'
-        })
-      } catch (error) {
-        console.error('Error generating productivity report:', error)
-        this.$notify({
-          type: 'error',
-          title: 'Error',
-          text: 'Failed to generate productivity report. Using current data.'
-        })
-        // Fallback to current data
-        await this.generateReportsFromData()
-      } finally {
-        this.generatingReport = false
-      }
-    },
-    
     processTeamReportData(data) {
-      // Process team report data from API
       return {
         period_start: data.period_start || data.start_date,
         period_end: data.period_end || data.end_date,
@@ -503,24 +688,6 @@ export default {
     
     viewAllTeamMembers() {
       this.$router.push({ name: 'manager-team' })
-    },
-    
-    viewTeamReport() {
-      if (this.teamReport) {
-        this.$router.push({ 
-          name: 'report-details', 
-          query: { type: 'team', manager: true } 
-        })
-      }
-    },
-    
-    viewProductivityReport() {
-      if (this.productivityReport) {
-        this.$router.push({ 
-          name: 'report-details', 
-          query: { type: 'productivity', manager: true } 
-        })
-      }
     },
     
     viewPendingLeaves() {
@@ -571,7 +738,160 @@ export default {
 </script>
 
 <style scoped>
-/* Your existing styles remain the same */
+/* Existing styles remain the same, add new ones for modal and filters */
+
+.filter-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.filter-group select {
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+}
+
+.filter-info {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.btn-success {
+  background: var(--success-gradient);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-success:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.btn-info {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-info:hover {
+  background: #2563eb;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: white;
+  border-radius: 12px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: #2d3748;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #718096;
+  padding: 0.5rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+/* Rest of existing styles... */
 .reports-management {
   padding: 2rem;
   max-width: 1200px;
@@ -583,11 +903,15 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
 }
 
-.page-header h1 {
-  color: #2d3748;
-  margin: 0;
+.header-content {
+  flex: 1;
 }
 
 .header-actions {
@@ -780,7 +1104,6 @@ export default {
   color: #718096;
 }
 
-/* Add the styles from your original component below */
 .manager-info {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -966,7 +1289,6 @@ export default {
   background: #5a6fd8;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
@@ -977,6 +1299,7 @@ export default {
   .header-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
   
   .team-members-grid {
@@ -1004,6 +1327,11 @@ export default {
   
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .filter-section {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

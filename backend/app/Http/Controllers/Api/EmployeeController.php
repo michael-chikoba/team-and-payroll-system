@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\EmployeeResource;
 use App\Models\Employee;
 use App\Models\Manager;
+use App\Models\Document;
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -397,60 +400,6 @@ class EmployeeController extends Controller
         }
     }
 
-    public function profile(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        
-        try {
-            $employee = $user->employee;
-            
-            return response()->json([
-                'user' => $user,
-                'employee' => $employee ? new EmployeeResource($employee->load(['manager'])) : null,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch employee profile', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
-        }
-    }
-
-    public function updateProfile(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        
-        try {
-            $validated = $request->validate([
-                'first_name' => 'sometimes|string|max:255',
-                'last_name' => 'sometimes|string|max:255',
-                'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            ]);
-
-            $user->update($validated);
-
-            return response()->json([
-                'user' => $user,
-                'message' => 'Profile updated successfully'
-            ]);
-
-        } catch (ValidationException $e) {
-            throw $e;
-
-        } catch (\Exception $e) {
-            Log::error('EMPLOYEE_CONTROLLER: Failed to update employee profile', [
-                'user_id' => $user->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'message' => 'Failed to update profile. Please try again.'
-            ], 500);
-        }
-    }
      public function managers(): JsonResponse
     {
         try {
@@ -588,4 +537,369 @@ class EmployeeController extends Controller
                            ->get();
         return EmployeeResource::collection($employees);
     }
+    
+    /**
+     * Get authenticated user's profile (accessible to ALL roles)
+     */
+    public function profile(Request $request): JsonResponse
+    {
+        $user = $request->user();
+      
+        try {
+            $employee = $user->employee;
+          
+            if ($employee) {
+                $employee->load('manager');
+            }
+          
+            Log::info('EMPLOYEE_CONTROLLER: Profile fetched', [
+                'user_id' => $user->id,
+                'role' => $user->role,
+                'has_employee_record' => $employee !== null,
+            ]);
+          
+            return response()->json([
+                'user' => [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ],
+                'employee' => $employee ? new EmployeeResource($employee) : null,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch profile', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'message' => 'Failed to load profile data'
+            ], 500);
+        }
+    }
+    /**
+     * Update authenticated user's profile (accessible to ALL roles)
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $user = $request->user();
+      
+        try {
+            $validated = $request->validate([
+                'first_name' => 'sometimes|string|max:255',
+                'last_name' => 'sometimes|string|max:255',
+                'email' => 'sometimes|email|unique:users,email,' . $user->id,
+                'phone' => 'nullable|string|max:20',
+                'date_of_birth' => 'nullable|date|before:today',
+                'national_id' => 'nullable|string|max:50',
+                'address' => 'nullable|string|max:500',
+                'emergency_contact' => 'nullable|string|max:255',
+            ]);
+            Log::info('EMPLOYEE_CONTROLLER: Updating profile', [
+                'user_id' => $user->id,
+                'role' => $user->role,
+                'fields' => array_keys($validated),
+            ]);
+            DB::beginTransaction();
+            // Update user table fields
+            $userUpdates = [];
+            if (isset($validated['first_name'])) $userUpdates['first_name'] = $validated['first_name'];
+            if (isset($validated['last_name'])) $userUpdates['last_name'] = $validated['last_name'];
+            if (isset($validated['email'])) $userUpdates['email'] = $validated['email'];
+          
+            if (!empty($userUpdates)) {
+                $user->update($userUpdates);
+                Log::info('EMPLOYEE_CONTROLLER: User table updated', ['updates' => array_keys($userUpdates)]);
+            }
+            // Update employee table fields (if employee record exists)
+            $employee = $user->employee;
+            if ($employee) {
+                $employeeUpdates = [];
+                if (isset($validated['phone'])) $employeeUpdates['phone'] = $validated['phone'];
+                if (isset($validated['date_of_birth'])) $employeeUpdates['date_of_birth'] = $validated['date_of_birth'];
+                if (isset($validated['national_id'])) $employeeUpdates['national_id'] = $validated['national_id'];
+                if (isset($validated['address'])) $employeeUpdates['address'] = $validated['address'];
+                if (isset($validated['emergency_contact'])) $employeeUpdates['emergency_contact'] = $validated['emergency_contact'];
+              
+                if (!empty($employeeUpdates)) {
+                    $employee->update($employeeUpdates);
+                    Log::info('EMPLOYEE_CONTROLLER: Employee table updated', ['updates' => array_keys($employeeUpdates)]);
+                }
+            }
+            DB::commit();
+            // Refresh data
+            $user->refresh();
+            if ($employee) {
+                $employee->refresh();
+                $employee->load('manager');
+            }
+            return response()->json([
+                'message' => 'Profile updated successfully',
+                'user' => [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                ],
+                'employee' => $employee ? new EmployeeResource($employee) : null,
+            ]);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            Log::warning('EMPLOYEE_CONTROLLER: Profile update validation failed', [
+                'user_id' => $user->id,
+                'errors' => $e->errors(),
+            ]);
+            throw $e;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('EMPLOYEE_CONTROLLER: Failed to update profile', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'message' => 'Failed to update profile. Please try again.'
+            ], 500);
+        }
+    }
+    /**
+     * Update user password (accessible to ALL roles)
+     */
+    public function updatePassword(Request $request): JsonResponse
+    {
+        $user = $request->user();
+      
+        try {
+            $validated = $request->validate([
+                'current_password' => 'required|string',
+                'password' => ['required', 'confirmed', Password::min(8)
+                    ->letters()
+                    ->mixedCase()
+                    ->numbers()
+                    ->symbols()
+                ],
+            ]);
+            Log::info('EMPLOYEE_CONTROLLER: Password update requested', [
+                'user_id' => $user->id,
+                'role' => $user->role,
+            ]);
+            // Verify current password
+            if (!Hash::check($validated['current_password'], $user->password)) {
+                Log::warning('EMPLOYEE_CONTROLLER: Incorrect current password', [
+                    'user_id' => $user->id,
+                ]);
+              
+                throw ValidationException::withMessages([
+                    'current_password' => ['The provided password does not match your current password.'],
+                ]);
+            }
+            // Update password
+            $user->update([
+                'password' => Hash::make($validated['password']),
+            ]);
+            Log::info('EMPLOYEE_CONTROLLER: Password updated successfully', [
+                'user_id' => $user->id,
+            ]);
+            return response()->json([
+                'message' => 'Password updated successfully'
+            ]);
+        } catch (ValidationException $e) {
+            Log::warning('EMPLOYEE_CONTROLLER: Password update validation failed', [
+                'user_id' => $user->id,
+                'errors' => $e->errors(),
+            ]);
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('EMPLOYEE_CONTROLLER: Failed to update password', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+          
+            return response()->json([
+                'message' => 'Failed to update password. Please try again.'
+            ], 500);
+        }
+    }
+ public function documents(Request $request): JsonResponse 
+{
+    try {
+        $user = $request->user();  // Now accessible
+        $employee = $user->employee;
+        
+        if (!$employee) {
+            return response()->json(['message' => 'Employee profile not found'], 404);
+        }
+        
+        $documents = Document::where('employee_id', $employee->id)->get();
+        
+        Log::info('EMPLOYEE_CONTROLLER: Documents fetched', [
+            'user_id' => $user->id,
+            'count' => $documents->count(),
+        ]);
+        
+        return response()->json([
+            'data' => $documents,
+        ]);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to fetch documents', [
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'message' => 'Failed to fetch documents'
+        ], 500);
+    }
+}
+public function uploadDocuments(Request $request): JsonResponse
+{
+    $user = $request->user();
+    $employee = $user->employee;
+    
+    if (!$employee) {
+        return response()->json(['message' => 'Employee profile not found'], 404);
+    }
+    
+    $request->validate([
+        'documents' => 'required|array|max:10',
+        'documents.*' => 'file|mimes:pdf,doc,docx,jpg,png|max:5120', // 5MB max
+    ]);
+    
+    try {
+        DB::beginTransaction();
+        $newDocuments = [];
+        
+        foreach ($request->file('documents') as $file) {
+            $path = $file->store('documents', 'public');
+            
+            $document = Document::create([
+                'employee_id' => $employee->id,
+                'file_name' => $file->getClientOriginalName(),
+                'file_path' => $path,
+                'type' => $request->input('type', 'general'), // Optional type
+                'size' => $file->getSize(),
+            ]);
+            
+            $newDocuments[] = $document;
+        }
+        
+        DB::commit();
+        
+        Log::info('EMPLOYEE_CONTROLLER: Documents uploaded', [
+            'user_id' => $user->id,
+            'count' => count($newDocuments),
+        ]);
+        
+        return response()->json([
+            'message' => 'Documents uploaded successfully',
+            'newDocuments' => $newDocuments,
+        ]);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('EMPLOYEE_CONTROLLER: Failed to upload documents', [
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'message' => 'Failed to upload documents'
+        ], 500);
+    }
+}
+
+public function deleteDocument($id): JsonResponse
+{
+    try {
+        $document = Document::findOrFail($id);
+        
+        // Check ownership
+        $user = $request->user();
+        $employee = $user->employee;
+        if ($document->employee_id !== $employee->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+        
+        // Delete file
+        if (Storage::disk('public')->exists($document->file_path)) {
+            Storage::disk('public')->delete($document->file_path);
+        }
+        
+        $document->delete();
+        
+        Log::info('EMPLOYEE_CONTROLLER: Document deleted', [
+            'document_id' => $id,
+            'user_id' => $user->id,
+        ]);
+        
+        return response()->json(['message' => 'Document deleted successfully']);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to delete document', [
+            'document_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'message' => 'Failed to delete document'
+        ], 500);
+    }
+}
+
+public function downloadDocument($id)
+{
+    try {
+        $document = Document::findOrFail($id);
+        
+        // Check ownership
+        $user = $request->user();
+        $employee = $user->employee;
+        if ($document->employee_id !== $employee->id) {
+            abort(403, 'Unauthorized');
+        }
+        
+        if (!Storage::disk('public')->exists($document->file_path)) {
+            abort(404, 'File not found');
+        }
+        
+        return Storage::disk('public')->download($document->file_path, $document->file_name);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to download document', [
+            'document_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+        abort(500, 'Failed to download document');
+    }
+}
+
+public function uploadProfilePic(Request $request): JsonResponse
+{
+    $user = $request->user();
+    $employee = $user->employee;
+    
+    if (!$employee) {
+        return response()->json(['message' => 'Employee profile not found'], 404);
+    }
+    
+    $request->validate([
+        'profile_pic' => 'required|image|mimes:jpeg,png,jpg|max:2048', // 2MB max
+    ]);
+    
+    try {
+        $file = $request->file('profile_pic');
+        $path = $file->store('profile_pics', 'public');
+        
+        $employee->update(['profile_pic' => $path]);
+        
+        Log::info('EMPLOYEE_CONTROLLER: Profile pic uploaded', [
+            'user_id' => $user->id,
+        ]);
+        
+        return response()->json([
+            'message' => 'Profile picture updated successfully',
+            'profile_pic_url' => Storage::url($path),
+        ]);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to upload profile pic', [
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'message' => 'Failed to upload profile picture'
+        ], 500);
+    }
+}
 }

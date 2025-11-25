@@ -35,7 +35,7 @@ class TaskController extends Controller
                     ->orderBy('deadline', 'asc')
                     ->orderBy('created_at', 'desc')
                     ->get();
-                   
+                  
                 Log::info('Manager tasks fetched', ['count' => $tasks->count()]);
             } else {
                 // Employees see tasks assigned to them based on their user_id
@@ -45,7 +45,7 @@ class TaskController extends Controller
                     ->orderBy('deadline', 'asc')
                     ->orderBy('created_at', 'desc')
                     ->get();
-                   
+                  
                 Log::info('Employee tasks fetched from database', [
                     'user_id' => $user->id,
                     'count' => $tasks->count(),
@@ -69,7 +69,7 @@ class TaskController extends Controller
             // Format tasks with additional employee info
             $formattedTasks = $tasks->map(function ($task) {
                 $assignedUserEmployee = $task->assignedTo->employee ?? null;
-                
+             
                 return [
                     'id' => $task->id,
                     'title' => $task->title,
@@ -84,6 +84,7 @@ class TaskController extends Controller
                         'first_name' => $task->assignedTo->first_name,
                         'last_name' => $task->assignedTo->last_name,
                         'email' => $task->assignedTo->email,
+                        'name' => $task->assignedTo->first_name . ' ' . $task->assignedTo->last_name, // Added for frontend compatibility
                         'employee_id' => $assignedUserEmployee->employee_id ?? null,
                         'position' => $assignedUserEmployee->position ?? null,
                         'department' => $assignedUserEmployee->department ?? null,
@@ -93,6 +94,7 @@ class TaskController extends Controller
                         'first_name' => $task->createdBy->first_name,
                         'last_name' => $task->createdBy->last_name,
                         'email' => $task->createdBy->email,
+                        'name' => $task->createdBy->first_name . ' ' . $task->createdBy->last_name, // Added for frontend compatibility
                     ],
                     'comments' => $task->comments,
                 ];
@@ -195,16 +197,17 @@ class TaskController extends Controller
         try {
             $validated = $request->validate([
                 'title' => 'sometimes|string|max:255',
-                'description' => 'nullable|string',
+                'description' => 'sometimes|nullable|string',
                 'priority' => 'sometimes|in:low,moderate,high,critical',
                 'assigned_to' => 'sometimes|exists:users,id',
-                'deadline' => 'nullable|date',
+                'deadline' => 'sometimes|nullable|date',
+                'status' => 'sometimes|in:todo,in_progress,under_review,completed', // Added for potential status updates
             ]);
 
             // If updating assigned_to, verify employee record exists
             if (isset($validated['assigned_to'])) {
                 $assignedUser = User::with('employee')->find($validated['assigned_to']);
-                
+             
                 if (!$assignedUser || !$assignedUser->employee) {
                     return response()->json([
                         'message' => 'Assigned user must have an employee record'

@@ -12,7 +12,7 @@ class TaskCommentController extends Controller
 {
     public function store(Request $request, Task $task)
     {
-        $this->authorize('view', $task);
+      //  $this->authorize('view', $task);
 
         $validated = $request->validate([
             'comment' => 'required|string'

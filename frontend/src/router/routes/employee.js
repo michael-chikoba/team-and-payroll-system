@@ -41,7 +41,7 @@ export default [
         component: () => import('../../views/employee/TaskAssigned.vue'),  // ✅ Fixed missing closing quote
         meta: { 
           requiresAuth: true,
-          roles: ['employee'],  // Added manager & admin
+          roles: ['employee', 'manager', 'admin'],  // Added manager & admin
           title: 'My Tasks'
         }
       }

@@ -62,30 +62,53 @@ class LeaveController extends Controller
         'message' => 'Leave application submitted successfully'
     ], 201);
 }
-    public function approve(ApproveLeaveRequest $request, Leave $leave): JsonResponse
-    {
-        $this->authorize('approve', $leave);
-       
-        $leave->update([
-            'status' => $request->status,
-            'manager_notes' => $request->manager_notes,
-        ]);
-        // Update leave balance if approved
-        if ($request->status === 'approved') {
-            $this->leaveBalanceService->deductBalance(
-                $leave->employee_id,
-                $leave->type,
-                $leave->total_days
-            );
-        }
-        // Dispatch notification event
-        event(new \App\Events\LeaveStatusUpdated($leave));
-        return response()->json([
-            'leave' => new LeaveResource($leave->load(['employee.user', 'manager'])),
-            'message' => 'Leave application ' . $request->status . ' successfully'
-        ]);
-    }
+ public function approve(ApproveLeaveRequest $request, Leave $leave): JsonResponse
 
+    {
+
+        $this->authorize('approve', $leave);
+
+       
+
+        $validated = $request->validated();
+
+        $leave->update([
+
+            'status' => $validated['status'],
+
+            'manager_notes' => $validated['manager_notes'] ?? null,
+
+        ]);
+
+        // Update leave balance if approved
+
+        if ($validated['status'] === 'approved') {
+
+            $this->leaveBalanceService->deductBalance(
+
+                $leave->employee_id,
+
+                $leave->type,
+
+                $leave->total_days
+
+            );
+
+        }
+
+        // Dispatch notification event
+
+        event(new \App\Events\LeaveStatusUpdated($leave));
+
+        return response()->json([
+
+            'leave' => new LeaveResource($leave->load(['employee.user', 'manager'])),
+
+            'message' => 'Leave application ' . $validated['status'] . ' successfully'
+
+        ]);
+
+    }
 public function balance(Request $request): JsonResponse
 {
     $employee = $request->user()->employee;
@@ -202,5 +225,36 @@ public function balance(Request $request): JsonResponse
                 'message' => 'Failed to cancel leave request: ' . $e->getMessage()
             ], 500);
         }
+    }
+        /**
+     * Reject a leave request (Manager only)
+     */
+    public function reject(Request $request, Leave $leave): JsonResponse
+    {
+        $this->authorize('approve', $leave); // Using same policy as approve
+        
+        $validated = $request->validate([
+            'manager_notes' => 'nullable|string|max:500',
+            'reason' => 'nullable|string|max:500', // Alternative field name
+        ]);
+        
+        $leave->update([
+            'status' => 'rejected',
+            'manager_notes' => $validated['manager_notes'] ?? $validated['reason'] ?? null,
+        ]);
+        
+        // Dispatch notification event
+        event(new \App\Events\LeaveStatusUpdated($leave));
+        
+        Log::info('LEAVE_CONTROLLER: Leave rejected', [
+            'leave_id' => $leave->id,
+            'manager_id' => $request->user()->id,
+            'employee_id' => $leave->employee_id
+        ]);
+        
+        return response()->json([
+            'leave' => new LeaveResource($leave->load(['employee.user', 'manager'])),
+            'message' => 'Leave application rejected successfully'
+        ]);
     }
 }
