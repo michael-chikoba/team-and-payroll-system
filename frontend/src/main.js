@@ -1,10 +1,10 @@
-// main.js
 import Notifications from '@kyvg/vue3-notification'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 import axios from 'axios'
+import { useAuthStore } from './stores/auth'
 
 import './assets/styles/main.css'
 
@@ -12,7 +12,7 @@ import './assets/styles/main.css'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 axios.defaults.baseURL = API_URL
 
-// 👇 CRITICAL: Enable sending cookies with requests
+// Enable sending cookies with requests
 axios.defaults.withCredentials = true
 
 const app = createApp(App)
@@ -22,7 +22,6 @@ app.use(pinia)
 app.use(router)
 app.use(Notifications)
 
-// 👇 CRITICAL: Fetch CSRF cookie BEFORE mounting the app
 const initializeApp = async () => {
   try {
     // Get CSRF cookie from Sanctum
@@ -30,16 +29,25 @@ const initializeApp = async () => {
     console.log('CSRF cookie fetched successfully')
   } catch (error) {
     console.warn('Failed to fetch CSRF cookie:', error)
-    // App can still load, but auth will fail
   }
+
+  // Initialize auth store
+  const authStore = useAuthStore()
 
   // Add axios response interceptor for handling auth errors
   axios.interceptors.response.use(
-    (response) => response,
+    (response) => {
+      // On successful API calls, reset activity timer if user is authenticated
+      const authStore = useAuthStore()
+      if (authStore.token && authStore.user) {
+        authStore.resetActivityTimer()
+      }
+      return response
+    },
     (error) => {
+      const authStore = useAuthStore()
       if (error.response?.status === 401) {
-        const { useAuthStore } = require('./stores/auth') // 👈 Dynamic import to avoid hoisting issues
-        const authStore = useAuthStore()
+        console.log('401 error received, clearing auth')
         authStore.clearAuth()
         
         // Only redirect if not already on login page
@@ -50,6 +58,21 @@ const initializeApp = async () => {
       return Promise.reject(error)
     }
   )
+
+  // Restore auth state on app init
+  try {
+    await authStore.loadFromStorage()
+    console.log('App initialized, auth status:', authStore.isAuthenticated)
+  } catch (error) {
+    console.error('Failed to load auth from storage:', error)
+  }
+
+  // Optional: Refresh session periodically (every 30 minutes)
+  setInterval(() => {
+    if (authStore.token && authStore.user && !authStore.isTokenExpired()) {
+      authStore.refreshSession()
+    }
+  }, 30 * 60 * 1000)
 
   app.mount('#app')
 }

@@ -5,7 +5,10 @@
         <span class="logo-icon">🚀</span>
         <h1 class="title">Portal</h1>
       </div>
-
+      <!-- Attendance Toggle Button Section -->
+      <div class="attendance-toggle-section">
+        <ClockToggle />
+      </div>
       <nav class="nav">
         <router-link to="/employee/dashboard" class="nav-link" active-class="active">
           <span class="link-icon">🏠</span>
@@ -39,12 +42,10 @@
           Tasks
         </router-link>
       </nav>
-        <router-link to="/employee/profile" class="nav-link" active-class="active">
-          <span class="link-icon">👤</span>
-          Profile
-        </router-link>
-
-
+      <router-link to="/employee/profile" class="nav-link" active-class="active">
+        <span class="link-icon">👤</span>
+        Profile
+      </router-link>
       <div class="sidebar-footer">
         <div class="user-info">
           <span class="avatar-placeholder">J.D.</span>
@@ -56,7 +57,6 @@
         </button>
       </div>
     </aside>
-
     <div class="content-area">
       <header class="top-header">
         <h2 class="page-title">Welcome Back!</h2>
@@ -70,9 +70,13 @@
 
 <script>
 import { useAuthStore } from '@/stores/auth'
+import ClockToggle from '@/components/common/Toggle.vue'
 
 export default {
   name: 'ModernEmployeeLayout',
+  components: {
+    ClockToggle
+  },
   setup() {
     const authStore = useAuthStore()
     return { authStore }
@@ -97,7 +101,6 @@ export default {
   --text-light: #7a7a7a;
   --border-color: #eaeaea;
 }
-
 /* Base Layout */
 .employee-layout {
   display: flex;
@@ -106,7 +109,6 @@ export default {
     Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   background-color: var(--background-color);
 }
-
 /* Sidebar Styling */
 .sidebar {
   width: 260px;
@@ -120,34 +122,34 @@ export default {
   top: 0;
   height: 100vh;
 }
-
 .logo-section {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem; /* Reduced margin to make space for toggle */
   padding: 0 0.5rem;
   color: var(--primary-color);
 }
-
 .logo-icon {
   font-size: 1.5rem;
 }
-
 .title {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-color);
 }
-
+/* Attendance Toggle Section */
+.attendance-toggle-section {
+  margin-bottom: 1.5rem; /* Space below the toggle */
+  padding: 0 0.25rem; /* Slight padding to align with nav links */
+}
 /* Navigation Links */
 .nav {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
-
 .nav-link {
   display: flex;
   align-items: center;
@@ -160,29 +162,24 @@ export default {
   transition: all 0.2s ease;
   font-size: 1rem;
 }
-
 .nav-link:hover {
   background-color: #f0f4f8;
   color: var(--primary-color);
 }
-
 .nav-link.active {
   background-color: rgba(74, 144, 226, 0.1);
   color: var(--primary-color);
   font-weight: 600;
 }
-
 .link-icon {
   font-size: 1.2rem;
 }
-
 /* Sidebar Footer */
 .sidebar-footer {
   margin-top: auto;
   padding-top: 1rem;
   border-top: 1px solid var(--border-color);
 }
-
 .user-info {
   display: flex;
   align-items: center;
@@ -190,7 +187,6 @@ export default {
   margin-bottom: 1rem;
   padding: 0.5rem;
 }
-
 .avatar-placeholder {
   width: 35px;
   height: 35px;
@@ -203,12 +199,10 @@ export default {
   font-size: 0.8rem;
   font-weight: 600;
 }
-
 .user-name {
   font-weight: 600;
   color: var(--text-color);
 }
-
 .logout-btn {
   width: 100%;
   display: flex;
@@ -224,83 +218,74 @@ export default {
   font-weight: 600;
   transition: all 0.2s ease;
 }
-
 .logout-btn:hover {
   background: rgba(226, 74, 74, 0.1);
   color: #c0392b;
 }
-
 /* Content Area */
 .content-area {
   flex: 1;
   display: flex;
   flex-direction: column;
 }
-
 .top-header {
   background-color: var(--surface-color);
   padding: 1.5rem 3rem;
   border-bottom: 1px solid var(--border-color);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
-
 .page-title {
   margin: 0;
   font-size: 1.8rem;
   font-weight: 300;
   color: var(--text-color);
 }
-
 /* Main Content */
 .main {
   flex: 1;
   padding: 2rem 3rem;
   overflow-y: auto;
 }
-
 /* Responsive Adjustments */
 @media (max-width: 992px) {
   .sidebar {
     width: 80px;
     padding: 1rem 0.5rem;
   }
-
   .title,
   .user-name,
   .link-icon + span {
     display: none;
   }
-
   .logo-section {
     justify-content: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem; /* Adjust for toggle */
   }
-
+  .attendance-toggle-section {
+    margin-bottom: 1rem;
+    display: flex;
+    justify-content: center;
+  }
   .nav-link {
     justify-content: center;
     padding: 0.75rem;
   }
-
   .sidebar-footer {
     border-top: none;
     padding-top: 0;
   }
-
   .user-info {
     justify-content: center;
     margin-bottom: 0.5rem;
   }
-
   .logout-btn {
     padding: 0.75rem 0;
     font-size: 0;
     justify-content: center;
   }
-
   .logout-btn .link-icon {
     font-size: 1.2rem;
   }
-
   .main {
     padding: 1.5rem;
   }

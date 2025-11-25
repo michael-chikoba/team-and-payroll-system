@@ -16,6 +16,46 @@
         </button>
       </div>
     </header>
+    <!-- Date Selection Section -->
+    <div class="date-selection-section">
+      <div class="date-inputs">
+        <div class="form-group">
+          <label class="form-label">Payroll Period (YYYY-MM)</label>
+          <input
+            type="month"
+            v-model="payrollPeriod"
+            @change="updateDateRange"
+            class="date-input"
+          >
+        </div>
+        <div class="form-group">
+          <label class="form-label">Start Date</label>
+          <input
+            type="date"
+            v-model="startDate"
+            class="date-input"
+          >
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date</label>
+          <input
+            type="date"
+            v-model="endDate"
+            class="date-input"
+          >
+        </div>
+        <button @click="refreshPayrollData" class="refresh-btn">
+          🔄 Refresh
+        </button>
+      </div>
+    </div>
+    <!-- Warning Banner for Tax Configuration -->
+    <transition name="fade">
+      <div v-if="taxConfigWarning" class="warning-banner">
+        <span>⚠️ {{ taxConfigWarning }}</span>
+        <button @click="taxConfigWarning = null" class="dismiss-btn">×</button>
+      </div>
+    </transition>
     <!-- Error Banner -->
     <transition name="fade">
       <div v-if="error" class="error-banner">
@@ -117,7 +157,9 @@
               <th>ID</th>
               <th>Employee</th>
               <th>Position</th>
-              <th>Salary</th>
+              <th>Base Salary</th>
+              <th>Gross Salary</th>
+              <th>Net Pay</th>
               <th>Status</th>
               <th>Pay Period</th>
               <th>Actions</th>
@@ -151,7 +193,9 @@
               <td>
                 <span class="position-badge">{{ employee.position }}</span>
               </td>
-              <td class="salary">{{ formatCurrency(employee.salary) }}</td>
+              <td class="salary">{{ formatCurrency(employee.base_salary) }}</td>
+              <td class="gross-salary">{{ formatCurrency(employee.gross_salary) }}</td>
+              <td class="net-pay">{{ formatCurrency(employee.net_pay) }}</td>
               <td>
                 <span v-if="employee.payroll_status" :class="['status', employee.payroll_status.toLowerCase()]">
                   <span class="status-dot"></span>
@@ -209,14 +253,25 @@
         </div>
       </div>
     </div>
+    <!-- Payslip Detail Modal -->
+    <PayslipDetailModal
+      :visible="showModal"
+      :employee-id="selectedEmployeeId"
+      :payroll-period="payrollPeriod"
+      @close="showModal = false"
+    />
   </div>
 </template>
 
 <script>
 import axios from 'axios'
+import PayslipDetailModal from './PayslipDetailModal.vue'
 
 export default {
   name: 'PayrollProcessing',
+  components: {
+    PayslipDetailModal
+  },
   data() {
     return {
       pageName: 'Payroll Processing Dashboard',
@@ -225,36 +280,33 @@ export default {
       loading: true,
       error: null,
       successMessage: null,
+      taxConfigWarning: null,
       searchQuery: '',
       filterStatus: 'all',
       payrollPeriod: '',
       startDate: '',
       endDate: '',
-      debugMode: true, // Set to false in production
-      currentPayload: null
+      showModal: false,
+      selectedEmployeeId: null
     }
   },
   computed: {
     pendingCount() {
-      // Only count employees with explicit 'pending' status from backend
       return this.employees.filter(emp => emp.payroll_status === 'pending').length
     },
     paidCount() {
-      // Only count employees with explicit 'paid' status from backend
       return this.employees.filter(emp => emp.payroll_status === 'paid').length
     },
     totalPayroll() {
       return this.employees
         .filter(emp => emp.payroll_status === 'pending')
-        .reduce((sum, emp) => sum + (emp.salary || 0), 0)
+        .reduce((sum, emp) => sum + (emp.net_pay || 0), 0)
     },
     filteredEmployees() {
       let filtered = this.employees
-      // Apply status filter
       if (this.filterStatus !== 'all') {
         filtered = filtered.filter(emp => emp.payroll_status === this.filterStatus)
       }
-      // Apply search filter
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase()
         filtered = filtered.filter(emp =>
@@ -275,243 +327,261 @@ export default {
     }
   },
   async mounted() {
+    console.log('🚀 PayrollProcessing component mounted')
     await this.initializePayrollPeriod()
     await this.fetchEmployees()
   },
   methods: {
-    getPayrollDates() {
-      return {
-        payroll_period: this.payrollPeriod,
-        start_date: this.startDate,
-        end_date: this.endDate
+    updateDateRange() {
+      console.log('📅 Date range updated - payrollPeriod:', this.payrollPeriod)
+      if (this.payrollPeriod) {
+        const [year, month] = this.payrollPeriod.split('-')
+        this.startDate = `${year}-${month}-01`
+    
+        const lastDate = new Date(year, parseInt(month), 0)
+        this.endDate = `${year}-${month}-${lastDate.getDate().toString().padStart(2, '0')}`
+    
+        console.log('📅 Calculated date range:', {
+          startDate: this.startDate,
+          endDate: this.endDate
+        })
       }
     },
-    preparePayrollPayload(employeeIds) {
-      // Ensure employee_ids is always an array of integers
-      const processedEmployeeIds = employeeIds.map(id => parseInt(id)).filter(id => !isNaN(id))
-     
-      // Prepare payload according to backend expectations
-      const payload = {
-        employee_ids: processedEmployeeIds,
-        ...this.getPayrollDates()
-      }
-      return payload
+  
+    async refreshPayrollData() {
+      console.log('🔄 Manually refreshing payroll data...')
+      await this.fetchEmployees()
     },
+  
     initializePayrollPeriod() {
-      // Compute current payroll period - ensure proper date format
       const now = new Date()
       const year = now.getFullYear()
       const monthNum = now.getMonth() + 1
       const month = monthNum.toString().padStart(2, '0')
-     
-      // Format: YYYY-MM
+  
       this.payrollPeriod = `${year}-${month}`
-     
-      // Format: YYYY-MM-DD
-      this.startDate = `${year}-${month}-01`
-     
-      // Calculate last day of month
-      const lastDate = new Date(year, monthNum, 0)
-      this.endDate = `${year}-${month}-${lastDate.getDate().toString().padStart(2, '0')}`
+      console.log('📅 Initialized payroll period:', this.payrollPeriod)
+      this.updateDateRange()
     },
+  
     async fetchEmployees() {
       this.loading = true
       this.error = null
       try {
-        const params = { payroll_period: this.payrollPeriod, per_page: 1000 }
-        const [employeesRes, payrollRes] = await Promise.all([
-          axios.get('/api/admin/employees'),
-          axios.get('/api/admin/payroll/history', { params })
-        ])
-        
-        const payrollMap = {}
-        if (payrollRes.data?.data) {
-          payrollRes.data.data.forEach(record => {
-            payrollMap[record.employee_id] = {
-              status: record.status,
-              pay_period: record.pay_period,
-              amount: record.amount
-            }
-          })
+        const params = {
+          payroll_period: this.payrollPeriod,
+          start_date: this.startDate,
+          end_date: this.endDate,
+          per_page: 1000
         }
-
-        let employeesData = []
-        if (employeesRes.data?.employees) {
-          employeesData = employeesRes.data.employees
-        } else if (employeesRes.data?.data) {
-          employeesData = employeesRes.data.data
-        } else {
-          employeesData = employeesRes.data || []
+    
+        console.log('📡 Fetching payroll summary data with params:', params)
+    
+        // New backend endpoint that provides pre-calculated data
+        const response = await axios.get('/api/admin/payroll/employees-summary', { params })
+    
+        console.log('✅ Payroll Employees Summary API Response:', response.data)
+    
+        // The backend now returns fully calculated data for each employee
+        this.employees = response.data.data.map(emp => ({
+          id: emp.id,
+          name: emp.name,
+          email: emp.email,
+          position: emp.position || emp.department || 'Unassigned',
+          base_salary: emp.base_salary || 0,
+          gross_salary: emp.gross_salary || 0, // Backend-calculated
+          net_pay: emp.net_pay || 0, // Backend-calculated
+          payroll_status: emp.payroll_status || 'pending',
+          payPeriod: emp.pay_period || this.payrollPeriod,
+          employee_record: emp,
+          selected: false,
+          payslip_data: emp.payslip_data // Full payslip data if available, or preview
+        }))
+    
+        console.log(`✅ Final payroll data loaded: ${this.employees.length} employees`)
+        console.log('📊 Final employees array:', this.employees.map(emp => ({
+          id: emp.id,
+          name: emp.name,
+          base_salary: emp.base_salary,
+          gross_salary: emp.gross_salary,
+          net_pay: emp.net_pay,
+          status: emp.payroll_status,
+          hasPayslip: !!emp.payslip_data
+        })))
+    
+        // Log summary statistics
+        const stats = {
+          total: this.employees.length,
+          pending: this.employees.filter(emp => emp.payroll_status === 'pending').length,
+          paid: this.employees.filter(emp => emp.payroll_status === 'paid').length,
+          withPayslipData: this.employees.filter(emp => emp.payslip_data).length,
+          totalPayroll: this.employees.filter(emp => emp.payroll_status === 'pending').reduce((sum, emp) => sum + (emp.net_pay || 0), 0)
         }
-
-        this.employees = employeesData.map(emp => {
-          const payrollData = payrollMap[emp.id]
-         
-          const firstName = emp.first_name || emp.user?.first_name || ''
-          const lastName = emp.last_name || emp.user?.last_name || ''
-          const fullName = [firstName, lastName].filter(Boolean).join(' ') || 'Unknown Employee'
-          const position = emp.position || emp.department || 'Unassigned'
-          const salary = emp.base_salary || emp.salary || 0
-          const email = emp.email || emp.user?.email || null
-          
-          // CRITICAL: Only use status from backend, never set a default
-          // If no payroll data exists, payroll_status will be undefined/null
-          const payrollStatus = payrollData?.status
-
-          return {
-            id: emp.id,
-            name: fullName,
-            email: email,
-            position: position,
-            salary: salary,
-            payroll_status: payrollStatus, // undefined if not set by backend
-            payPeriod: payrollData?.pay_period || this.payrollPeriod,
-            employee_record: emp,
-            selected: false
-          }
-        })
-
-        // Log employees without status for debugging
-        const employeesWithoutStatus = this.employees.filter(emp => !emp.payroll_status)
-        if (employeesWithoutStatus.length > 0) {
-          console.log(`ℹ️ ${employeesWithoutStatus.length} employees without payroll status from backend`)
-        }
-        
-        // Log employees with status for verification
-        const employeesWithStatus = this.employees.filter(emp => emp.payroll_status)
-        console.log(`✅ ${employeesWithStatus.length} employees have payroll status:`, 
-          employeesWithStatus.map(e => ({id: e.id, name: e.name, status: e.payroll_status}))
-        )
-
+        console.log('📈 Summary Statistics:', stats)
+    
       } catch (err) {
         console.error('❌ Failed to load payroll data:', err)
+        console.error('Error details:', {
+          message: err.message,
+          response: err.response?.data,
+          status: err.response?.status,
+          headers: err.response?.headers
+        })
         this.handleError(err)
       } finally {
         this.loading = false
+        console.log('🏁 fetchEmployees completed')
       }
     },
-    // Enhanced payroll processing with better validation
+  
+    getPayrollDates() {
+      const dates = {
+        payroll_period: this.payrollPeriod,
+        start_date: this.startDate,
+        end_date: this.endDate
+      }
+      console.log('📅 getPayrollDates returning:', dates)
+      return dates
+    },
+  
+    preparePayrollPayload(employeeIds) {
+      const processedEmployeeIds = employeeIds.map(id => parseInt(id)).filter(id => !isNaN(id))
+      const payload = {
+        employee_ids: processedEmployeeIds,
+        ...this.getPayrollDates()
+      }
+      console.log('📦 Prepared payroll payload:', payload)
+    
+      return payload
+    },
+  
     async processPayroll() {
-      // Only process employees that have pending status
       const pendingEmployees = this.employees.filter(e => e.payroll_status === 'pending')
-      
+      console.log('🚀 Processing payroll for pending employees:', pendingEmployees.map(e => ({ id: e.id, name: e.name, net_pay: e.net_pay })))
+    
       if (pendingEmployees.length === 0) {
-        this.showError('ℹ️ No pending payroll to process.')
+        this.showError('No pending payroll to process.')
         return
       }
-
+  
       if (!confirm(`Process payroll for ${pendingEmployees.length} pending employee(s)?`)) {
+        console.log('❌ User cancelled payroll processing')
         return
       }
-
+  
       this.processing = true
       try {
         const pendingIds = pendingEmployees.map(e => e.id)
-        
-        // Prepare payload according to backend expectations
         const payload = this.preparePayrollPayload(pendingIds)
-        this.currentPayload = payload
-        
+    
+        console.log('📤 Sending payroll process request with payload:', payload)
+    
         const response = await axios.post('/api/admin/payroll/process', payload)
-        
-        // Update employee statuses only for processed employees
-        this.employees.forEach(emp => {
-          if (pendingIds.includes(emp.id)) {
-            emp.payroll_status = 'paid'
-          }
-        })
-        
-        this.showSuccess('✅ Payroll processed successfully!')
-       
+    
+        console.log('✅ Payroll process response:', response.data)
+    
+        // Refresh data to get updated backend calculations
+        await this.fetchEmployees()
+    
+        this.showSuccess('Payroll processed successfully!')
+    
       } catch (err) {
-        console.error('💥 Payroll processing error:', err)
+        console.error('❌ Payroll processing error:', err)
+        console.error('Error response:', err.response?.data)
         this.handlePayrollError(err)
       } finally {
         this.processing = false
       }
     },
+  
     async bulkMarkPaid() {
-      // Only process employees that have a status set AND are selected
       const selectedEmployees = this.employees.filter(e => e.selected && e.payroll_status)
       const selectedIds = selectedEmployees.map(e => e.id)
-      
+      console.log('🔄 Bulk marking as paid:', selectedEmployees.map(e => ({ id: e.id, name: e.name, current_status: e.payroll_status })))
       if (selectedIds.length === 0) {
-        this.showError('No employees with payroll status selected. Set status first before marking as paid.')
+        this.showError('No employees with payroll status selected.')
         return
       }
-
-      if (!confirm(`Mark ${selectedIds.length} employee(s) as paid?`)) return
-      
+  
+      if (!confirm(`Mark ${selectedIds.length} employee(s) as paid?`)) {
+        console.log('❌ User cancelled bulk mark paid')
+        return
+      }
       try {
         const payload = this.preparePayrollPayload(selectedIds)
-        this.currentPayload = payload
-        
-        await axios.post('/api/admin/payroll/process', payload)
-        
-        this.employees.forEach(emp => {
-          if (emp.selected && emp.payroll_status) {
-            emp.payroll_status = 'paid'
-            emp.selected = false
-          }
-        })
-        
-        this.showSuccess(`✅ ${selectedIds.length} employee(s) marked as paid.`)
+    
+        console.log('📤 Sending bulk mark paid request with payload:', payload)
+    
+        const response = await axios.post('/api/admin/payroll/process', payload)
+    
+        console.log('✅ Bulk mark paid response:', response.data)
+    
+        // Refresh data to get updated backend calculations
+        await this.fetchEmployees()
+    
+        this.showSuccess(`${selectedIds.length} employee(s) marked as paid.`)
       } catch (err) {
-        console.error('💥 Bulk mark paid error:', err)
+        console.error('❌ Bulk mark paid error:', err)
+        console.error('Error response:', err.response?.data)
         this.handlePayrollError(err)
       }
     },
+  
     async bulkMarkPending() {
-      // Only process employees that have a status set AND are selected
       const selectedEmployees = this.employees.filter(e => e.selected && e.payroll_status)
       const selectedIds = selectedEmployees.map(e => e.id)
-      
+      console.log('🔄 Bulk marking as pending:', selectedEmployees.map(e => ({ id: e.id, name: e.name, current_status: e.payroll_status })))
       if (selectedIds.length === 0) {
-        this.showError('No employees with payroll status selected. Set status first before marking as pending.')
+        this.showError('No employees with payroll status selected.')
         return
       }
-
-      if (!confirm(`Mark ${selectedIds.length} employee(s) as pending?`)) return
-      
+  
+      if (!confirm(`Mark ${selectedIds.length} employee(s) as pending?`)) {
+        console.log('❌ User cancelled bulk mark pending')
+        return
+      }
       try {
         const payload = {
           employee_ids: selectedIds,
           status: 'pending',
           ...this.getPayrollDates()
         }
-        
-        await axios.post('/api/admin/payroll/update-status', payload)
-        
-        this.employees.forEach(emp => {
-          if (emp.selected && emp.payroll_status) {
-            emp.payroll_status = 'pending'
-            emp.selected = false
-          }
-        })
-        
-        this.showSuccess(`✅ ${selectedIds.length} employee(s) marked as pending.`)
+    
+        console.log('📤 Sending bulk mark pending request with payload:', payload)
+    
+        const response = await axios.post('/api/admin/payroll/update-status', payload)
+    
+        console.log('✅ Bulk mark pending response:', response.data)
+    
+        // Refresh data to get updated backend calculations
+        await this.fetchEmployees()
+    
+        this.showSuccess(`${selectedIds.length} employee(s) marked as pending.`)
       } catch (err) {
-        console.error('💥 Bulk mark pending error:', err)
+        console.error('❌ Bulk mark pending error:', err)
+        console.error('Error response:', err.response?.data)
         this.handlePayrollError(err)
       }
     },
-async toggleStatus(employeeId) {
+  
+    async toggleStatus(employeeId) {
       const employee = this.employees.find(e => e.id === employeeId)
+      console.log('🔄 Toggling status for employee:', { id: employeeId, name: employee?.name, current_status: employee?.payroll_status })
+    
       if (!employee || !employee.payroll_status) {
         this.showError('Cannot toggle status for employee without payroll status')
         return
       }
-
+  
       const originalStatus = employee.payroll_status
       const newStatus = originalStatus === 'pending' ? 'paid' : 'pending'
-      
-      // Optimistically update UI
-      employee.payroll_status = newStatus
-      
+    
+      console.log(`🔄 Changing status from ${originalStatus} to ${newStatus}`)
       try {
         let payload
         if (newStatus === 'paid') {
           payload = this.preparePayrollPayload([employeeId])
+          console.log('📤 Marking as paid with payload:', payload)
           await axios.post('/api/admin/payroll/process', payload)
         } else {
           payload = {
@@ -519,31 +589,36 @@ async toggleStatus(employeeId) {
             status: newStatus,
             ...this.getPayrollDates()
           }
+          console.log('📤 Marking as pending with payload:', payload)
           await axios.post('/api/admin/payroll/update-status', payload)
         }
-       
-        // Refresh data from backend to ensure consistency
+    
+        // Refresh data to get updated backend calculations
         await this.fetchEmployees()
-        this.showSuccess(`✅ Employee marked as ${newStatus}.`)
+        this.showSuccess(`Employee marked as ${newStatus}.`)
       } catch (err) {
-        console.error('💥 Toggle status error:', err)
+        console.error('❌ Toggle status error:', err)
+        console.error('Error response:', err.response?.data)
         this.handlePayrollError(err)
-        // Revert on error
-        employee.payroll_status = originalStatus
       }
     },
+  
     async setInitialStatus(employeeId) {
       const employee = this.employees.find(e => e.id === employeeId)
+      console.log('⚙️ Setting initial status for employee:', { id: employeeId, name: employee?.name })
+    
       if (!employee) return
-
+  
       const status = confirm('Set initial status as Pending?\n\nClick OK for Pending, Cancel for Paid')
         ? 'pending'
         : 'paid'
-
+    
+      console.log(`⚙️ Setting initial status to: ${status}`)
       try {
         let payload
         if (status === 'paid') {
           payload = this.preparePayrollPayload([employeeId])
+          console.log('📤 Setting as paid with payload:', payload)
           await axios.post('/api/admin/payroll/process', payload)
         } else {
           payload = {
@@ -551,32 +626,28 @@ async toggleStatus(employeeId) {
             status: status,
             ...this.getPayrollDates()
           }
+          console.log('📤 Setting as pending with payload:', payload)
           await axios.post('/api/admin/payroll/update-status', payload)
         }
-       
-        employee.payroll_status = status
-        this.showSuccess(`✅ Employee status set to ${status}.`)
+    
+        // Refresh data to get updated backend calculations
+        await this.fetchEmployees()
+        this.showSuccess(`Employee status set to ${status}.`)
       } catch (err) {
-        console.error('💥 Set initial status error:', err)
+        console.error('❌ Set initial status error:', err)
+        console.error('Error response:', err.response?.data)
         this.handlePayrollError(err)
       }
     },
-    // Centralized error handling
+  
     handlePayrollError(err) {
-      // Enhanced error handling for 422 errors
+      console.error('💥 Payroll error handler triggered:', err)
+    
       if (err.response?.status === 422) {
         const responseData = err.response.data
-       
-        console.error('🔍 422 Validation Error Details:', {
-          status: err.response.status,
-          data: responseData,
-          requestData: err.config?.data ? JSON.parse(err.config.data) : null
-        })
-        
         let errorMessage = 'Validation failed: '
-       
+    
         if (responseData.errors) {
-          // Laravel validation errors format
           const errors = responseData.errors
           const errorList = []
           for (const [field, messages] of Object.entries(errors)) {
@@ -588,12 +659,14 @@ async toggleStatus(employeeId) {
         } else {
           errorMessage += 'Please check the data and try again.'
         }
-       
+    
+        console.error('❌ Validation error:', errorMessage)
         this.showError(errorMessage)
       } else {
         this.handleError(err)
       }
     },
+  
     getInitials(name) {
       if (!name || name === '—' || name === 'Unknown Employee') return '??'
       return name
@@ -603,6 +676,7 @@ async toggleStatus(employeeId) {
         .toUpperCase()
         .substring(0, 2)
     },
+  
     getAvatarColor(name) {
       const colors = [
         'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -615,52 +689,88 @@ async toggleStatus(employeeId) {
       const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length
       return colors[index]
     },
+  
     addEmployee() {
+      console.log('➕ Navigating to add employee page')
       this.$router.push({ name: 'admin.employees.create' })
     },
+  
     toggleSelectAll() {
       const newState = !this.allSelected
+      console.log(`🔘 Toggle select all: ${newState ? 'selecting' : 'deselecting'} all ${this.filteredEmployees.length} employees`)
       this.filteredEmployees.forEach(emp => {
         emp.selected = newState
       })
     },
+  
     clearSelection() {
+      console.log('🔘 Clearing selection')
       this.employees.forEach(emp => {
         emp.selected = false
       })
     },
+  
     viewDetails(id) {
-      this.$router.push({ name: 'admin.employee.details', params: { id } })
+      const employee = this.employees.find(e => e.id === id)
+      console.log('👁️ Viewing details for employee:', {
+        id: employee?.id,
+        name: employee?.name,
+        base_salary: employee?.base_salary,
+        gross_salary: employee?.gross_salary,
+        net_pay: employee?.net_pay,
+        status: employee?.payroll_status
+      })
+      console.log('📄 Payslip data available:', employee?.payslip_data)
+      this.selectedEmployeeId = id
+      this.showModal = true
     },
+  
     async deleteEmployee(id) {
       const employee = this.employees.find(e => e.id === id)
-      if (!confirm(`Delete ${employee?.name || 'this employee'}? This cannot be undone.`)) return
+      console.log('🗑️ Attempting to delete employee:', { id, name: employee?.name })
+    
+      if (!confirm(`Delete ${employee?.name || 'this employee'}? This cannot be undone.`)) {
+        console.log('❌ User cancelled employee deletion')
+        return
+      }
+  
       try {
         await axios.delete(`/api/admin/employees/${id}`)
         this.employees = this.employees.filter(e => e.id !== id)
-        this.showSuccess('✅ Employee removed successfully.')
+        console.log('✅ Employee deleted successfully')
+        this.showSuccess('Employee removed successfully.')
       } catch (err) {
+        console.error('❌ Delete employee error:', err)
         this.handleError(err)
       }
     },
+  
     clearSearch() {
+      console.log('🔍 Clearing search query')
       this.searchQuery = ''
     },
+  
     dismissError() {
+      console.log('❌ Dismissing error banner')
       this.error = null
     },
+  
     showSuccess(message) {
+      console.log('✅ Showing success message:', message)
       this.successMessage = message
       setTimeout(() => {
         this.successMessage = null
       }, 5000)
     },
+  
     showError(message) {
+      console.log('❌ Showing error message:', message)
       this.error = message
       setTimeout(() => {
         this.error = null
       }, 5000)
     },
+  
     formatCurrency(amount) {
       return new Intl.NumberFormat('en-ZM', {
         style: 'currency',
@@ -668,15 +778,14 @@ async toggleStatus(employeeId) {
         minimumFractionDigits: 2
       }).format(amount)
     },
+  
     formatDate(dateString) {
       if (!dateString) return '—'
-      // Handle YYYY-MM format for period
       if (dateString.match(/^\d{4}-\d{2}$/)) {
         const [year, month] = dateString.split('-')
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
         return `${monthNames[parseInt(month) - 1]} ${year}`
       }
-      // Otherwise, treat as date
       const date = new Date(dateString)
       if (isNaN(date.getTime())) return '—'
       return date.toLocaleDateString('en-ZM', {
@@ -685,11 +794,15 @@ async toggleStatus(employeeId) {
         day: 'numeric'
       })
     },
+  
     handleError(err) {
+      console.error('💥 Global error handler triggered:', err)
+    
       let message = 'An unexpected error occurred.'
-     
+  
       if (err.response?.status === 401) {
         message = 'Your session has expired. Please log in again.'
+        console.warn('🔐 Authentication error - redirecting to login')
         if (this.$store?.auth?.clearAuth) {
           this.$store.auth.clearAuth()
         }
@@ -698,7 +811,6 @@ async toggleStatus(employeeId) {
       } else if (err.response?.status === 403) {
         message = 'You do not have permission to perform this action.'
       } else if (err.response?.status === 422) {
-        // This is now handled in handlePayrollError
         return
       } else if (err.response?.data?.message) {
         message = err.response.data.message
@@ -707,150 +819,77 @@ async toggleStatus(employeeId) {
       } else if (err.code === 'ERR_NETWORK') {
         message = 'Network error. Please check your connection.'
       }
-     
+  
       this.error = message
-      console.error('API Error:', err)
+      console.error('API Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      })
     }
   }
 }
 </script>
 
 <style scoped>
-/* Debug Panel Styles */
-.debug-panel {
-  background: #1a202c;
-  color: #e2e8f0;
-  border-radius: 8px;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  font-family: 'Monaco', 'Consolas', monospace;
-  font-size: 0.875rem;
-  border-left: 4px solid #667eea;
+/* All existing styles remain unchanged */
+.gross-salary {
+  font-weight: 600;
+  color: #3b82f6;
 }
-.debug-panel h4 {
-  margin: 0 0 0.75rem 0;
-  color: #90cdf4;
-  font-size: 1rem;
+.net-pay {
+  font-weight: 600;
+  color: #059669;
 }
-.debug-content {
-  background: #2d3748;
-  padding: 0.75rem;
-  border-radius: 4px;
-  margin-bottom: 0.75rem;
-}
-.debug-content pre {
-  margin: 0.5rem 0 0 0;
-  background: #4a5568;
-  padding: 0.5rem;
-  border-radius: 4px;
-  overflow-x: auto;
-  font-size: 0.75rem;
-}
-.debug-close, .debug-toggle {
-  background: #667eea;
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-.debug-close:hover, .debug-toggle:hover {
-  background: #5a67d8;
-}
-.debug-toggle {
-  background: #718096;
-  margin-left: auto;
-}
-.debug-toggle:hover {
-  background: #4a5568;
-}
-* {
-  box-sizing: border-box;
-}
-.payroll-view {
-  padding: 2rem;
-  max-width: 1600px;
-  margin: 0 auto;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  min-height: 100vh;
-}
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
+.date-selection-section {
   background: white;
-  padding: 2rem;
+  padding: 1.5rem;
   border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
-.title {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 700;
-  color: #1a202c;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.header-actions {
+.date-inputs {
   display: flex;
   gap: 1rem;
+  align-items: end;
+  flex-wrap: wrap;
 }
-.add-btn, .process-btn {
-  padding: 0.875rem 1.75rem;
-  border: none;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
+.form-group {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  min-width: 150px;
 }
-.btn-icon {
-  font-size: 1.25rem;
-  font-weight: bold;
+.form-label {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
 }
-.add-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.date-input {
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: border-color 0.3s;
+}
+.date-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+.refresh-btn {
+  padding: 0.75rem 1.5rem;
+  background: #3b82f6;
   color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+  height: fit-content;
 }
-.process-btn {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
+.refresh-btn:hover {
+  background: #2563eb;
 }
-.process-btn:disabled {
-  background: #9ca3af;
-  cursor: not-allowed;
-  transform: none;
-}
-.add-btn:hover:not(:disabled),
-.process-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
-}
-.spinner-small {
-  width: 16px;
-  height: 16px;
-  border: 2px solid #ffffff40;
-  border-top: 2px solid white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-.fade-enter-active, .fade-leave-active {
-  transition: all 0.3s ease;
-}
-.fade-enter-from, .fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-.error-banner, .success-banner {
+.warning-banner {
   padding: 1rem 1.5rem;
   border-radius: 12px;
   margin-bottom: 1.5rem;
@@ -859,16 +898,9 @@ async toggleStatus(employeeId) {
   align-items: center;
   font-weight: 500;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-.error-banner {
-  background: #fee2e2;
-  color: #991b1b;
-  border-left: 4px solid #dc2626;
-}
-.success-banner {
-  background: #d1fae5;
-  color: #065f46;
-  border-left: 4px solid #10b981;
+  background: #fffbeb;
+  color: #92400e;
+  border-left: 4px solid #f59e0b;
 }
 .dismiss-btn {
   background: none;
@@ -1388,5 +1420,106 @@ async toggleStatus(employeeId) {
     box-shadow: none;
     border: 1px solid #e5e7eb;
   }
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  background: white;
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+.title {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1a202c;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header-actions {
+  display: flex;
+  gap: 1rem;
+}
+.add-btn, .process-btn {
+  padding: 0.875rem 1.75rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-icon {
+  font-size: 1.25rem;
+  font-weight: bold;
+}
+.add-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+.process-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+.process-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+}
+.add-btn:hover:not(:disabled),
+.process-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+}
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #ffffff40;
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.error-banner, .success-banner {
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 500;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+.error-banner {
+  background: #fee2e2;
+  color: #991b1b;
+  border-left: 4px solid #dc2626;
+}
+.success-banner {
+  background: #d1fae5;
+  color: #065f46;
+  border-left: 4px solid #10b981;
+}
+.fade-enter-active, .fade-leave-active {
+  transition: all 0.3s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+.payroll-view {
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  min-height: 100vh;
 }
 </style>

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import axios from 'axios';
-
+import jsPDF from 'jspdf';
 // --- State Management ---
 const loading = ref(false);
 const error = ref(null);
@@ -12,7 +12,6 @@ const showGenerateModal = ref(false);
 const showBulkGenerate = ref(false);
 const submitting = ref(false);
 const formError = ref(null);
-
 const filters = reactive({
   pay_period: 'current',
   department: '',
@@ -20,25 +19,16 @@ const filters = reactive({
   custom_start: '',
   custom_end: ''
 });
-
 const generateForm = reactive({
   employee_id: '',
   pay_period_start: '',
   pay_period_end: '',
   payment_date: '',
   basic_salary: 0,
-  house_allowance: 0,
-  transport_allowance: 0,
-  other_allowances: 0,
   overtime_hours: 0,
   overtime_rate: 0,
-  napsa: 0,
-  paye: 0,
-  nhima: 0,
-  other_deductions: 0,
   generate_pdf: true
 });
-
 const bulkForm = reactive({
   pay_period_start: '',
   pay_period_end: '',
@@ -46,49 +36,32 @@ const bulkForm = reactive({
   department: '',
   employee_ids: [],
 });
-
-// Watch for employee selection and auto-populate basic salary
-const onEmployeeSelected = (employeeId) => {
-  const employee = employees.value.find(emp => emp.id === parseInt(employeeId));
-  if (employee && employee.base_salary) {
-    generateForm.basic_salary = parseFloat(employee.base_salary);
-  }
-};
-
 // --- Computed Properties ---
 const availableEmployees = computed(() => {
   return employees.value.filter(emp =>
     !bulkForm.department || emp.department === bulkForm.department
   );
 });
-
 const selectedBulkEmployees = computed(() => {
   return employees.value.filter(emp =>
     bulkForm.employee_ids.includes(emp.id)
   );
 });
-
-// --- Core Calculation Functions ---
-const calculateTotalEarnings = (form) => {
-  const overtime = (form.overtime_hours || 0) * (form.overtime_rate || 0);
-  return (form.basic_salary || 0) +
-         (form.house_allowance || 0) +
-         (form.transport_allowance || 0) +
-         (form.other_allowances || 0) +
-         overtime;
+// --- Core Calculation Functions (for display only - backend does actual calculations) ---
+const calculatePreviewEarnings = (basicSalary, overtimeHours = 0, overtimeRate = 0) => {
+  const housingAllowance = basicSalary * 0.25; // 25% of basic
+  const transportAllowance = 300.00; // Fixed K300
+  const lunchAllowance = 240.00; // Fixed K240
+  const overtimePay = overtimeHours * overtimeRate;
+  return {
+    basic_salary: basicSalary,
+    housing_allowance: housingAllowance,
+    transport_allowance: transportAllowance,
+    lunch_allowance: lunchAllowance,
+    overtime_pay: overtimePay,
+    total_earnings: basicSalary + housingAllowance + transportAllowance + lunchAllowance + overtimePay
+  };
 };
-
-const calculateTotalDeductions = (form) => {
-  return (form.napsa || 0) +
-         (form.paye || 0) +
-         (form.nhima || 0) +
-         (form.other_deductions || 0);
-};
-
-const calculateNetPay = () => {
-  return calculateTotalEarnings(generateForm) - calculateTotalDeductions(generateForm);
-};
-
 // --- Helper Methods for Employee Data ---
 const getEmployeeName = (employee) => {
   if (employee.first_name && employee.last_name) {
@@ -102,33 +75,27 @@ const getEmployeeName = (employee) => {
   }
   return 'N/A'
 };
-
 // --- Lifecycle and Initial Data Fetch ---
 onMounted(() => {
   initializeDates();
   fetchPayslips();
   fetchEmployees();
 });
-
 // --- Helper Methods ---
 const initializeDates = () => {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
   generateForm.pay_period_start = formatDateForInput(firstDay);
   generateForm.pay_period_end = formatDateForInput(lastDay);
   generateForm.payment_date = formatDateForInput(today);
-
   bulkForm.pay_period_start = formatDateForInput(firstDay);
   bulkForm.pay_period_end = formatDateForInput(lastDay);
   bulkForm.payment_date = formatDateForInput(today);
 };
-
 const fetchPayslips = async () => {
   loading.value = true;
   error.value = null;
-
   try {
     const params = new URLSearchParams();
     if (filters.pay_period === 'custom') {
@@ -139,24 +106,40 @@ const fetchPayslips = async () => {
     }
     if (filters.department) params.append('department', filters.department);
     if (filters.status) params.append('status', filters.status);
-    
+  
     const response = await axios.get('/api/admin/payslips', { params });
     payslips.value = response.data.data || response.data;
+  
+    // Log PDF availability for debugging
+    payslips.value.forEach(payslip => {
+      console.log(`Payslip ${payslip.id}: PDF available: ${payslip.pdf_available}, PDF path: ${payslip.pdf_path}`);
+    });
+  
   } catch (err) {
     error.value = 'Failed to fetch payslips';
-    console.error(err);
+    console.error('Fetch payslips error:', err);
+  
+    // Retry once after 2 seconds
+    setTimeout(async () => {
+      try {
+        const retryResponse = await axios.get('/api/admin/payslips');
+        payslips.value = retryResponse.data.data || retryResponse.data;
+        error.value = null;
+      } catch (retryErr) {
+        console.error('Retry failed:', retryErr);
+      }
+    }, 2000);
   } finally {
     loading.value = false;
   }
 };
-
 const fetchEmployees = async () => {
   try {
     console.log('Fetching employees...');
     const response = await axios.get('/api/admin/employees');
-   
+  
     console.log('Employees response:', response.data);
-   
+  
     // Handle different response structures
     let employeesData = [];
     if (response.data && response.data.employees) {
@@ -166,34 +149,139 @@ const fetchEmployees = async () => {
     } else {
       employeesData = response.data || [];
     }
-   
+  
     employees.value = employeesData;
     console.log('Processed employees:', employees.value);
   } catch (err) {
     console.error('Failed to fetch employees:', err);
   }
 };
+// Watch for employee selection and auto-populate basic salary
+const onEmployeeSelected = (employeeId) => {
+  const employee = employees.value.find(emp => emp.id === parseInt(employeeId));
+  if (employee && employee.base_salary) {
+    generateForm.basic_salary = parseFloat(employee.base_salary);
+  }
+};
+// Generate PDF function
+const generatePdf = async (payslipId) => {
+  try {
+    const response = await axios.post(`/api/admin/payslips/${payslipId}/generate-pdf`);
+    return response.data;
+  } catch (err) {
+    console.error('Failed to generate PDF:', err);
+    throw err;
+  }
+};
+// Client-side PDF generation fallback
+const generateClientPdf = (payslip) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
+  // Header
+  doc.setFontSize(20);
+  doc.text('PAYSLIP', pageWidth / 2, 20, { align: 'center' });
+
+  // Company info (left side)
+  doc.setFontSize(10);
+  doc.text('Castle Holdings Ltd', 20, 40);
+  doc.text('54 Seble Road, Lusaka, Zambia', 20, 48);
+  doc.text('Phone: +260 211 123456 | Email: payroll@castleholdings.co.zm', 20, 56);
+
+  // Period (right side)
+  doc.text(`Period: ${formatDate(payslip.pay_period_start)} to ${formatDate(payslip.pay_period_end)}`, pageWidth / 2, 40, { align: 'center' });
+
+  // Employee details
+  let y = 80;
+  doc.setFontSize(12);
+  doc.text('Employee Details', 20, y);
+  y += 10;
+  doc.setFontSize(10);
+  doc.text(`Name: ${payslip.employee_name || 'N/A'}`, 20, y); y += 8;
+  doc.text(`Employee ID: ${payslip.employee_id || 'N/A'}`, 20, y); y += 8;
+  doc.text(`Department: ${payslip.department || 'N/A'}`, 20, y); y += 8;
+  doc.text(`Payment Date: ${formatDate(payslip.payment_date)}`, 20, y); y += 10;
+
+  // Earnings section
+  doc.setFontSize(12);
+  doc.text('Earnings', 20, y);
+  y += 10;
+  doc.setFontSize(10);
+  doc.text(`Basic Salary: K${formatNumber(payslip.basic_salary || 0)}`, 20, y); y += 8;
+  doc.text(`House Allowance (25%): K${formatNumber(payslip.house_allowance || 0)}`, 20, y); y += 8;
+  doc.text(`Transport Allowance: K${formatNumber(payslip.transport_allowance || 0)}`, 20, y); y += 8;
+  doc.text(`Lunch Allowance: K${formatNumber(payslip.other_allowances || 0)}`, 20, y); y += 8;
+  doc.text(`Overtime Pay (${payslip.overtime_hours || 0} hrs): K${formatNumber(payslip.overtime_pay || 0)}`, 20, y); y += 8;
+  doc.setFontSize(12);
+  doc.text(`Gross Earnings: K${formatNumber(payslip.gross_salary || 0)}`, 20, y);
+  y += 15;
+
+  // Deductions section (right column)
+  const deductY = 110; // Start deductions earlier on right
+  doc.setFontSize(12);
+  doc.text('Deductions', 105, deductY);
+  let deductYPos = deductY + 10;
+  doc.setFontSize(10);
+  doc.text(`PAYE Tax: K${formatNumber(payslip.paye || 0)}`, 105, deductYPos); deductYPos += 8;
+  doc.text(`NAPSA (10% of gross): K${formatNumber(payslip.napsa || 0)}`, 105, deductYPos); deductYPos += 8;
+  doc.text(`NHIMA (1% of gross): K${formatNumber(payslip.nhima || 0)}`, 105, deductYPos); deductYPos += 8;
+  doc.setFontSize(12);
+  doc.text(`Total Deductions: K${formatNumber(payslip.total_deductions || 0)}`, 105, deductYPos);
+
+  // Net Pay (centered below)
+  y = Math.max(y, deductYPos + 15);
+  doc.setFontSize(16);
+  doc.text('NET PAYABLE', pageWidth / 2, y, { align: 'center' });
+  y += 15;
+  doc.setFontSize(24);
+  doc.text(`K${formatNumber(payslip.net_pay || 0)}`, pageWidth / 2, y, { align: 'center' });
+  y += 20;
+  doc.setFontSize(10);
+  doc.text(`(${convertToWords(payslip.net_pay || 0)})`, pageWidth / 2, y, { align: 'center' });
+  y += 20;
+
+  // Footer
+  doc.setLineWidth(0.5);
+  doc.line(20, y, pageWidth - 20, y);
+  y += 10;
+  doc.text('Authorized Signature', pageWidth / 2, y, { align: 'center' });
+  y += 10;
+  doc.setFontSize(8);
+  doc.text('Notes: This is a computer-generated payslip. Please contact HR for any discrepancies.', 20, y, { maxWidth: pageWidth - 40 });
+
+  // Generate filename
+  const period = payslip.pay_period_start
+    ? new Date(payslip.pay_period_start).toISOString().slice(0, 7)
+    : new Date().toISOString().slice(0, 7);
+  const filename = `payslip-${payslip.employee_id || payslip.employee_name || 'unknown'}-${period}-client.pdf`;
+
+  // Save the PDF
+  doc.save(filename);
+};
+// Generate single payslip
 const generatePayslip = async () => {
   submitting.value = true;
   formError.value = null;
-
-  // Validate required fields
-  if (!generateForm.employee_id || !generateForm.pay_period_start || !generateForm.pay_period_end || !generateForm.payment_date || generateForm.basic_salary <= 0) {
+  // Validate required fields - only basic salary is needed for calculations
+  if (!generateForm.employee_id || !generateForm.pay_period_start ||
+      !generateForm.pay_period_end || !generateForm.payment_date ||
+      generateForm.basic_salary <= 0) {
     formError.value = 'Please fill in all required fields correctly.';
     submitting.value = false;
     return;
   }
-
   try {
-    // Calculate derived values before sending
+    // Send only basic data - backend will calculate everything using tax configuration
     const formData = {
-      ...generateForm,
       employee_id: generateForm.employee_id.toString(),
-      gross_salary: calculateTotalEarnings(generateForm),
-      total_deductions: calculateTotalDeductions(generateForm),
-      net_pay: calculateNetPay(),
-      overtime_pay: (generateForm.overtime_hours || 0) * (generateForm.overtime_rate || 0)
+      pay_period_start: generateForm.pay_period_start,
+      pay_period_end: generateForm.pay_period_end,
+      payment_date: generateForm.payment_date,
+      basic_salary: generateForm.basic_salary,
+      overtime_hours: generateForm.overtime_hours || 0,
+      overtime_rate: generateForm.overtime_rate || 0,
+      generate_pdf: true
     };
     const response = await axios.post('/api/admin/payslips', formData);
     payslips.value.unshift(response.data.data || response.data);
@@ -205,43 +293,30 @@ const generatePayslip = async () => {
     submitting.value = false;
   }
 };
+// Bulk generate payslips
 const bulkGeneratePayslips = async () => {
   submitting.value = true;
   formError.value = null;
-
   if (bulkForm.employee_ids.length === 0) {
     formError.value = 'Please select at least one employee.';
     submitting.value = false;
     return;
   }
-
   try {
     const promises = bulkForm.employee_ids.map(async (id) => {
       const emp = employees.value.find(e => e.id === id);
       if (!emp) return null;
+    
       const formData = {
         employee_id: id.toString(),
         pay_period_start: bulkForm.pay_period_start,
         pay_period_end: bulkForm.pay_period_end,
         payment_date: bulkForm.payment_date,
         basic_salary: parseFloat(emp.base_salary) || 0,
-        house_allowance: 0,
-        transport_allowance: 0,
-        other_allowances: 0,
         overtime_hours: 0,
         overtime_rate: 0,
-        napsa: 0,
-        paye: 0,
-        nhima: 0,
-        other_deductions: 0,
         generate_pdf: true
       };
-      // Calculate derived
-      formData.gross_salary = calculateTotalEarnings(formData);
-      formData.total_deductions = calculateTotalDeductions(formData);
-      formData.net_pay = formData.gross_salary - formData.total_deductions;
-      formData.overtime_pay = 0;
-
       const response = await axios.post('/api/admin/payslips', formData);
       return response.data.data || response.data;
     });
@@ -256,31 +331,180 @@ const bulkGeneratePayslips = async () => {
     submitting.value = false;
   }
 };
-
-const viewPayslip = (payslip) => {
-  selectedPayslip.value = payslip;
+const viewPayslip = async (payslip) => {
+  // Check if PDF is available before showing details
+  if (!payslip.pdf_available && !payslip.pdf_path) {
+    try {
+      alert('Generating PDF for this payslip...');
+      await generatePdf(payslip.id);
+    
+      // Refresh the payslip data
+      const response = await axios.get(`/api/admin/payslips/${payslip.id}`);
+      const updatedPayslip = response.data.data || response.data;
+    
+      selectedPayslip.value = updatedPayslip;
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+      // Still show the payslip even if PDF generation fails
+      selectedPayslip.value = payslip;
+    }
+  } else {
+    selectedPayslip.value = payslip;
+  }
 };
-
 const downloadPayslip = async (payslip) => {
   try {
-    const response = await axios.get(`/api/payslips/${payslip.id}/download`, { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
+    console.log('Attempting to download payslip:', payslip.id);
+  
+    // Check if PDF is available first
+    if (!payslip.pdf_available && !payslip.pdf_path) {
+      // Try to generate PDF first
+      try {
+        console.log('PDF not available, generating PDF first...');
+        await generatePdf(payslip.id);
+      
+        // Wait a moment for PDF generation
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      
+        // Refresh payslip data
+        const refreshedResponse = await axios.get(`/api/admin/payslips/${payslip.id}`);
+        const refreshedPayslip = refreshedResponse.data.data || refreshedResponse.data;
+      
+        if (!refreshedPayslip.pdf_available && !refreshedPayslip.pdf_path) {
+          throw new Error('PDF generation failed');
+        }
+      
+        // Update the payslip in our local state
+        const index = payslips.value.findIndex(p => p.id === payslip.id);
+        if (index !== -1) {
+          payslips.value[index] = { ...payslips.value[index], ...refreshedPayslip };
+        }
+        payslip = refreshedPayslip;
+      } catch (genError) {
+        console.error('PDF generation failed:', genError);
+        alert('PDF is not available for this payslip. Please try generating it first.');
+        return;
+      }
+    }
+    // Try different download endpoints
+    let downloadUrl = '';
+    let response;
+  
+    // Try admin endpoint first
+    try {
+      downloadUrl = `/api/admin/payslips/${payslip.id}/download`;
+      console.log('Trying admin endpoint:', downloadUrl);
+      response = await axios.get(downloadUrl, {
+        responseType: 'blob',
+        timeout: 30000 // 30 second timeout
+      });
+    } catch (adminError) {
+      console.log('Admin endpoint failed, trying regular endpoint...');
+    
+      // Try regular endpoint
+      try {
+        downloadUrl = `/api/payslips/${payslip.id}/download`;
+        console.log('Trying regular endpoint:', downloadUrl);
+        response = await axios.get(downloadUrl, {
+          responseType: 'blob',
+          timeout: 30000
+        });
+      } catch (regularError) {
+        console.log('Regular endpoint failed, trying alternative endpoint...');
+      
+        // Try alternative endpoint pattern
+        try {
+          downloadUrl = `/api/payslips/${payslip.id}/pdf`;
+          console.log('Trying alternative endpoint:', downloadUrl);
+          response = await axios.get(downloadUrl, {
+            responseType: 'blob',
+            timeout: 30000
+          });
+        } catch (altError) {
+          console.error('All download endpoints failed:', {
+            adminError: adminError.response?.status,
+            regularError: regularError.response?.status,
+            altError: altError.response?.status
+          });
+        
+          // Check if it's an authentication issue
+          if (adminError.response?.status === 401 || regularError.response?.status === 401) {
+            alert('Authentication required. Please log in again.');
+            return;
+          }
+        
+          // Check if it's a server error
+          if (adminError.response?.status === 500 || regularError.response?.status === 500) {
+            alert('Server error occurred while generating PDF. Please try again later.');
+            return;
+          }
+        
+          // Fallback to client-side PDF generation to solve 404 error
+          console.log('All endpoints failed, generating PDF client-side...');
+          generateClientPdf(payslip);
+          return;
+        }
+      }
+    }
+    // If we get here, we have a successful response
+    console.log('Download successful, creating blob...');
+  
+    // Create blob URL and download
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
+  
+    // Create filename
+    const period = payslip.pay_period_start
+      ? new Date(payslip.pay_period_start).toISOString().slice(0, 7)
+      : new Date().toISOString().slice(0, 7);
+  
+    const filename = `payslip-${payslip.employee_id || payslip.employee_name}-${period}.pdf`;
+  
     link.href = url;
-    link.setAttribute('download', `payslip-${payslip.id}.pdf`);
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     link.remove();
-    window.URL.revokeObjectURL(url);
+  
+    // Clean up URL
+    setTimeout(() => window.URL.revokeObjectURL(url), 100);
+  
+    console.log('Download completed successfully');
+  
   } catch (err) {
     console.error('Failed to download payslip:', err);
-    alert('Failed to download payslip');
+  
+    // Provide more specific error messages
+    if (err.response) {
+      switch (err.response.status) {
+        case 401:
+          alert('Authentication required. Please log in again.');
+          break;
+        case 403:
+          alert('You do not have permission to download this payslip.');
+          break;
+        case 404:
+          // Fallback to client-side for 404
+          console.log('404 detected, generating client-side PDF...');
+          generateClientPdf(payslip);
+          break;
+        case 500:
+          alert('Server error occurred. Please try again later.');
+          break;
+        default:
+          alert(`Failed to download payslip: ${err.response.status} ${err.response.statusText}`);
+      }
+    } else if (err.request) {
+      alert('Network error. Please check your connection and try again.');
+    } else {
+      alert('Failed to download payslip. Please try again.');
+    }
   }
 };
-
 const sendPayslip = async (payslip) => {
   try {
-    await axios.post(`/api/payslips/${payslip.id}/send`);
+    await axios.post(`/api/admin/payslips/${payslip.id}/send`);
     const index = payslips.value.findIndex(p => p.id === payslip.id);
     if (index !== -1) {
       payslips.value[index].status = 'paid';
@@ -292,24 +516,21 @@ const sendPayslip = async (payslip) => {
     alert('Failed to send payslip');
   }
 };
-
 const removeEmployee = (employeeId) => {
   bulkForm.employee_ids = bulkForm.employee_ids.filter(id => id !== employeeId);
 };
-
 const closeModals = () => {
   showGenerateModal.value = false;
   showBulkGenerate.value = false;
   formError.value = null;
   Object.assign(generateForm, {
     employee_id: '',
-    basic_salary: 0, house_allowance: 0, transport_allowance: 0,
-    other_allowances: 0, overtime_hours: 0, overtime_rate: 0,
-    napsa: 0, paye: 0, nhima: 0, other_deductions: 0
+    basic_salary: 0,
+    overtime_hours: 0,
+    overtime_rate: 0
   });
   bulkForm.employee_ids = [];
 };
-
 // --- Formatting & Utility Functions ---
 const formatNumber = (num) => {
   return new Intl.NumberFormat('en-US', {
@@ -317,7 +538,6 @@ const formatNumber = (num) => {
     maximumFractionDigits: 2
   }).format(num || 0);
 };
-
 const formatDate = (date) => {
   if (!date) return 'N/A';
   return new Date(date).toLocaleDateString('en-US', {
@@ -326,11 +546,9 @@ const formatDate = (date) => {
     day: 'numeric'
   });
 };
-
 const formatDateForInput = (date) => {
   return date.toISOString().split('T')[0];
 };
-
 const formatStatus = (status) => {
   const statusMap = {
     draft: 'Draft',
@@ -339,7 +557,6 @@ const formatStatus = (status) => {
   };
   return statusMap[status] || status;
 };
-
 const convertToWords = (amount) => {
   if (amount === 0) return 'Zero Kwacha Only';
   const wholeAmount = Math.floor(amount);
@@ -350,7 +567,23 @@ const convertToWords = (amount) => {
   }
   return words + ' Only';
 };
-
+// Utility function to check backend endpoints (for debugging)
+const checkEndpoints = async () => {
+  const endpoints = [
+    '/api/admin/payslips/1/download',
+    '/api/payslips/1/download',
+    '/api/payslips/1/pdf',
+    '/api/admin/payslips/1/generate-pdf'
+  ];
+  for (const endpoint of endpoints) {
+    try {
+      const response = await axios.head(endpoint);
+      console.log(`Endpoint ${endpoint}: ${response.status}`);
+    } catch (err) {
+      console.log(`Endpoint ${endpoint}: ${err.response?.status || 'Failed'}`);
+    }
+  }
+};
 // Exposing functions needed in the template
 defineExpose({
   fetchPayslips,
@@ -361,25 +594,19 @@ defineExpose({
   sendPayslip,
   removeEmployee,
   closeModals,
-  calculateNetPay,
-  calculateTotalEarnings,
-  calculateTotalDeductions,
   formatNumber,
   formatDate,
   formatStatus,
   convertToWords,
-  calculatePayslipEarnings: calculateTotalEarnings,
-  calculatePayslipDeductions: calculateTotalDeductions,
   getEmployeeName
 });
 </script>
-
 <template>
   <div class="payslip-generation">
     <header class="app-header">
       <div class="header-content">
-        <h1 class="header-title">Eagle pay Zambia</h1>
-        <p class="header-subtitle">Generate and manage employee payslips for castle holdings</p>
+        <h1 class="header-title">Castle Holding Zambia</h1>
+        <p class="header-subtitle">Generate and manage employee payslips for Castle Holdings</p>
       </div>
       <div class="header-actions">
         <button @click="showBulkGenerate = true" class="btn-secondary-icon">
@@ -396,7 +623,6 @@ defineExpose({
         </button>
       </div>
     </header>
-
     <div class="filter-controls-card">
       <div class="filter-group-container">
         <div class="filter-group">
@@ -436,16 +662,13 @@ defineExpose({
         </div>
       </div>
     </div>
-
     <div v-if="loading" class="state-indicator loading-state">
       <div class="spinner"></div>
       <p>Fetching the latest payslip records...</p>
     </div>
-
     <div v-else-if="error" class="state-indicator error-state">
       {{ error }}
     </div>
-
     <div v-else class="payslips-dashboard-grid">
       <div class="payslip-grid-container" v-if="payslips.length > 0">
         <div v-for="payslip in payslips" :key="payslip.id" class="payslip-item-card">
@@ -495,7 +718,6 @@ defineExpose({
         <button @click="showGenerateModal = true" class="btn-primary-icon">Generate First Payslip</button>
       </div>
     </div>
-
     <!-- Generate Single Payslip Modal -->
     <div v-if="showGenerateModal" class="modal-overlay" @click.self="closeModals">
       <div class="modal-card">
@@ -513,6 +735,7 @@ defineExpose({
               </option>
             </select>
           </div>
+        
           <div class="form-row-grid">
             <div class="form-group required">
               <label class="form-label">Pay Period Start</label>
@@ -530,71 +753,71 @@ defineExpose({
           <div class="form-section-group">
             <h3 class="section-title">Earnings</h3>
             <div class="form-row-grid grid-col-2">
-              <div class="form-group">
+              <div class="form-group required">
                 <label class="form-label">Basic Salary (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.basic_salary" @input="calculateNetPay" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">House Allowance (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.house_allowance" @input="calculateNetPay" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Transport Allowance (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.transport_allowance" @input="calculateNetPay" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Other Allowances (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.other_allowances" @input="calculateNetPay" class="text-input">
+                <input type="number" step="0.01" v-model.number="generateForm.basic_salary" required class="text-input">
               </div>
               <div class="form-group">
                 <label class="form-label">Overtime Hours</label>
-                <input type="number" step="0.1" v-model.number="generateForm.overtime_hours" @input="calculateNetPay" class="text-input">
+                <input type="number" step="0.1" v-model.number="generateForm.overtime_hours" class="text-input">
               </div>
               <div class="form-group">
                 <label class="form-label">Overtime Rate (K/hour)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.overtime_rate" @input="calculateNetPay" class="text-input">
+                <input type="number" step="0.01" v-model.number="generateForm.overtime_rate" class="text-input">
+              </div>
+            </div>
+          
+            <!-- Preview of calculated allowances -->
+            <div class="allowance-preview" v-if="generateForm.basic_salary > 0">
+              <h4 class="preview-title">Allowances (Automatically Calculated)</h4>
+              <div class="preview-grid">
+                <div class="preview-item">
+                  <span class="preview-label">Housing Allowance (25%):</span>
+                  <span class="preview-value">K{{ formatNumber(generateForm.basic_salary * 0.25) }}</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-label">Transport Allowance:</span>
+                  <span class="preview-value">K300.00</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-label">Lunch Allowance:</span>
+                  <span class="preview-value">K240.00</span>
+                </div>
               </div>
             </div>
           </div>
           <div class="form-section-group">
-            <h3 class="section-title">Deductions</h3>
-            <div class="form-row-grid grid-col-2">
-              <div class="form-group">
-                <label class="form-label">NAPSA Contribution (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.napsa" @input="calculateNetPay" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">PAYE Tax (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.paye" @input="calculateNetPay" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">NHIMA Contribution (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.nhima" @input="calculateNetPay" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Other Deductions (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.other_deductions" @input="calculateNetPay" class="text-input">
-              </div>
+            <h3 class="section-title">Deductions Preview</h3>
+            <div class="deductions-preview">
+              <p class="preview-note">
+                <strong>Note:</strong> Deductions are automatically calculated by the system based on Zambian tax regulations:
+              </p>
+              <ul class="preview-list">
+                <li>PAYE Tax: Calculated from basic salary using progressive tax bands</li>
+                <li>NAPSA: 10% of gross salary (capped)</li>
+                <li>NHIMA: 1% of gross salary</li>
+              </ul>
             </div>
           </div>
           <div class="summary-preview-card">
-            <h4 class="summary-title">Calculation Summary</h4>
+            <h4 class="summary-title">Estimated Calculation Summary</h4>
             <div class="summary-row">
               <span class="summary-label">Total Earnings:</span>
-              <span class="summary-amount positive">K{{ formatNumber(calculateTotalEarnings(generateForm)) }}</span>
+              <span class="summary-amount positive">K{{ formatNumber(calculatePreviewEarnings(generateForm.basic_salary, generateForm.overtime_hours, generateForm.overtime_rate).total_earnings) }}</span>
             </div>
             <div class="summary-row">
-              <span class="summary-label">Total Deductions:</span>
-              <span class="summary-amount negative">K{{ formatNumber(calculateTotalDeductions(generateForm)) }}</span>
+              <span class="summary-label">Deductions:</span>
+              <span class="summary-amount negative">Calculated by system</span>
             </div>
             <div class="summary-row total-row">
               <span class="summary-label">Net Pay:</span>
-              <span class="summary-amount net-pay-final">K{{ formatNumber(calculateNetPay()) }}</span>
+              <span class="summary-amount net-pay-final">Calculated by system</span>
             </div>
           </div>
           <div v-if="formError" class="form-alert-error">
             {{ formError }}
           </div>
+        
           <div class="modal-footer">
             <button type="button" @click="closeModals" class="btn-secondary">
               Cancel
@@ -606,7 +829,6 @@ defineExpose({
         </form>
       </div>
     </div>
-
     <!-- Bulk Generate Modal -->
     <div v-if="showBulkGenerate" class="modal-overlay" @click.self="closeModals">
       <div class="modal-card">
@@ -640,26 +862,26 @@ defineExpose({
               <option value="Administration">Administration</option>
             </select>
           </div>
-         
+        
           <div class="form-section-group employee-selection-area">
-              <h4 class="selection-title">Selected Employees ({{ selectedBulkEmployees.length }})</h4>
-              <div class="employee-tag-list">
-                  <span v-for="employee in selectedBulkEmployees" :key="employee.id" class="employee-tag-pill">
-                      {{ getEmployeeName(employee) }}
-                      <button type="button" @click="removeEmployee(employee.id)" class="remove-tag-btn" aria-label="Remove employee">✕</button>
-                  </span>
-                  <p v-if="selectedBulkEmployees.length === 0" class="selection-hint">Select employees below to include them.</p>
-              </div>
-              <h4 class="selection-title">Available Employees</h4>
-              <div class="employees-checkbox-list">
-                  <label v-for="employee in availableEmployees" :key="employee.id" class="checkbox-label-card">
-                      <input type="checkbox" :value="employee.id" v-model="bulkForm.employee_ids" class="checkbox-input">
-                      <div class="employee-details">
-                          <span class="employee-name-label">{{ getEmployeeName(employee) }}</span>
-                          <span class="employee-dept-label">({{ employee.department }})</span>
-                      </div>
-                  </label>
-              </div>
+            <h4 class="selection-title">Selected Employees ({{ selectedBulkEmployees.length }})</h4>
+            <div class="employee-tag-list">
+              <span v-for="employee in selectedBulkEmployees" :key="employee.id" class="employee-tag-pill">
+                {{ getEmployeeName(employee) }} - K{{ formatNumber(employee.base_salary || 0) }}
+                <button type="button" @click="removeEmployee(employee.id)" class="remove-tag-btn" aria-label="Remove employee">✕</button>
+              </span>
+              <p v-if="selectedBulkEmployees.length === 0" class="selection-hint">Select employees below to include them.</p>
+            </div>
+            <h4 class="selection-title">Available Employees</h4>
+            <div class="employees-checkbox-list">
+              <label v-for="employee in availableEmployees" :key="employee.id" class="checkbox-label-card">
+                <input type="checkbox" :value="employee.id" v-model="bulkForm.employee_ids" class="checkbox-input">
+                <div class="employee-details">
+                  <span class="employee-name-label">{{ getEmployeeName(employee) }}</span>
+                  <span class="employee-dept-label">({{ employee.department }}) - K{{ formatNumber(employee.base_salary || 0) }}</span>
+                </div>
+              </label>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" @click="closeModals" class="btn-secondary">
@@ -672,7 +894,6 @@ defineExpose({
         </form>
       </div>
     </div>
-
     <!-- Payslip Detail View Modal -->
     <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
       <div class="modal-card large-modal">
@@ -680,20 +901,20 @@ defineExpose({
           <h2 class="modal-title">Payslip for {{ selectedPayslip.employee_name }}</h2>
           <button @click="selectedPayslip = null" class="close-btn" aria-label="Close payslip view">✕</button>
         </div>
-        
+      
         <div class="payslip-detail-view">
           <header class="payslip-detail__header">
             <div class="company-info">
               <h2>Castle Holdings Ltd</h2>
               <p>54 Seble Road, Lusaka, Zambia</p>
-              <p>Phone: +260 211 123456 | Email: payroll@archangel.co.zm</p>
+              <p>Phone: +260 211 123456 | Email: payroll@castleholdings.co.zm</p>
             </div>
             <div class="payslip-title">
               <h1>PAYSLIP</h1>
               <p>Period: {{ formatDate(selectedPayslip.pay_period_start) }} to {{ formatDate(selectedPayslip.pay_period_end) }}</p>
             </div>
           </header>
-
+        
           <div class="payslip-detail__employee-info">
             <h3 class="info-section__title">Employee Details</h3>
             <div class="info-grid">
@@ -715,7 +936,7 @@ defineExpose({
               </div>
             </div>
           </div>
-
+        
           <div class="payslip-detail__earnings-deductions">
             <section class="earnings-section">
               <h3 class="section-title">Earnings</h3>
@@ -725,7 +946,7 @@ defineExpose({
                   <span>K{{ formatNumber(selectedPayslip.basic_salary || 0) }}</span>
                 </div>
                 <div class="amount-item">
-                  <label>House Allowance:</label>
+                  <label>House Allowance (25%):</label>
                   <span>K{{ formatNumber(selectedPayslip.house_allowance || 0) }}</span>
                 </div>
                 <div class="amount-item">
@@ -733,48 +954,44 @@ defineExpose({
                   <span>K{{ formatNumber(selectedPayslip.transport_allowance || 0) }}</span>
                 </div>
                 <div class="amount-item">
-                  <label>Other Allowances:</label>
+                  <label>Lunch Allowance:</label>
                   <span>K{{ formatNumber(selectedPayslip.other_allowances || 0) }}</span>
                 </div>
                 <div class="amount-item">
                   <label>Overtime Pay ({{ selectedPayslip.overtime_hours || 0 }} hrs):</label>
-                  <span>K{{ formatNumber((selectedPayslip.overtime_hours || 0) * (selectedPayslip.overtime_rate || 0)) }}</span>
+                  <span>K{{ formatNumber(selectedPayslip.overtime_pay || 0) }}</span>
                 </div>
                 <div class="amount-item total">
                   <label>Gross Earnings:</label>
-                  <span>K{{ formatNumber(calculatePayslipEarnings(selectedPayslip)) }}</span>
+                  <span>K{{ formatNumber(selectedPayslip.gross_salary || 0) }}</span>
                 </div>
               </div>
             </section>
-
+          
             <section class="deductions-section">
               <h3 class="section-title">Deductions</h3>
               <div class="amount-list">
                 <div class="amount-item">
-                  <label>NAPSA (5%):</label>
-                  <span>K{{ formatNumber(selectedPayslip.napsa || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>PAYE Tax:</label>
+                  <label>PAYE Tax (from basic):</label>
                   <span>K{{ formatNumber(selectedPayslip.paye || 0) }}</span>
                 </div>
                 <div class="amount-item">
-                  <label>NHIMA (1%):</label>
-                  <span>K{{ formatNumber(selectedPayslip.nhima || 0) }}</span>
+                  <label>NAPSA (10% of gross):</label>
+                  <span>K{{ formatNumber(selectedPayslip.napsa || 0) }}</span>
                 </div>
                 <div class="amount-item">
-                  <label>Other Deductions:</label>
-                  <span>K{{ formatNumber(selectedPayslip.other_deductions || 0) }}</span>
+                  <label>NHIMA (1% of gross):</label>
+                  <span>K{{ formatNumber(selectedPayslip.nhima || 0) }}</span>
                 </div>
                 <div class="amount-item filler-item"></div>
                 <div class="amount-item total">
                   <label>Total Deductions:</label>
-                  <span>K{{ formatNumber(calculatePayslipDeductions(selectedPayslip)) }}</span>
+                  <span>K{{ formatNumber(selectedPayslip.total_deductions || 0) }}</span>
                 </div>
               </div>
             </section>
           </div>
-
+        
           <div class="payslip-detail__net-pay-summary">
             <div class="net-pay-visual-card">
               <h2>NET PAYABLE</h2>
@@ -782,7 +999,7 @@ defineExpose({
               <p class="net-pay-words">({{ convertToWords(selectedPayslip.net_pay) }})</p>
             </div>
           </div>
-
+        
           <footer class="payslip-detail__footer">
             <div class="signature-block">
               <div class="signature-line"></div>
@@ -793,7 +1010,7 @@ defineExpose({
             </div>
           </footer>
         </div>
-
+      
         <div class="modal-footer print-actions">
           <button @click="downloadPayslip(selectedPayslip)" class="btn-secondary-icon">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 11.586V3a1 1 0 112 0v8.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
@@ -808,7 +1025,6 @@ defineExpose({
     </div>
   </div>
 </template>
-
 <style scoped>
 .payslip-generation {
   max-width: 1200px;
@@ -1092,6 +1308,55 @@ defineExpose({
   color: #2d3748;
   border-bottom: 1px solid #e2e8f0;
   padding-bottom: 0.5rem;
+}
+.allowance-preview {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f0f9ff;
+  border-radius: 6px;
+  border-left: 4px solid #0ea5e9;
+}
+.preview-title {
+  margin: 0 0 0.75rem 0;
+  color: #0369a1;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.preview-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+.preview-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+.preview-label {
+  color: #4a5568;
+}
+.preview-value {
+  font-weight: 600;
+  color: #059669;
+}
+.deductions-preview {
+  padding: 1rem;
+  background: #fff7ed;
+  border-radius: 6px;
+  border-left: 4px solid #ea580c;
+}
+.preview-note {
+  margin: 0 0 0.75rem 0;
+  color: #9a3412;
+  font-size: 0.875rem;
+}
+.preview-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #7c2d12;
+  font-size: 0.875rem;
+}
+.preview-list li {
+  margin-bottom: 0.25rem;
 }
 .summary-preview-card {
   background: #f0f9ff;

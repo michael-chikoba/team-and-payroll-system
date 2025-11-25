@@ -7,125 +7,225 @@
       </div>
       <div class="header-right">
         <div class="clock-buttons">
-          <button 
-            @click="clockIn" 
-            :disabled="todayStatus === 'present' || todayStatus === 'completed' || clockingIn" 
+          <button
+            @click="clockIn"
+            :disabled="todayStatus === 'present' || todayStatus === 'completed' || clockingIn"
             class="clock-btn in"
           >
             {{ clockingIn ? 'Clocking In...' : 'Clock In' }}
           </button>
           
-          <button 
-            @click="clockOut" 
-            :disabled="todayStatus !== 'present' || clockingOut" 
+          <button
+            @click="clockOut"
+            :disabled="todayStatus !== 'present' || clockingOut"
             class="clock-btn out"
           >
             {{ clockingOut ? 'Clocking Out...' : 'Clock Out' }}
           </button>
           
-          <!-- Reset Button - Only shows when there's an issue -->
-          <button 
+          <button
             v-if="showResetButton"
-            @click="forceResetStatus" 
-            :disabled="resetting" 
+            @click="forceResetStatus"
+            :disabled="resetting"
             class="clock-btn reset"
             title="Reset stuck attendance status"
           >
-            {{ resetting ? 'Resetting...' : '🔄 Reset Status' }}
+            {{ resetting ? 'Resetting...' : 'Reset' }}
           </button>
         </div>
         
-        <span class="today-status" :class="todayStatus ? todayStatus.toLowerCase() : 'absent'">
-          Today: {{ formatTodayStatus(todayStatus) }}
-        </span>
+        <div class="status-badge" :class="todayStatus ? todayStatus.toLowerCase() : 'absent'">
+          <span class="status-dot"></span>
+          {{ formatTodayStatus(todayStatus) }}
+        </div>
       </div>
     </header>
-    
-    <div class="filters">
-      <div class="filter-group">
-        <label>Date Range:</label>
-        <input v-model="dateFrom" type="date" @change="fetchAttendance" :max="today" />
-        <input v-model="dateTo" type="date" @change="fetchAttendance" :max="today" />
+   
+    <div class="filters-section">
+      <div class="filters-container">
+        <div class="filter-group">
+          <label>From Date</label>
+          <input v-model="dateFrom" type="date" @change="handleFilterChange" :max="today" />
+        </div>
+        <div class="filter-group">
+          <label>To Date</label>
+          <input v-model="dateTo" type="date" @change="handleFilterChange" :max="today" />
+        </div>
+        <div class="filter-group">
+          <label>Status</label>
+          <select v-model="statusFilter" @change="handleFilterChange">
+            <option value="">All Statuses</option>
+            <option value="present">Present</option>
+            <option value="absent">Absent</option>
+            <option value="late">Late</option>
+            <option value="early_leave">Early Leave</option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button @click="resetFilters" class="btn-secondary">
+            Reset
+          </button>
+          <button @click="exportAttendance" class="btn-export">
+            Export
+          </button>
+        </div>
       </div>
-      <div class="filter-group">
-        <label>Status:</label>
-        <select v-model="statusFilter" @change="fetchAttendance">
-          <option value="">All</option>
-          <option value="present">Present</option>
-          <option value="absent">Absent</option>
-          <option value="late">Late</option>
-          <option value="early_leave">Early Leave</option>
-        </select>
-      </div>
-      <button @click="exportAttendance" class="export-btn">📥 Export CSV</button>
     </div>
-
     <div class="content">
       <!-- Summary Cards -->
       <div class="summary-cards" v-if="!loading">
         <div class="card">
-          <div class="card-icon">🕐</div>
-          <h3>Total Hours This Month</h3>
-          <p class="value">{{ stats.totalHours?.toFixed(1) || 0 }} hrs</p>
+          <div class="card-header">
+            <div class="card-icon blue"></div>
+            <span class="card-label">Total Hours</span>
+          </div>
+          <p class="card-value">{{ stats.totalHours?.toFixed(1) || 0 }}</p>
+          <p class="card-unit">hours this month</p>
         </div>
         <div class="card">
-          <div class="card-icon">📊</div>
-          <h3>Attendance Rate</h3>
-          <p class="value">{{ stats.attendanceRate?.toFixed(1) || 0 }}%</p>
+          <div class="card-header">
+            <div class="card-icon green"></div>
+            <span class="card-label">Attendance Rate</span>
+          </div>
+          <p class="card-value">{{ stats.attendanceRate?.toFixed(1) || 0 }}%</p>
+          <p class="card-unit">of workdays</p>
         </div>
         <div class="card">
-          <div class="card-icon">⚠️</div>
-          <h3>Late Days</h3>
-          <p class="value">{{ stats.lateDays || 0 }}</p>
+          <div class="card-header">
+            <div class="card-icon orange"></div>
+            <span class="card-label">Late Days</span>
+          </div>
+          <p class="card-value">{{ stats.lateDays || 0 }}</p>
+          <p class="card-unit">this month</p>
         </div>
         <div class="card">
-          <div class="card-icon">📅</div>
-          <h3>Workdays This Month</h3>
-          <p class="value">{{ stats.workdays || 0 }}</p>
+          <div class="card-header">
+            <div class="card-icon purple"></div>
+            <span class="card-label">Workdays</span>
+          </div>
+          <p class="card-value">{{ stats.workdays || 0 }}</p>
+          <p class="card-unit">this month</p>
         </div>
       </div>
-
       <!-- Attendance Table -->
-      <div v-if="filteredAttendance.length === 0 && !loading" class="empty-state">
-        <p>No attendance records found for the selected date range.</p>
-        <button @click="resetFilters" class="btn-primary">Reset Filters</button>
+      <div class="table-container">
+        <div class="table-header">
+          <h2>Attendance Records</h2>
+          <div class="table-info">
+            <span class="record-count">{{ filteredAttendance.length }} records</span>
+            <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+          </div>
+        </div>
+        <div v-if="filteredAttendance.length === 0 && !loading" class="empty-state">
+          <div class="empty-icon"></div>
+          <h3>No Records Found</h3>
+          <p>No attendance records match your current filters.</p>
+          <button @click="resetFilters" class="btn-primary">Reset Filters</button>
+        </div>
+        <div v-else-if="!loading" class="table-wrapper">
+          <table class="attendance-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Check In</th>
+                <th>Check Out</th>
+                <th>Hours Worked</th>
+                <th>Status</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in paginatedRecords" :key="record.id" class="table-row">
+                <td>
+                  <div class="date-cell">
+                    <span class="date-main">{{ formatDate(record.date) }}</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="time-cell">
+                    {{ formatTimeDisplay(record.checkIn || record.clock_in) }}
+                  </div>
+                </td>
+                <td>
+                  <div class="time-cell">
+                    {{ formatTimeDisplay(record.checkOut || record.clock_out) }}
+                  </div>
+                </td>
+                <td>
+                  <div class="hours-cell">
+                    {{ formatHours(record.hoursWorked || record.total_hours) }}
+                  </div>
+                </td>
+                <td>
+                  <span :class="['status-badge-table', getStatusClass(record.status)]">
+                    {{ formatStatus(record.status) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="notes-cell">{{ record.notes || '-' }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <!-- Pagination Controls -->
+          <div class="pagination">
+            <button
+              @click="goToPage(1)"
+              :disabled="currentPage === 1"
+              class="pagination-btn prev-first"
+            >
+              First
+            </button>
+            <button
+              @click="goToPage(currentPage - 1)"
+              :disabled="currentPage === 1"
+              class="pagination-btn prev"
+            >
+              Previous
+            </button>
+            
+            <div class="pagination-numbers">
+              <button
+                v-for="page in visiblePages"
+                :key="page"
+                @click="goToPage(page)"
+                :class="['pagination-number', { active: page === currentPage }]"
+              >
+                {{ page }}
+              </button>
+            </div>
+            <button
+              @click="goToPage(currentPage + 1)"
+              :disabled="currentPage === totalPages"
+              class="pagination-btn next"
+            >
+              Next
+            </button>
+            <button
+              @click="goToPage(totalPages)"
+              :disabled="currentPage === totalPages"
+              class="pagination-btn next-last"
+            >
+              Last
+            </button>
+            <select v-model="itemsPerPage" @change="handlePerPageChange" class="per-page-select">
+              <option :value="10">10 per page</option>
+              <option :value="25">25 per page</option>
+              <option :value="50">50 per page</option>
+              <option :value="100">100 per page</option>
+            </select>
+          </div>
+        </div>
       </div>
-      <table v-else-if="!loading" class="attendance-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Check In</th>
-            <th>Check Out</th>
-            <th>Hours Worked</th>
-            <th>Status</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="record in filteredAttendance" :key="record.id">
-            <td>{{ formatDate(record.date) }}</td>
-            <td>{{ formatTimeDisplay(record.checkIn || record.clock_in) }}</td>
-            <td>{{ formatTimeDisplay(record.checkOut || record.clock_out) }}</td>
-            <td>{{ formatHours(record.hoursWorked || record.total_hours) }}</td>
-            <td>
-              <span :class="['status', getStatusClass(record.status)]">
-                {{ formatStatus(record.status) }}
-              </span>
-            </td>
-            <td>{{ record.notes || '-' }}</td>
-          </tr>
-        </tbody>
-      </table>
-
       <!-- Loading State -->
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
         <p>Loading attendance records...</p>
       </div>
-
       <!-- Error State -->
       <div v-if="error" class="error-message">
-        {{ error }}
+        <div class="error-icon"></div>
+        <p>{{ error }}</p>
         <button @click="retryFetch" class="btn-primary">Retry</button>
       </div>
     </div>
@@ -163,7 +263,9 @@ export default {
       resetting: false,
       showResetButton: false,
       error: null,
-      retryCount: 0
+      retryCount: 0,
+      currentPage: 1,
+      itemsPerPage: 25
     }
   },
   computed: {
@@ -179,6 +281,29 @@ export default {
         filtered = filtered.filter(record => record.status === this.statusFilter)
       }
       return filtered.sort((a, b) => new Date(b.date) - new Date(a.date))
+    },
+    totalPages() {
+      return Math.ceil(this.filteredAttendance.length / this.itemsPerPage)
+    },
+    paginatedRecords() {
+      const start = (this.currentPage - 1) * this.itemsPerPage
+      const end = start + this.itemsPerPage
+      return this.filteredAttendance.slice(start, end)
+    },
+    visiblePages() {
+      const pages = []
+      const maxVisible = 5
+      let startPage = Math.max(1, this.currentPage - Math.floor(maxVisible / 2))
+      let endPage = Math.min(this.totalPages, startPage + maxVisible - 1)
+      
+      if (endPage - startPage < maxVisible - 1) {
+        startPage = Math.max(1, endPage - maxVisible + 1)
+      }
+      
+      for (let i = startPage; i <= endPage; i++) {
+        pages.push(i)
+      }
+      return pages
     }
   },
   mounted() {
@@ -186,6 +311,18 @@ export default {
     this.fetchTodayStatus()
   },
   methods: {
+    goToPage(page) {
+      if (page >= 1 && page <= this.totalPages) {
+        this.currentPage = page
+      }
+    },
+    handlePerPageChange() {
+      this.currentPage = 1
+    },
+    handleFilterChange() {
+      this.currentPage = 1
+      this.fetchAttendance()
+    },
     async fetchAttendance(retry = false) {
       this.loading = true
       this.error = null
@@ -200,10 +337,8 @@ export default {
           axios.get('/api/employee/attendance/stats')
         ])
         
-        // Handle different response structures
         this.attendance = attendanceRes.data.data || attendanceRes.data || []
         
-        // Handle stats response
         const statsData = statsRes.data.stats || statsRes.data || {}
         this.stats = {
           totalHours: statsData.totalHours || statsData.total_hours || 0,
@@ -217,13 +352,12 @@ export default {
         this.loading = false
       }
     },
-    
+   
     async fetchTodayStatus() {
       try {
         const response = await axios.get('/api/employee/attendance/today-status')
         this.todayStatus = response.data.status || 'absent'
         
-        // If status is present but attendance has clock_out, show reset button
         if (this.todayStatus === 'present' && response.data.attendance?.clockOut) {
           this.showResetButton = true
         }
@@ -232,7 +366,7 @@ export default {
         this.todayStatus = 'absent'
       }
     },
-    
+   
     async clockIn() {
       this.clockingIn = true
       try {
@@ -249,7 +383,6 @@ export default {
       } catch (err) {
         console.error('Clock-in error:', err)
         
-        // Show reset button if already clocked in error
         if (err.response?.status === 422 && err.response?.data?.message?.includes('Already clocked in')) {
           this.showResetButton = true
         }
@@ -263,7 +396,6 @@ export default {
         this.clockingIn = false
       }
     },
-
     async clockOut() {
       this.clockingOut = true
       try {
@@ -288,12 +420,10 @@ export default {
         this.clockingOut = false
       }
     },
-
     async forceResetStatus() {
       if (!confirm('This will auto-close any open attendance records. Continue?')) {
         return
       }
-
       this.resetting = true
       try {
         const response = await axios.post('/api/employee/attendance/force-reset')
@@ -316,7 +446,7 @@ export default {
         this.resetting = false
       }
     },
-    
+   
     async exportAttendance() {
       try {
         const params = {
@@ -324,9 +454,9 @@ export default {
           ...(this.dateTo && { to: this.dateTo }),
           ...(this.statusFilter && { status: this.statusFilter })
         }
-        const response = await axios.get('/api/employee/attendance/export', { 
-          params, 
-          responseType: 'blob' 
+        const response = await axios.get('/api/employee/attendance/export', {
+          params,
+          responseType: 'blob'
         })
         const url = window.URL.createObjectURL(new Blob([response.data]))
         const link = document.createElement('a')
@@ -345,14 +475,15 @@ export default {
         this.handleApiError(err)
       }
     },
-    
+   
     resetFilters() {
       this.dateFrom = ''
       this.dateTo = ''
       this.statusFilter = ''
+      this.currentPage = 1
       this.fetchAttendance()
     },
-    
+   
     retryFetch() {
       this.retryCount++
       if (this.retryCount <= 3) {
@@ -361,7 +492,7 @@ export default {
         this.error = 'Max retries exceeded. Please refresh the page.'
       }
     },
-    
+   
     handleApiError(err) {
       let errorMsg = 'An unexpected error occurred.'
       if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
@@ -379,12 +510,12 @@ export default {
       }
       this.error = errorMsg
     },
-    
+   
     getStatusClass(status) {
       if (!status) return 'present'
       return status.toLowerCase()
     },
-    
+   
     formatTodayStatus(status) {
       if (!status) return 'Absent'
       const statuses = {
@@ -394,7 +525,7 @@ export default {
       }
       return statuses[status] || status
     },
-    
+   
     formatStatus(status) {
       if (!status) return 'Present'
       const statuses = {
@@ -405,22 +536,20 @@ export default {
       }
       return statuses[status] || status
     },
-    
+   
     formatHours(hours) {
       if (!hours && hours !== 0) return 'N/A'
       const h = Math.floor(hours)
       const m = Math.round((hours % 1) * 60)
       return `${h}h ${m}m`
     },
-    
+   
     formatTimeDisplay(time) {
       if (!time) return 'N/A'
       
       try {
-        // Remove any timezone or date information
         let timeStr = time
         
-        // Handle ISO datetime format (2025-10-17T08:47:44.000000Z)
         if (timeStr.includes('T')) {
           const dateTime = new Date(timeStr)
           const hours = dateTime.getHours()
@@ -430,7 +559,6 @@ export default {
           return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
         }
         
-        // Handle time with seconds (HH:MM:SS)
         if (timeStr.includes(':')) {
           const parts = timeStr.split(':')
           const hours = parseInt(parts[0])
@@ -446,7 +574,7 @@ export default {
         return time
       }
     },
-    
+   
     formatDate(date) {
       if (!date) return 'N/A'
       try {
@@ -465,194 +593,390 @@ export default {
 </script>
 
 <style scoped>
+* {
+  box-sizing: border-box;
+}
+
 .attendance-view {
   padding: 2rem;
-  max-width: 1400px;
+  max-width: 1600px;
   margin: 0 auto;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f8f9fc;
   min-height: 100vh;
 }
 
+/* Header Styles */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: white;
-  padding: 1.5rem 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
   margin-bottom: 2rem;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  animation: pulse 15s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 }
 
 .header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  z-index: 1;
 }
 
 .title {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 300;
-  color: #2c3e50;
+  margin: 0 0 0.5rem 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
 }
 
 .subtitle {
   margin: 0;
-  color: #7f8c8d;
-  font-size: 1rem;
+  font-size: 1.1rem;
+  opacity: 0.9;
+  font-weight: 300;
 }
 
 .header-right {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.5rem;
+  gap: 1rem;
+  z-index: 1;
 }
 
 .clock-buttons {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .clock-btn {
-  padding: 0.75rem 1.5rem;
+  padding: 0.875rem 1.75rem;
   border: none;
-  border-radius: 8px;
-  font-weight: 500;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 0.95rem;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
 }
 
 .clock-btn.in {
-  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
 }
 
 .clock-btn.out {
-  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   color: white;
 }
 
 .clock-btn.reset {
-  background: linear-gradient(135deg, #ffa500 0%, #ff8c00 100%);
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: white;
-  font-size: 0.9rem;
 }
 
 .clock-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.clock-btn:active:not(:disabled) {
+  transform: translateY(-1px);
 }
 
 .clock-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
 }
 
-.today-status {
-  font-weight: 500;
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 50px;
+  font-weight: 600;
   font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-.today-status.present { color: #28a745; }
-.today-status.completed { color: #007bff; }
-.today-status.absent { color: #dc3545; }
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
 
-.filters {
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+.status-badge.present .status-dot {
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+}
+
+.status-badge.completed .status-dot {
+  background: #3b82f6;
+  box-shadow: 0 0 10px #3b82f6;
+}
+
+.status-badge.absent .status-dot {
+  background: #ef4444;
+  box-shadow: 0 0 10px #ef4444;
+}
+
+/* Filters Section */
+.filters-section {
+  margin-bottom: 2rem;
+}
+
+.filters-container {
   display: flex;
   gap: 1rem;
   background: white;
-  padding: 1rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  margin-bottom: 2rem;
+  padding: 1.5rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-width: 150px;
+  min-width: 180px;
+  flex: 1;
 }
 
 .filter-group label {
   font-weight: 600;
-  color: #2c3e50;
-  font-size: 0.9rem;
+  color: #374151;
+  font-size: 0.875rem;
 }
 
 .filter-group input,
 .filter-group select {
-  padding: 0.5rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+  background: #f9fafb;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.btn-secondary,
+.btn-export {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
   font-size: 0.95rem;
 }
 
-.export-btn {
-  background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: transform 0.2s ease;
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
 }
 
-.export-btn:hover {
+.btn-secondary:hover {
+  background: #e5e7eb;
   transform: translateY(-2px);
 }
 
+.btn-export {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  color: white;
+  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+}
+
+.btn-export:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
+}
+
+/* Summary Cards */
 .summary-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
 
 .card {
   background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  text-align: center;
+  padding: 1.75rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid #f0f0f0;
 }
 
-.card-icon {
-  font-size: 2.5rem;
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
-.card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: #7f8c8d;
+.card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+.card-icon.blue {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+}
+
+.card-icon.green {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.card-icon.orange {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+.card-icon.purple {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  color: white;
+}
+
+.card-label {
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.05em;
 }
 
-.card .value {
-  margin: 0;
-  font-size: 2rem;
+.card-value {
+  margin: 0 0 0.25rem 0;
+  font-size: 2.5rem;
   font-weight: 700;
-  color: #2c3e50;
+  color: #1f2937;
+  line-height: 1;
 }
 
-.content {
+.card-unit {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+/* Table Container */
+.table-container {
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   overflow: hidden;
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafbfc;
+}
+
+.table-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.table-info {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: #6b7280;
 }
 
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
-  color: #7f8c8d;
+  color: #6b7280;
+}
+
+.empty-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-state h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  color: #1f2937;
+}
+
+.empty-state p {
+  margin: 0 0 2rem 0;
+  font-size: 1rem;
+}
+
+.table-wrapper {
+  position: relative;
 }
 
 .attendance-table {
@@ -663,51 +987,147 @@ export default {
 
 .attendance-table th,
 .attendance-table td {
-  padding: 1rem;
+  padding: 1.25rem 1rem;
   text-align: left;
-  border-bottom: 1px solid #ecf0f1;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .attendance-table th {
-  background: #f8f9fa;
+  background: #fafbfc;
   font-weight: 600;
-  color: #2c3e50;
+  color: #374151;
   text-transform: uppercase;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
 }
 
 .attendance-table tr:hover {
-  background: #f8f9fa;
+  background: #f9fafb;
 }
 
-.status {
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
+.date-cell {
   font-weight: 500;
+  color: #1f2937;
+}
+
+.time-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #4b5563;
+}
+
+.hours-cell {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.status-badge-table {
+  padding: 0.375rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
-.status.present {
-  background: #d4edda;
-  color: #155724;
+.status-badge-table.present {
+  background: #d1fae5;
+  color: #065f46;
 }
 
-.status.absent {
-  background: #f8d7da;
-  color: #721c24;
+.status-badge-table.absent {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
-.status.late {
-  background: #fff3cd;
-  color: #856404;
+.status-badge-table.late {
+  background: #fef3c7;
+  color: #92400e;
 }
 
-.status.early_leave {
-  background: #d1ecf1;
-  color: #0c5460;
+.status-badge-table.early_leave {
+  background: #cffafe;
+  color: #0e7490;
 }
 
+.notes-cell {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  background: #fafbfc;
+  border-top: 1px solid #f0f0f0;
+}
+
+.pagination-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  color: #374151;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+  transform: translateY(-1px);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-numbers {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.pagination-number {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  color: #374151;
+  min-width: 40px;
+  text-align: center;
+}
+
+.pagination-number:hover:not(.active) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.pagination-number.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+.per-page-select {
+  padding: 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+}
+
+/* Loading and Error States */
 .loading {
   display: flex;
   flex-direction: column;
@@ -715,6 +1135,7 @@ export default {
   justify-content: center;
   padding: 4rem 2rem;
   text-align: center;
+  color: #6b7280;
 }
 
 .spinner {
@@ -733,15 +1154,26 @@ export default {
 }
 
 .error-message {
-  background: #fee;
-  color: #c33;
-  padding: 1rem;
-  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 2rem;
+  border-radius: 12px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
+  margin: 2rem;
+}
+
+.error-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #fecaca;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-primary {
@@ -752,13 +1184,24 @@ export default {
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
+  transition: all 0.2s;
 }
 
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
+  .attendance-view {
+    padding: 1rem;
+  }
+
   .header {
     flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
+    gap: 1.5rem;
+    text-align: center;
   }
 
   .clock-buttons {
@@ -768,15 +1211,27 @@ export default {
 
   .clock-btn {
     width: 100%;
+    justify-content: center;
   }
 
-  .filters {
+  .filters-container {
     flex-direction: column;
     padding: 1rem;
   }
 
+  .filter-group {
+    min-width: auto;
+  }
+
   .summary-cards {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .table-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
   }
 
   .attendance-table {
@@ -785,7 +1240,29 @@ export default {
 
   .attendance-table th,
   .attendance-table td {
-    padding: 0.5rem;
+    padding: 0.75rem 0.5rem;
+  }
+
+  .pagination {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .pagination-numbers {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .summary-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .table-info {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: center;
   }
 }
 </style>

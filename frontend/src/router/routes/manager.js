@@ -34,8 +34,9 @@ export default [
         name: 'ProductivityMonitor',
         component: () => import('../../views/manager/ProductivityMonitor.vue')
       },
+
       {
-        path: 'Task',
+        path: 'tasks',
         name: 'AssignTask',
         component: () => import('../../views/manager/TaskForm.vue')
       }

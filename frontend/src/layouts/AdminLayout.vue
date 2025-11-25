@@ -14,10 +14,13 @@
         </div>
       </div>
     </header>
-
     <div class="layout-body">
       <!-- Sidebar -->
       <aside class="sidebar">
+        <!-- Attendance Toggle Button Section -->
+        <div class="attendance-toggle-section">
+          <ClockToggle />
+        </div>
         <nav class="sidebar-nav">
           <router-link to="/admin/dashboard" class="nav-item">
             <span class="nav-icon">📊</span>
@@ -70,7 +73,6 @@
           </router-link>
         </nav>
       </aside>
-
       <!-- Main Content -->
       <main class="main-content">
         <router-view />
@@ -78,12 +80,15 @@
     </div>
   </div>
 </template>
-
 <script>
 import { useAuthStore } from '@/stores/auth'
+import ClockToggle from '@/components/common/Toggle.vue'
 
 export default {
   name: 'AdminLayout',
+  components: {
+    ClockToggle
+  },
   setup() {
     const authStore = useAuthStore()
    
@@ -102,7 +107,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .admin-layout {
   min-height: 100vh;
@@ -110,7 +114,6 @@ export default {
   flex-direction: column;
   background: #f5f7fa;
 }
-
 /* Header */
 .header {
   position: fixed;
@@ -127,7 +130,6 @@ export default {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 100;
 }
-
 .logo {
   display: flex;
   align-items: center;
@@ -135,27 +137,22 @@ export default {
   font-size: 1.5rem;
   font-weight: 700;
 }
-
 .logo-icon {
   font-size: 2rem;
 }
-
 .header-right {
   display: flex;
   align-items: center;
   gap: 1.5rem;
 }
-
 .user-info {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
-
 .user-name {
   font-weight: 500;
 }
-
 .logout-btn {
   background: rgba(255, 255, 255, 0.2);
   color: white;
@@ -166,18 +163,15 @@ export default {
   font-weight: 500;
   transition: all 0.3s ease;
 }
-
 .logout-btn:hover {
   background: rgba(255, 255, 255, 0.3);
 }
-
 /* Layout Body */
 .layout-body {
   margin-top: 4rem;
   display: flex;
   flex: 1;
 }
-
 /* Sidebar */
 .sidebar {
   position: fixed;
@@ -189,15 +183,20 @@ export default {
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
   overflow-y: auto;
   z-index: 90;
+  display: flex;
+  flex-direction: column;
 }
-
+.attendance-toggle-section {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
 .sidebar-nav {
   padding: 1.5rem 0;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  flex: 1;
 }
-
 .nav-item {
   display: flex;
   align-items: center;
@@ -208,29 +207,24 @@ export default {
   transition: all 0.2s ease;
   border-left: 3px solid transparent;
 }
-
 .nav-item:hover {
   background: #f7fafc;
   color: #667eea;
 }
-
 .nav-item.router-link-active {
   background: #eef2ff;
   color: #667eea;
   border-left-color: #667eea;
   font-weight: 600;
 }
-
 .nav-icon {
   font-size: 1.25rem;
   width: 24px;
   text-align: center;
 }
-
 .nav-text {
   font-size: 0.95rem;
 }
-
 /* Main Content */
 .main-content {
   margin-left: 260px;
@@ -241,27 +235,27 @@ export default {
   background: #f5f7fa;
   min-height: calc(100vh - 4rem);
 }
-
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
     width: 80px;
     left: 0;
   }
-
+  .attendance-toggle-section {
+    padding: 1rem;
+    display: flex;
+    justify-content: center;
+  }
   .nav-text {
     display: none;
   }
-
   .nav-item {
     justify-content: center;
     padding: 1rem;
   }
-
   .main-content {
     margin-left: 80px;
   }
-
   .logo-text {
     display: none;
   }

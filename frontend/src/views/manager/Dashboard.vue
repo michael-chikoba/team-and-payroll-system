@@ -3,23 +3,19 @@
     <div class="page-header">
       <h1>Manager Dashboard</h1>
     </div>
-
     <!-- Authentication Check -->
     <div v-if="!authStore.isAuthenticated" class="error-message">
       Please log in to access the dashboard.
     </div>
-
     <!-- Permission Check -->
     <div v-else-if="!authStore.isManager" class="error-message">
       You don't have permission to access this page.
     </div>
-
     <!-- Loading State -->
     <div v-else-if="loading" class="loading">
       <div class="spinner"></div>
       <p>Loading dashboard...</p>
     </div>
-
     <!-- Error State -->
     <div v-else-if="error" class="error-message">
       <h3>Error Loading Dashboard</h3>
@@ -32,7 +28,6 @@
       </div>
       <button @click="retryFetch" class="btn-primary">Retry</button>
     </div>
-
     <!-- Dashboard Content -->
     <div v-else class="dashboard-content">
       <!-- Metrics Overview -->
@@ -61,12 +56,15 @@
           </div>
         </div>
       </div>
-
       <!-- Team Attendance Summary -->
       <div class="attendance-summary-section" v-if="attendanceSummary">
         <div class="attendance-header">
           <h2>Today's Attendance</h2>
           <span class="attendance-date">{{ formatDate(today) }}</span>
+          <button @click="refreshAttendance" class="btn-refresh" :disabled="loadingAttendance">
+            <span v-if="loadingAttendance">🔄</span>
+            <span v-else>🔄 Refresh</span>
+          </button>
         </div>
         <div class="attendance-stats">
           <div class="attendance-stat present">
@@ -87,7 +85,6 @@
           </div>
         </div>
       </div>
-
       <!-- Pending Leave Approvals -->
       <div class="activities-section">
         <h2>Pending Leave Approvals</h2>
@@ -116,7 +113,6 @@
           <p>✅ No pending leave approvals</p>
         </div>
       </div>
-
       <!-- Quick Links -->
       <div class="quick-links-section">
         <h2>Quick Actions</h2>
@@ -142,11 +138,9 @@
     </div>
   </div>
 </template>
-
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
-
 export default {
   name: 'ManagerDashboard',
   
@@ -166,15 +160,22 @@ export default {
       attendanceSummary: null,
       pendingLeaves: [],
       loading: false,
+      loadingAttendance: false,
       error: null,
       debugInfo: null,
       retryCount: 0,
-      today: new Date().toISOString().split('T')[0] // Today's date in YYYY-MM-DD format
+      today: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+      pollInterval: null,
+      pollIntervalMs: 30000 // Poll every 30 seconds
     }
   },
   
   mounted() {
     this.initializeComponent()
+  },
+
+  beforeUnmount() {
+    this.stopPolling()
   },
   
   methods: {
@@ -197,8 +198,25 @@ export default {
       }
       
       this.fetchDashboardData()
+      this.startPolling()
     },
-    
+
+    startPolling() {
+      if (this.pollInterval) return // Already polling
+      this.pollInterval = setInterval(() => {
+        this.refreshAttendance()
+      }, this.pollIntervalMs)
+      console.log(`Started polling attendance every ${this.pollIntervalMs / 1000} seconds`)
+    },
+
+    stopPolling() {
+      if (this.pollInterval) {
+        clearInterval(this.pollInterval)
+        this.pollInterval = null
+        console.log('Stopped polling attendance')
+      }
+    },
+   
     async fetchDashboardData(retry = false) {
       this.loading = true
       this.error = null
@@ -211,7 +229,7 @@ export default {
         console.log('Auth token present:', !!this.authStore.token)
         console.log('User ID:', this.authStore.user?.id)
         console.log('User role:', this.authStore.user?.role)
-        
+      
         // Fetch dashboard data and attendance data in parallel
         const [dashboardResponse, attendanceResponse] = await Promise.all([
           axios.get('/api/dashboard'),
@@ -219,58 +237,61 @@ export default {
             params: { date: this.today }
           })
         ])
-        
+      
         console.log('=== Dashboard Response ===')
         console.log('Status:', dashboardResponse.status)
         console.log('Role:', dashboardResponse.data.role)
-        
+      
         console.log('=== Attendance Response ===')
         console.log('Status:', attendanceResponse.status)
         console.log('Attendance data:', attendanceResponse.data)
-        
+      
         // Verify this is a manager response
         if (dashboardResponse.data.role !== 'manager') {
           throw new Error(`Expected manager role but got: ${dashboardResponse.data.role}`)
         }
-        
+      
         // Map the backend response to component data
         const stats = dashboardResponse.data.stats || {}
         const productivity = stats.team_productivity || {}
-        
+      
         // Process attendance data from the dedicated endpoint
-        const attendanceData = attendanceResponse.data.attendances || []
-        const teamSize = stats.team_size || 0
-        
+        let attendanceData = attendanceResponse.data.attendances || []
+        // Filter to only today's date to avoid historical data and duplicates
+        attendanceData = attendanceData.filter(a => a.date === this.today)
+        const attSummary = attendanceResponse.data.summary || {}
+        const teamSize = attSummary.total_employees || 0
+      
         console.log('📊 Processing attendance data:', {
           teamSize,
           attendanceDataCount: attendanceData.length,
           rawAttendanceData: attendanceData
         })
-        
+      
         // Calculate actual attendance metrics from attendance endpoint
         const attendanceMetrics = this.calculateAttendanceMetrics(attendanceData, teamSize)
-        
+      
         this.overview = {
           teamSize: teamSize,
           pendingLeaves: stats.pending_leave_approvals || 0,
           attendanceRate: attendanceMetrics.attendanceRate,
           totalHours: Math.round(productivity.total_hours || 0)
         }
-        
+      
         // Set attendance summary
         this.attendanceSummary = attendanceMetrics.summary
-        
+      
         // Set pending leaves
         this.pendingLeaves = dashboardResponse.data.pending_leaves || []
-        
+      
         console.log('=== Data Mapped Successfully ===')
         console.log('Overview:', this.overview)
         console.log('Attendance Summary:', this.attendanceSummary)
         console.log('Pending leaves count:', this.pendingLeaves.length)
-        
+      
         // Reset retry count on success
         this.retryCount = 0
-        
+      
       } catch (err) {
         console.error('=== Dashboard Fetch Error ===')
         console.error('Error type:', err.name)
@@ -279,7 +300,7 @@ export default {
         console.error('Response status:', err.response?.status)
         console.error('Response data:', err.response?.data)
         console.error('Full error:', err)
-        
+      
         // Store debug info
         this.debugInfo = {
           errorType: err.name,
@@ -293,13 +314,48 @@ export default {
           userRole: this.authStore.user?.role,
           baseURL: axios.defaults.baseURL
         }
-        
+      
         this.handleApiError(err)
       } finally {
         this.loading = false
       }
     },
-    
+
+    async refreshAttendance() {
+      if (this.loadingAttendance) return
+      this.loadingAttendance = true
+      try {
+        console.log('=== Refreshing Attendance Data ===')
+        const attendanceResponse = await axios.get('/api/manager/attendance', {
+          params: { date: this.today }
+        })
+      
+        let attendanceData = attendanceResponse.data.attendances || []
+        // Filter to only today's date to avoid historical data and duplicates
+        attendanceData = attendanceData.filter(a => a.date === this.today)
+        const attSummary = attendanceResponse.data.summary || {}
+        const teamSize = attSummary.total_employees || 0
+      
+        const attendanceMetrics = this.calculateAttendanceMetrics(attendanceData, teamSize)
+      
+        this.overview = {
+          ...this.overview,
+          teamSize: teamSize,
+          attendanceRate: attendanceMetrics.attendanceRate
+        }
+      
+        this.attendanceSummary = attendanceMetrics.summary
+      
+        console.log('=== Attendance Refreshed ===')
+        console.log('Updated Attendance Summary:', this.attendanceSummary)
+      } catch (err) {
+        console.error('Attendance refresh error:', err)
+        // Don't set global error for polling, just log
+      } finally {
+        this.loadingAttendance = false
+      }
+    },
+   
     calculateAttendanceMetrics(attendanceData, teamSize) {
       const summary = {
         present: 0,
@@ -307,25 +363,26 @@ export default {
         late: 0,
         onLeave: 0
       }
-      
+     
       if (!attendanceData || !Array.isArray(attendanceData)) {
+        if (teamSize > 0) {
+          summary.absent = teamSize;
+        }
         return {
           summary,
           attendanceRate: 0
         }
       }
-      
+     
+      let counted = 0;
       // Process each attendance record
       attendanceData.forEach(record => {
         const status = record.status?.toLowerCase() || 'absent'
-        
+     
         switch (status) {
           case 'present':
           case 'completed':
             summary.present++
-            break
-          case 'absent':
-            summary.absent++
             break
           case 'late':
             summary.late++
@@ -333,45 +390,54 @@ export default {
           case 'on_leave':
             summary.onLeave++
             break
+          case 'absent':
+            summary.absent++
+            break
           default:
             // Count unknown statuses as absent
             summary.absent++
         }
+        counted++;
       })
-      
+     
+      // Add unaccounted employees (no records) as absent
+      if (counted < teamSize) {
+        summary.absent += (teamSize - counted);
+      }
+     
       // Calculate attendance rate: (present + late) / teamSize
       const presentAndLateCount = summary.present + summary.late
-      const attendanceRate = teamSize > 0 
+      const attendanceRate = teamSize > 0
         ? Math.round((presentAndLateCount / teamSize) * 100)
         : 0
-      
+     
       console.log('📊 Calculated Attendance Metrics:', {
         summary,
         presentAndLateCount,
         teamSize,
         attendanceRate
       })
-      
+     
       return {
         summary,
         attendanceRate
       }
     },
-    
+   
     retryFetch() {
       this.retryCount++
       console.log('Retry attempt:', this.retryCount)
-      
+     
       if (this.retryCount <= 3) {
         this.fetchDashboardData(true)
       } else {
         this.error = 'Max retries exceeded. Please check your connection and try again later.'
       }
     },
-    
+   
     handleApiError(err) {
       let errorMsg = 'An unexpected error occurred.'
-      
+     
       if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
         errorMsg = 'Network error: Cannot connect to the server. Please check if the backend is running.'
       } else if (err.response?.status === 401) {
@@ -395,10 +461,10 @@ export default {
       } else {
         errorMsg = err.response?.data?.message || err.message || errorMsg
       }
-      
+     
       this.error = errorMsg
     },
-    
+   
     async approveLeave(leaveId) {
       try {
         await axios.post(`/api/manager/leaves/${leaveId}/approve`)
@@ -409,11 +475,11 @@ export default {
         alert('Failed to approve leave: ' + (err.response?.data?.message || err.message))
       }
     },
-    
+   
     async rejectLeave(leaveId) {
       const reason = prompt('Please provide a reason for rejection:')
       if (!reason) return
-      
+     
       try {
         await axios.post(`/api/manager/leaves/${leaveId}/reject`, { reason })
         alert('Leave rejected.')
@@ -423,14 +489,14 @@ export default {
         alert('Failed to reject leave: ' + (err.response?.data?.message || err.message))
       }
     },
-    
+   
     formatLeaveType(type) {
       if (!type) return 'N/A'
-      return type.split('_').map(word => 
+      return type.split('_').map(word =>
         word.charAt(0).toUpperCase() + word.slice(1)
       ).join(' ')
     },
-    
+   
     formatDate(date) {
       if (!date) return 'N/A'
       try {
@@ -448,24 +514,20 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 .manager-dashboard {
   padding: 2rem;
   max-width: 1400px;
   margin: 0 auto;
 }
-
 .page-header {
   margin-bottom: 2rem;
 }
-
 .page-header h1 {
   color: #2d3748;
   font-size: 2rem;
   margin: 0;
 }
-
 .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -476,16 +538,31 @@ export default {
   cursor: pointer;
   transition: transform 0.2s;
 }
-
 .btn-primary:hover {
   transform: translateY(-2px);
 }
-
+.btn-refresh {
+  background: #4a90e2;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+}
+.btn-refresh:hover:not(:disabled) {
+  background: #357abd;
+}
+.btn-refresh:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .loading {
   text-align: center;
   padding: 4rem;
 }
-
 .spinner {
   width: 50px;
   height: 50px;
@@ -495,12 +572,10 @@ export default {
   animation: spin 1s linear infinite;
   margin: 0 auto 1rem;
 }
-
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-
 .error-message {
   background: #fee;
   color: #c33;
@@ -508,16 +583,13 @@ export default {
   border-radius: 8px;
   text-align: center;
 }
-
 .error-message h3 {
   margin: 0 0 1rem 0;
 }
-
 .error-details {
   margin-top: 1rem;
   text-align: left;
 }
-
 .error-details summary {
   cursor: pointer;
   padding: 0.5rem;
@@ -525,7 +597,6 @@ export default {
   border-radius: 4px;
   color: #666;
 }
-
 .error-details pre {
   background: #fff;
   padding: 1rem;
@@ -535,13 +606,11 @@ export default {
   color: #333;
   margin-top: 0.5rem;
 }
-
 .dashboard-content {
   display: flex;
   flex-direction: column;
   gap: 2rem;
 }
-
 .metrics-section,
 .attendance-summary-section,
 .activities-section,
@@ -551,7 +620,6 @@ export default {
   box-shadow: 0 2px 10px rgba(0,0,0,0.08);
   padding: 1.5rem;
 }
-
 .metrics-section h2,
 .attendance-summary-section h2,
 .activities-section h2,
@@ -560,26 +628,24 @@ export default {
   color: #2d3748;
   font-size: 1.25rem;
 }
-
 .attendance-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
-
 .attendance-date {
   color: #718096;
   font-size: 0.9rem;
   font-weight: 500;
 }
-
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
 }
-
 .metric-card {
   text-align: center;
   padding: 1rem;
@@ -587,35 +653,29 @@ export default {
   border-radius: 8px;
   transition: transform 0.2s;
 }
-
 .metric-card:hover {
   transform: translateY(-2px);
 }
-
 .metric-icon {
   font-size: 2rem;
   margin-bottom: 0.5rem;
   display: block;
 }
-
 .metric-value {
   font-size: 1.75rem;
   font-weight: 700;
   color: #2d3748;
   display: block;
 }
-
 .metric-label {
   font-size: 0.875rem;
   color: #718096;
 }
-
 .attendance-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
 }
-
 .attendance-stat {
   text-align: center;
   padding: 1rem;
@@ -623,51 +683,42 @@ export default {
   border: 2px solid #e2e8f0;
   transition: transform 0.2s;
 }
-
 .attendance-stat:hover {
   transform: translateY(-2px);
 }
-
 .attendance-stat.present {
   border-color: #48bb78;
   background: #f0fff4;
 }
-
 .attendance-stat.absent {
   border-color: #f56565;
   background: #fff5f5;
 }
-
 .attendance-stat.late {
   border-color: #ed8936;
   background: #fffaf0;
 }
-
 .attendance-stat.leave {
   border-color: #4299e1;
   background: #ebf8ff;
 }
-
 .stat-value {
   display: block;
   font-size: 1.5rem;
   font-weight: 700;
   color: #2d3748;
 }
-
 .stat-label {
   display: block;
   font-size: 0.875rem;
   color: #718096;
   margin-top: 0.25rem;
 }
-
 .pending-leaves-list {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
-
 .leave-item {
   padding: 1rem;
   background: #f8f9fa;
@@ -675,62 +726,51 @@ export default {
   border-left: 4px solid #667eea;
   transition: transform 0.2s;
 }
-
 .leave-item:hover {
   transform: translateY(-2px);
 }
-
 .leave-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
 }
-
 .employee-info {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
 }
-
 .employee-name {
   font-weight: 600;
   color: #2d3748;
 }
-
 .leave-type {
   font-size: 0.85rem;
   color: #667eea;
 }
-
 .leave-dates {
   font-size: 0.9rem;
   color: #718096;
 }
-
 .leave-details {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
 }
-
 .leave-reason {
   margin: 0;
   color: #4a5568;
   font-size: 0.95rem;
 }
-
 .leave-days {
   font-weight: 600;
   color: #2d3748;
 }
-
 .leave-actions {
   display: flex;
   gap: 0.5rem;
 }
-
 .btn-approve,
 .btn-reject {
   padding: 0.5rem 1rem;
@@ -740,37 +780,30 @@ export default {
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .btn-approve {
   background: #48bb78;
   color: white;
 }
-
 .btn-approve:hover {
   background: #38a169;
 }
-
 .btn-reject {
   background: #f56565;
   color: white;
 }
-
 .btn-reject:hover {
   background: #e53e3e;
 }
-
 .empty-state {
   text-align: center;
   padding: 2rem;
   color: #718096;
 }
-
 .quick-links-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1rem;
 }
-
 .quick-link-card {
   display: flex;
   flex-direction: column;
@@ -783,47 +816,44 @@ export default {
   transition: all 0.2s;
   text-align: center;
 }
-
 .quick-link-card:hover {
   background: #e6f7ff;
   color: #1890ff;
   transform: translateY(-2px);
 }
-
 .quick-link-icon {
   font-size: 2rem;
   margin-bottom: 0.5rem;
 }
-
 @media (max-width: 768px) {
   .manager-dashboard {
     padding: 1rem;
   }
-  
+ 
   .metrics-grid {
     grid-template-columns: 1fr;
   }
-  
+ 
   .attendance-stats {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+ 
   .attendance-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
   }
-  
+ 
   .quick-links-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+ 
   .leave-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
   }
-  
+ 
   .leave-details {
     flex-direction: column;
     align-items: flex-start;

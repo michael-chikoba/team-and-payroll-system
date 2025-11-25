@@ -57,6 +57,13 @@ return [
         'level' => 'debug',
         'days' => 30,
     ],
+        'payslip' => [
+        'driver' => 'daily',
+        'path' => storage_path('logs/payslip.log'),
+        'level' => env('LOG_LEVEL', 'debug'),
+        'days' => 30,
+        'formatter' => \Monolog\Formatter\JsonFormatter::class,
+    ],
 
         'stack' => [
             'driver' => 'stack',
