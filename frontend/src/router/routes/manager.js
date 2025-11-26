@@ -34,7 +34,16 @@ export default [
         name: 'ProductivityMonitor',
         component: () => import('../../views/manager/ProductivityMonitor.vue')
       },
-
+      {
+        path: 'profile',
+        name: 'ManagerProfile',
+        component: () => import('../../views/common/Profile.vue')
+      },
+       {
+        path: 'payslips',
+        name: 'ManagerPayslips',
+        component: () => import('../../views/manager/Payslips.vue')
+      },
       {
         path: 'tasks',
         name: 'AssignTask',

@@ -108,7 +108,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('history/{date}', [AttendanceController::class, 'historyByDate']); // Specific date
         Route::get('{employee}/history', [AttendanceController::class, 'employeeHistory']); // Specific employee
     });
-   
+              // ✅ NEW: Payslip Routes for Managers (same as employees - managers can view their own payslips)
+        Route::prefix('payslips')->group(function () {
+            Route::get('/', [PayslipController::class, 'index']); // Manager's own payslips
+            Route::get('/{payslip}', [PayslipController::class, 'show']);
+            Route::get('/{payslip}/download', [PayslipController::class, 'download']);
+        });
         // Leave Management
         Route::prefix('leaves')->group(function () {
             Route::get('pending', [LeaveController::class, 'pendingLeaves']);

@@ -49,6 +49,11 @@ export default [
         name: 'AdminReports',
         component: () => import('../../views/admin/Reports.vue')
       },
+      {
+              path: 'profile',
+        name: 'AdminProfile',
+        component: () => import('../../views/common/Profile.vue')
+      },
       // 8. AUDIT LOGS
       {
         path: 'audit-logs', // Resolves to /admin/audit-logs
