@@ -48,6 +48,11 @@ class ProcessPayrollRequest extends FormRequest
                 'integer',
                 'exists:employees,id',
             ],
+                    'adjustments' => 'sometimes|array',
+        'adjustments.*.overtime_bonus' => 'sometimes|numeric|min:0',
+        'adjustments.*.other_bonuses' => 'sometimes|numeric|min:0',
+        'adjustments.*.loan_deductions' => 'sometimes|numeric|min:0',
+        'adjustments.*.advance_deductions' => 'sometimes|numeric|min:0',
         ];
     }
 

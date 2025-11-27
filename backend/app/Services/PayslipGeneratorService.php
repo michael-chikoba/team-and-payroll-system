@@ -1,6 +1,5 @@
 <?php
 namespace App\Services;
-
 use App\Jobs\GeneratePayslipPdf;
 use App\Models\Payslip;
 use App\Models\Payroll;
@@ -8,7 +7,6 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use ZipArchive;
-
 class PayslipGeneratorService
 {
     public function generatePdf(Payslip $payslip): string
@@ -146,7 +144,7 @@ class PayslipGeneratorService
             throw $e;
         }
     }
-   
+    
     /**
      * Prepare JSON field for template use
      * Handles JSON strings, arrays, or null values
@@ -219,8 +217,8 @@ class PayslipGeneratorService
         if ($zip->open($zipFilename, ZipArchive::CREATE | ZipArchive::OVERWRITE) === TRUE) {
             foreach ($payslips as $payslip) {
                 if (Storage::exists($payslip->pdf_path)) {
-                    $employeeName = str_replace(' ', '_', 
-                        ($payslip->employee->user->first_name ?? 'unknown') . '_' . 
+                    $employeeName = str_replace(' ', '_',
+                        ($payslip->employee->user->first_name ?? 'unknown') . '_' .
                         ($payslip->employee->user->last_name ?? '')
                     );
                     $filename = "payslip-{$employeeName}-{$payroll->payroll_period}.pdf";

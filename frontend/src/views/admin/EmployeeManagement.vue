@@ -2,37 +2,32 @@
   <div class="employee-management">
     <div class="page-header">
       <h1>Employee Management</h1>
-      <button 
-        @click="showAddModal = true" 
+      <button
+        @click="showAddModal = true"
         class="btn-primary"
         v-if="authStore.isAdmin"
       >
         <span>➕</span> Add Employee
       </button>
     </div>
-
     <!-- Authentication Check -->
     <div v-if="!authStore.isAuthenticated" class="error-message">
       Please log in to access employee management.
     </div>
-
     <!-- Permission Check -->
     <div v-else-if="!authStore.isAdmin && !authStore.isManager" class="error-message">
       You don't have permission to access this page.
     </div>
-
     <!-- Loading State -->
     <div v-else-if="loading" class="loading">
       <div class="spinner"></div>
       <p>Loading employees...</p>
     </div>
-
     <!-- Error State -->
     <div v-else-if="error" class="error-message">
       {{ error }}
       <button @click="retryFetch" class="btn-primary" style="margin-top: 1rem;">Retry</button>
     </div>
-
     <!-- Employees Table -->
     <div v-else class="employees-table-wrapper">
       <table class="employees-table">
@@ -44,6 +39,8 @@
             <th>Position</th>
             <th>Department</th>
             <th>Salary</th>
+            <th>Transport</th>
+            <th>Lunch</th>
             <th>Hire Date</th>
             <th>Manager</th>
             <th>Type</th>
@@ -66,6 +63,8 @@
             <td>{{ employee.position || 'N/A' }}</td>
             <td>{{ employee.department || 'N/A' }}</td>
             <td>K{{ formatNumber(employee.base_salary) }}</td>
+            <td>K{{ formatNumber(employee.transport_allowance || 0) }}</td>
+            <td>K{{ formatNumber(employee.lunch_allowance || 0) }}</td>
             <td>{{ formatDate(employee.hire_date || employee.created_at) }}</td>
             <td>{{ getManagerName(employee.manager_id) }}</td>
             <td class="badge-cell">
@@ -78,28 +77,33 @@
             </td>
             <td>
               <div class="employee-actions">
-                <button @click="viewEmployee(employee)" class="btn-view">View</button>
-                <button 
-                  v-if="authStore.isAdmin" 
-                  @click="editEmployee(employee)" 
+  
+                <button
+                  v-if="authStore.isAdmin"
+                  @click="editEmployee(employee)"
                   class="btn-edit"
-                >Edit</button>
-                <button 
-                  v-if="authStore.isAdmin" 
-                  @click="deleteEmployee(employee)" 
+                  title="Edit"
+                >
+                  <span class="icon">✏️</span>
+                </button>
+                <button
+                  v-if="authStore.isAdmin"
+                  @click="deleteEmployee(employee)"
                   class="btn-delete"
-                >Delete</button>
+                  title="Delete"
+                >
+                  <span class="icon">🗑️</span>
+                </button>
               </div>
             </td>
           </tr>
         </tbody>
       </table>
-
       <!-- Empty State -->
       <div v-if="employees.length === 0" class="empty-state">
         <p>No employees found</p>
-        <button 
-          @click="showAddModal = true" 
+        <button
+          @click="showAddModal = true"
           class="btn-primary"
           v-if="authStore.isAdmin"
         >
@@ -107,7 +111,6 @@
         </button>
       </div>
     </div>
-
     <!-- Add/Edit Employee Modal -->
     <div v-if="(showAddModal || showEditModal) && authStore.isAdmin" class="modal-overlay" @click.self="closeModals">
       <div class="modal">
@@ -115,39 +118,36 @@
           <h2>{{ showEditModal ? 'Edit Employee' : 'Add New Employee' }}</h2>
           <button @click="closeModals" class="close-btn">✕</button>
         </div>
-
         <form @submit.prevent="submitForm" class="modal-body">
           <div class="form-row">
             <div class="form-group">
               <label>First Name *</label>
-              <input 
-                v-model="form.first_name" 
-                type="text" 
-                required 
+              <input
+                v-model="form.first_name"
+                type="text"
+                required
                 placeholder="Enter first name"
               />
             </div>
             <div class="form-group">
               <label>Last Name *</label>
-              <input 
-                v-model="form.last_name" 
-                type="text" 
-                required 
+              <input
+                v-model="form.last_name"
+                type="text"
+                required
                 placeholder="Enter last name"
               />
             </div>
           </div>
-
           <div class="form-group" v-if="!showEditModal">
             <label>Email *</label>
-            <input 
-              v-model="form.email" 
-              type="email" 
-              required 
+            <input
+              v-model="form.email"
+              type="email"
+              required
               placeholder="employee@example.com"
             />
           </div>
-
           <div class="form-group">
             <label>Role *</label>
             <select v-model="form.role" required @change="onRoleChange">
@@ -156,14 +156,13 @@
               <option value="admin">Admin</option>
             </select>
           </div>
-
           <div class="form-row">
             <div class="form-group">
               <label>Position *</label>
-              <input 
-                v-model="form.position" 
-                type="text" 
-                required 
+              <input
+                v-model="form.position"
+                type="text"
+                required
                 placeholder="e.g., Software Developer"
               />
             </div>
@@ -182,15 +181,14 @@
               </select>
             </div>
           </div>
-
           <div class="form-row">
             <div class="form-group">
               <label>Base Salary (K) *</label>
-              <input 
-                v-model.number="form.base_salary" 
-                type="number" 
+              <input
+                v-model.number="form.base_salary"
+                type="number"
                 step="0.01"
-                required 
+                required
                 placeholder="0.00"
               />
             </div>
@@ -204,21 +202,40 @@
               </select>
             </div>
           </div>
-
+          <div class="form-row">
+            <div class="form-group">
+              <label>Transport Allowance (K)</label>
+              <input
+                v-model.number="form.transport_allowance"
+                type="number"
+                step="0.01"
+                placeholder="300.00"
+              />
+            </div>
+            <div class="form-group">
+              <label>Lunch Allowance (K)</label>
+              <input
+                v-model.number="form.lunch_allowance"
+                type="number"
+                step="0.01"
+                placeholder="240.00"
+              />
+            </div>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label>Hire Date *</label>
-              <input 
-                v-model="form.hire_date" 
-                type="date" 
-                required 
+              <input
+                v-model="form.hire_date"
+                type="date"
+                required
               />
             </div>
             <div class="form-group">
               <label>Manager <span v-if="form.role === 'employee'" style="color: red;">*</span></label>
-              <select 
-                v-model="form.manager_id" 
-                :required="form.role === 'employee'" 
+              <select
+                v-model="form.manager_id"
+                :required="form.role === 'employee'"
                 :disabled="form.role === 'manager' || form.role === 'admin'"
               >
                 <option value="">No Manager</option>
@@ -234,11 +251,9 @@
               </small>
             </div>
           </div>
-
           <div v-if="formError" class="form-error">
             {{ formError }}
           </div>
-
           <div class="modal-footer">
             <button type="button" @click="closeModals" class="btn-secondary">
               Cancel
@@ -284,6 +299,8 @@ export default {
         position: '',
         department: '',
         base_salary: '',
+        transport_allowance: '',
+        lunch_allowance: '',
         employment_type: '',
         hire_date: '',
         manager_id: ''
@@ -302,12 +319,12 @@ export default {
         this.error = 'Please log in to access employee management.'
         return
       }
-      
+     
       if (!this.authStore.isAdmin && !this.authStore.isManager) {
         this.error = 'You do not have permission to access this page.'
         return
       }
-      
+     
       this.fetchEmployees()
       this.fetchManagers()
     },
@@ -315,13 +332,13 @@ export default {
     async fetchEmployees(retry = false) {
       this.loading = true
       this.error = null
-      
+     
       try {
         console.log('Fetching employees... (retry:', retry, ')')
         const response = await axios.get('/api/admin/employees')
-        
+       
         console.log('Employees response:', response.data)
-        
+       
         // Handle different response structures
         let employeesData = []
         if (response.data && response.data.employees) {
@@ -331,7 +348,7 @@ export default {
         } else {
           employeesData = response.data || []
         }
-        
+       
         this.employees = employeesData
         console.log('Processed employees:', this.employees)
       } catch (err) {
@@ -346,9 +363,9 @@ export default {
       try {
         console.log('Fetching managers...')
         const response = await axios.get('/api/admin/managers')
-        
+       
         console.log('Managers API response:', response.data)
-        
+       
         // Handle different response structures for managers
         if (Array.isArray(response.data)) {
           this.managers = response.data
@@ -357,7 +374,7 @@ export default {
         } else {
           this.managers = response.data || []
         }
-        
+       
         if (this.managers.length === 0) {
           console.warn('No managers found in the system')
         } else {
@@ -366,7 +383,7 @@ export default {
       } catch (err) {
         console.error('Failed to fetch managers:', err)
         this.managers = []
-        
+       
         // Only show error if it's not a 404 (endpoint might not exist yet)
         if (err.response?.status !== 404) {
           this.$notify({
@@ -439,7 +456,7 @@ export default {
     async submitForm() {
       this.submitting = true
       this.formError = null
-      
+     
       try {
         // Validate manager selection for employees
         if (this.form.role === 'employee' && !this.form.manager_id) {
@@ -447,7 +464,6 @@ export default {
           this.submitting = false
           return
         }
-
         const payload = {
           first_name: this.form.first_name,
           last_name: this.form.last_name,
@@ -456,27 +472,29 @@ export default {
           position: this.form.position,
           department: this.form.department,
           base_salary: parseFloat(this.form.base_salary),
+          transport_allowance: parseFloat(this.form.transport_allowance),
+          lunch_allowance: parseFloat(this.form.lunch_allowance),
           employment_type: this.form.employment_type,
           hire_date: this.form.hire_date,
           manager_id: this.form.role === 'employee' ? this.form.manager_id : null
         }
-        
+       
         console.log('Submitting employee data:', payload)
-        
+       
         if (this.showEditModal) {
           await axios.put(`/api/admin/employees/${this.currentEmployee.id}`, payload)
         } else {
           await axios.post('/api/admin/employees', payload)
         }
-        
+       
         await this.fetchEmployees()
         await this.fetchManagers() // Refresh managers list after update
         this.closeModals()
-        
-        const successMessage = this.showEditModal 
+       
+        const successMessage = this.showEditModal
           ? `Employee updated successfully!`
           : `Employee created successfully! Default password is: Password123!`;
-        
+       
         this.$notify({
           type: 'success',
           title: 'Success',
@@ -531,6 +549,8 @@ export default {
         position: employee.position || '',
         department: employee.department || '',
         base_salary: employee.base_salary || '',
+        transport_allowance: employee.transport_allowance || '',
+        lunch_allowance: employee.lunch_allowance || '',
         employment_type: employee.employment_type || '',
         hire_date: employee.hire_date?.split('T')[0] || employee.created_at?.split('T')[0] || '',
         manager_id: userRole === 'employee' ? employee.manager_id : ''
@@ -561,9 +581,9 @@ export default {
     },
     
     viewEmployee(employee) {
-      this.$router.push({ 
-        name: 'employee-details', 
-        params: { id: employee.id } 
+      this.$router.push({
+        name: 'employee-details',
+        params: { id: employee.id }
       })
     },
     
@@ -584,6 +604,8 @@ export default {
         position: '',
         department: '',
         base_salary: '',
+        transport_allowance: '',
+        lunch_allowance: '',
         employment_type: '',
         hire_date: '',
         manager_id: ''
@@ -641,6 +663,54 @@ export default {
 .role-admin {
   background: #fee2e2;
   color: #991b1b;
+}
+
+/* Updated action buttons with icons */
+.employee-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+.employee-actions button {
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-view {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.btn-edit {
+  background: #fff7e6;
+  color: #fa8c16;
+}
+
+.btn-delete {
+  background: #fff1f0;
+  color: #f5222d;
+}
+
+.employee-actions button:hover {
+  transform: scale(1.1);
+}
+
+.employee-actions .icon {
+  font-size: 1rem;
+  line-height: 1;
 }
 
 /* Your existing CSS styles remain the same */
@@ -790,42 +860,6 @@ export default {
   color: #92400e;
 }
 
-.employee-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.employee-actions button {
-  padding: 0.5rem 0.75rem;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.875rem;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.btn-view {
-  background: #e6f7ff;
-  color: #1890ff;
-}
-
-.btn-edit {
-  background: #fff7e6;
-  color: #fa8c16;
-}
-
-.btn-delete {
-  background: #fff1f0;
-  color: #f5222d;
-}
-
-.employee-actions button:hover {
-  transform: scale(1.05);
-}
-
 .empty-state {
   text-align: center;
   padding: 4rem;
@@ -971,11 +1005,18 @@ export default {
   }
   
   .employee-actions {
-    flex-direction: column;
+    flex-direction: row;
+    gap: 0.25rem;
   }
   
   .employee-actions button {
-    width: 100%;
+    min-width: 35px;
+    height: 35px;
+    padding: 0.25rem;
+  }
+  
+  .employee-actions .icon {
+    font-size: 0.875rem;
   }
   
   .form-row {

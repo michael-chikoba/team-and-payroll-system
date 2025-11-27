@@ -222,7 +222,7 @@
 
               <div class="calc-row">
 
-                <span class="calc-label">PAYE (on Basic Salary)</span>
+                <span class="calc-label">PAYE</span>
 
                 <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.paye) }}</span>
 
@@ -230,7 +230,7 @@
 
               <div class="calc-row">
 
-                <span class="calc-label">NAPSA (10% of Gross, capped)</span>
+                <span class="calc-label">NAPSA</span>
 
                 <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.napsa) }}</span>
 
@@ -238,7 +238,7 @@
 
               <div class="calc-row">
 
-                <span class="calc-label">NHIMA (1% of Gross)</span>
+                <span class="calc-label">NHIMA</span>
 
                 <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.nhima) }}</span>
 
