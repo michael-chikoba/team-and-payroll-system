@@ -1,5 +1,7 @@
 <?php
+
 namespace App\Models;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -38,12 +40,12 @@ class TaxConfiguration extends Model
     }
 
     /**
-     * Calculate progressive PAYE on BASIC salary only (not gross)
+     * Calculate progressive PAYE on GROSS salary
      */
-    public function calculatePAYE(float $basicSalary): float
+    public function calculatePAYE(float $grossSalary): float
     {
         $tax = 0.0;
-        $remaining = $basicSalary; // Use basic salary for PAYE calculation
+        $remaining = $grossSalary; // Use gross salary for PAYE calculation
         $bands = $this->config_data['taxBands'] ?? [];
         
         // Sort bands by lower limit
@@ -90,34 +92,34 @@ class TaxConfiguration extends Model
     }
 
     /**
-     * Calculate NHIMA employee contribution (1% of gross)
+     * Calculate NHIMA employee contribution (1% of basic)
      */
-    public function calculateNHIMA(float $grossSalary): float
+    public function calculateNHIMA(float $basicSalary): float
     {
         $config = $this->config_data;
         $rate = ($config['nhimaEmployeeRate'] ?? 1) / 100;
         $maxSalary = $config['nhimaMaxSalary'] ?? PHP_FLOAT_MAX;
         
-        $base = min($grossSalary, $maxSalary);
+        $base = min($basicSalary, $maxSalary);
         $contrib = $base * $rate;
         
         return $this->applyRounding($contrib);
     }
 
     /**
-     * Calculate standard allowances based on basic pay
-     * Housing: 25% of basic, Transport: K300, Lunch: K240
+     * Calculate allowances from employee data
      */
-    public function calculateAllowances(float $basicSalary): array
+    public function calculateAllowances(Employee $employee): array
     {
+        $basicSalary = $employee->base_salary;
         $housing = $basicSalary * 0.25; // 25% of basic
-        $transport = 300.00; // Fixed K300
-        $lunch = 240.00; // Fixed K240
+        $transport = $employee->transport_allowance ?? 0.00;
+        $lunch = $employee->lunch_allowance ?? 0.00;
         
         return [
             'housing' => $this->applyRounding($housing),
-            'transport' => $transport,
-            'lunch' => $lunch,
+            'transport' => $this->applyRounding($transport),
+            'lunch' => $this->applyRounding($lunch),
             'total' => $this->applyRounding($housing + $transport + $lunch)
         ];
     }
@@ -125,18 +127,19 @@ class TaxConfiguration extends Model
     /**
      * Full payroll calculation with proper breakdown
      */
-    public function calculatePayroll(float $basicSalary, float $overtimePay = 0, float $bonuses = 0): array
+    public function calculatePayroll(Employee $employee, float $overtimePay = 0, float $bonuses = 0): array
     {
+        $basicSalary = $employee->base_salary;
         // Calculate allowances
-        $allowances = $this->calculateAllowances($basicSalary);
+        $allowances = $this->calculateAllowances($employee);
         
         // Calculate gross salary (basic + allowances + overtime + bonuses)
         $grossSalary = $basicSalary + $allowances['total'] + $overtimePay + $bonuses;
         
         // Calculate deductions
-        $paye = $this->calculatePAYE($basicSalary); // PAYE from basic only
+        $paye = $this->calculatePAYE($grossSalary); // PAYE from gross
         $napsa = $this->calculateNAPSA($grossSalary); // NAPSA from gross
-        $nhima = $this->calculateNHIMA($grossSalary); // NHIMA from gross
+        $nhima = $this->calculateNHIMA($basicSalary); // NHIMA from basic
         
         $totalDeductions = $paye + $napsa + $nhima;
         $netSalary = $grossSalary - $totalDeductions;
@@ -155,12 +158,10 @@ class TaxConfiguration extends Model
             ],
             'net_salary' => $this->applyRounding($netSalary),
             'calculation_notes' => [
-                'paye_base' => 'Basic Salary',
-                'napsa_base' => 'Gross Salary', 
-                'nhima_base' => 'Gross Salary',
-                'housing_rate' => '25% of Basic',
-                'transport_fixed' => 'K300',
-                'lunch_fixed' => 'K240'
+                'paye_base' => 'Gross Salary',
+                'napsa_base' => 'Gross Salary',
+                'nhima_base' => 'Basic Salary',
+                'housing_rate' => '25% of Basic'
             ]
         ];
     }

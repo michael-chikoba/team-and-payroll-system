@@ -1,6 +1,5 @@
 <?php
 namespace App\Http\Controllers\Api;
-
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payroll\GeneratePayslipRequest;
 use App\Jobs\SendPayslipEmail;
@@ -15,11 +14,9 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-
 class PayslipController extends Controller
 {
     public function __construct(private PayslipGeneratorService $payslipGenerator) {}
-
     /**
      * List payslips for employees (filtered by current user if employee)
      */
@@ -34,11 +31,9 @@ class PayslipController extends Controller
                 'data' => []
             ], 404);
         }
-
         $query = Payslip::where('employee_id', $employee->id)
             ->with(['employee.user'])
             ->orderBy('created_at', 'desc');
-
         // Apply filters if provided
         if ($request->has('year')) {
             $query->whereYear('created_at', $request->year);
@@ -49,9 +44,7 @@ class PayslipController extends Controller
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-
         $payslips = $query->get();
-
         // Format the response for employee view
         $formatted = $payslips->map(function ($payslip) {
             $period = 'N/A';
@@ -60,9 +53,7 @@ class PayslipController extends Controller
             } elseif ($payslip->created_at) {
                 $period = $payslip->created_at->format('M Y');
             }
-
             $pdfAvailable = !empty($payslip->pdf_path) && Storage::exists($payslip->pdf_path);
-
             return [
                 'id' => $payslip->id,
                 'period' => $period,
@@ -77,7 +68,7 @@ class PayslipController extends Controller
                 'basic_salary' => (float) $payslip->basic_salary,
                 'house_allowance' => (float) $payslip->house_allowance,
                 'transport_allowance' => (float) $payslip->transport_allowance,
-                'other_allowances' => (float) $payslip->other_allowances,
+                'lunch_allowance' => (float) $payslip->lunch_allowance,
                 'overtime_hours' => (float) $payslip->overtime_hours,
                 'overtime_rate' => (float) $payslip->overtime_rate,
                 'overtime_pay' => (float) $payslip->overtime_pay,
@@ -89,19 +80,16 @@ class PayslipController extends Controller
                 'pdf_path' => $payslip->pdf_path,
             ];
         });
-
         return response()->json([
             'data' => $formatted
         ]);
     }
-
     /**
      * List all payslips for admin with filters
      */
     public function adminIndex(Request $request): JsonResponse
     {
         $query = Payslip::with(['employee.user']);
-
         // Apply filters
         if ($request->has('pay_period')) {
             $period = $request->pay_period;
@@ -116,23 +104,18 @@ class PayslipController extends Controller
                     ->whereYear('pay_period_start', $lastMonth->year);
             }
         }
-
         if ($request->has('start') && $request->has('end')) {
             $query->whereBetween('pay_period_start', [$request->start, $request->end]);
         }
-
         if ($request->has('department')) {
             $query->whereHas('employee', function ($q) use ($request) {
                 $q->where('department', $request->department);
             });
         }
-
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
-
         $payslips = $query->orderBy('created_at', 'desc')->get();
-
         // Format the response
         $formatted = $payslips->map(function ($payslip) {
             return [
@@ -146,7 +129,7 @@ class PayslipController extends Controller
                 'basic_salary' => (float) $payslip->basic_salary,
                 'house_allowance' => (float) $payslip->house_allowance,
                 'transport_allowance' => (float) $payslip->transport_allowance,
-                'other_allowances' => (float) $payslip->other_allowances,
+                'lunch_allowance' => (float) $payslip->lunch_allowance,
                 'overtime_hours' => (float) $payslip->overtime_hours,
                 'overtime_rate' => (float) $payslip->overtime_rate,
                 'overtime_pay' => (float) $payslip->overtime_pay,
@@ -163,12 +146,10 @@ class PayslipController extends Controller
                 'pdf_available' => !empty($payslip->pdf_path) && Storage::exists($payslip->pdf_path),
             ];
         });
-
         return response()->json([
             'data' => $formatted
         ]);
     }
-
     /**
      * Create a new payslip with proper tax configuration-based calculations
      */
@@ -184,14 +165,12 @@ class PayslipController extends Controller
             'overtime_rate' => 'nullable|numeric|min:0',
             'generate_pdf' => 'nullable|boolean',
         ]);
-
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
-
         // Find employee by ID
         $employee = Employee::find($request->employee_id);
         if (!$employee) {
@@ -199,7 +178,6 @@ class PayslipController extends Controller
                 'message' => 'Employee not found'
             ], 404);
         }
-
         // Get active tax configuration for Zambia
         $taxConfig = TaxConfiguration::forLocation('Zambia')->first();
         if (!$taxConfig) {
@@ -207,7 +185,6 @@ class PayslipController extends Controller
                 'message' => 'No active tax configuration found for Zambia'
             ], 500);
         }
-
         $basicSalary = $request->basic_salary ?? $employee->base_salary ?? 0;
         
         if ($basicSalary <= 0) {
@@ -215,14 +192,11 @@ class PayslipController extends Controller
                 'message' => 'Basic salary must be greater than 0'
             ], 422);
         }
-
         // Calculate overtime pay
         $overtimePay = ($request->overtime_hours ?? 0) * ($request->overtime_rate ?? 0);
         $bonuses = 0.0;
-
         // Calculate complete payroll using tax configuration
-        $payrollCalculation = $taxConfig->calculatePayroll($basicSalary, $overtimePay, $bonuses);
-
+        $payrollCalculation = $taxConfig->calculatePayroll($employee, $overtimePay, $bonuses);
         // Create detailed breakdown for payslip
         $breakdown = [
             'basic_salary' => $basicSalary,
@@ -241,19 +215,15 @@ class PayslipController extends Controller
             'calculation_notes' => $payrollCalculation['calculation_notes'],
             'tax_config_used' => [
                 'housing_rate' => '25%',
-                'transport_allowance' => 'K300',
-                'lunch_allowance' => 'K240',
                 'napsa_rate' => '5% of gross (capped)',
                 'nhima_rate' => '1% of gross',
                 'paye_base' => 'Basic salary only'
             ]
         ];
-
         // Ensure dates are stored as date-only (no time component)
         $payPeriodStart = Carbon::parse($request->pay_period_start)->startOfDay();
         $payPeriodEnd = Carbon::parse($request->pay_period_end)->startOfDay();
         $paymentDate = Carbon::parse($request->payment_date)->startOfDay();
-
         Log::info('PayslipController: Creating new payslip', [
             'employee_id' => $employee->id,
             'employee_name' => $employee->user->first_name . ' ' . $employee->user->last_name,
@@ -269,7 +239,6 @@ class PayslipController extends Controller
                 'deductions' => $payrollCalculation['deductions'],
             ],
         ]);
-
         // Create payslip record
         $payslip = Payslip::create([
             'employee_id' => $employee->id,
@@ -294,14 +263,11 @@ class PayslipController extends Controller
             'status' => 'generated',
             'breakdown' => $breakdown,
         ]);
-
         $payslip->load('employee.user');
-
         Log::info('PayslipController: Payslip created successfully', [
             'payslip_id' => $payslip->id,
             'employee_id' => $employee->id,
         ]);
-
         // Generate PDF if requested
         if ($request->boolean('generate_pdf', true)) {
             try {
@@ -314,16 +280,13 @@ class PayslipController extends Controller
                 ]);
             }
         }
-
         // Format response
         $formatted = $this->formatPayslipResponse($payslip);
-
         return response()->json([
             'message' => 'Payslip created successfully',
             'data' => $formatted
         ], 201);
     }
-
     /**
      * Format payslip for API response
      */
@@ -342,7 +305,7 @@ class PayslipController extends Controller
             'basic_salary' => (float) $payslip->basic_salary,
             'house_allowance' => (float) $payslip->house_allowance,
             'transport_allowance' => (float) $payslip->transport_allowance,
-            'other_allowances' => (float) $payslip->other_allowances,
+            'lunch_allowance' => (float) $payslip->lunch_allowance,
             'overtime_hours' => (float) $payslip->overtime_hours,
             'overtime_rate' => (float) $payslip->overtime_rate,
             'overtime_pay' => (float) $payslip->overtime_pay,
@@ -355,11 +318,9 @@ class PayslipController extends Controller
             'net_pay' => (float) $payslip->net_pay,
             'status' => $payslip->status,
             'pdf_available' => !empty($payslip->pdf_path) && Storage::exists($payslip->pdf_path),
-            'created_at' => $payslip->created_at,
             'breakdown' => $breakdown,
         ];
     }
-
     public function show(Payslip $payslip): JsonResponse
     {
         $user = request()->user();
@@ -370,7 +331,6 @@ class PayslipController extends Controller
                 'message' => 'Unauthorized'
             ], 403);
         }
-
         $payslip->load(['employee.user']);
         
         $formatted = [
@@ -384,7 +344,7 @@ class PayslipController extends Controller
             'basic_salary' => (float) $payslip->basic_salary,
             'house_allowance' => (float) $payslip->house_allowance,
             'transport_allowance' => (float) $payslip->transport_allowance,
-            'other_allowances' => (float) $payslip->other_allowances,
+            'lunch_allowance' => (float) $payslip->lunch_allowance,
             'overtime_hours' => (float) $payslip->overtime_hours,
             'overtime_rate' => (float) $payslip->overtime_rate,
             'overtime_pay' => (float) $payslip->overtime_pay,
@@ -399,12 +359,10 @@ class PayslipController extends Controller
             'pdf_available' => !empty($payslip->pdf_path) && Storage::exists($payslip->pdf_path),
             'breakdown' => $payslip->breakdown ?? [],
         ];
-
         return response()->json([
             'data' => $formatted
         ]);
     }
-
     /**
      * Generate PDF for a single payslip
      */
@@ -438,33 +396,26 @@ class PayslipController extends Controller
             ], 500);
         }
     }
-
     public function generate(GeneratePayslipRequest $request): JsonResponse
     {
         $validated = $request->validated();
         $payroll = Payroll::findOrFail($validated['payroll_id']);
-
         if ($payroll->status !== 'completed') {
             return response()->json([
                 'message' => 'Payroll must be completed before generating payslips'
             ], 422);
         }
-
         $this->payslipGenerator->generateForPayroll($payroll);
-
         return response()->json([
             'message' => 'Payslip generation started'
         ]);
     }
-
     public function bulkDownload(Request $request): JsonResponse
     {
         $request->validate([
             'payroll_id' => 'required|exists:payrolls,id',
         ]);
-
         $payroll = Payroll::findOrFail($request->payroll_id);
-
         try {
             $zipPath = $this->payslipGenerator->bulkDownload($payroll);
             
@@ -477,7 +428,6 @@ class PayslipController extends Controller
             ], 500);
         }
     }
-
     public function sendNotifications(Payslip $payslip): JsonResponse
     {
         if (!$payslip->pdf_path) {
@@ -485,15 +435,12 @@ class PayslipController extends Controller
                 'message' => 'Payslip PDF must be generated before sending notifications'
             ], 422);
         }
-
         SendPayslipEmail::dispatch($payslip);
         $payslip->update(['is_sent' => true, 'status' => 'paid']);
-
         return response()->json([
             'message' => 'Payslip notification sent'
         ]);
     }
-
     /**
      * Download payslip PDF
      */

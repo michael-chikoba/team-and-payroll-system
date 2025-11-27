@@ -11,7 +11,7 @@ use App\Models\Payslip;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Carbon\Carbon; // ADD THIS IMPORT
+use Carbon\Carbon;
 use App\Models\Payroll;
 
 class ReportController extends Controller
@@ -79,7 +79,6 @@ class ReportController extends Controller
         return response()->json($reportData);
     }
 
-
      public function getAdminStats(): JsonResponse
     {
         try {
@@ -125,7 +124,6 @@ class ReportController extends Controller
         }
     }
 
-
     public function getReportParams($type): JsonResponse
     {
         $defaults = [
@@ -156,8 +154,6 @@ class ReportController extends Controller
      */
     public function getGeneratedReports(): JsonResponse
     {
-        // For now, return empty array or mock data
-        // In production, you'd query a reports table
         return response()->json([]);
     }
 
@@ -166,7 +162,6 @@ class ReportController extends Controller
      */
     private function generateTeamReport(array $filters): array
     {
-        // Get team members based on department filter
         $query = Employee::with(['user', 'attendances', 'leaves']);
         
         if (isset($filters['department'])) {
@@ -174,20 +169,18 @@ class ReportController extends Controller
         }
         $employees = $query->get();
         
-        // Calculate team statistics
         $totalEmployees = $employees->count();
         
-        // Calculate present employees for today
         $today = now()->format('Y-m-d');
         $presentToday = Attendance::whereDate('date', $today)
             ->whereIn('employee_id', $employees->pluck('id'))
             ->where('status', 'present')
             ->count();
-        // Calculate pending leaves
+            
         $pendingLeaves = Leave::whereIn('employee_id', $employees->pluck('id'))
             ->where('status', 'pending')
             ->count();
-        // Calculate average productivity
+            
         $totalProductivity = 0;
         $employeesWithProductivity = 0;
         foreach ($employees as $employee) {
@@ -198,13 +191,14 @@ class ReportController extends Controller
             }
         }
         $avgProductivity = $employeesWithProductivity > 0 ? round($totalProductivity / $employeesWithProductivity) : 0;
+        
         return [
             'data' => [
                 'department' => $filters['department'] ?? 'All Departments',
                 'period_start' => $filters['start_date'] ?? now()->startOfMonth()->format('Y-m-d'),
                 'period_end' => $filters['end_date'] ?? now()->format('Y-m-d'),
                 'total_employees' => $totalEmployees,
-                'active_employees' => $totalEmployees, // Since all employees are considered active in your current structure
+                'active_employees' => $totalEmployees,
                 'present_today' => $presentToday,
                 'on_leave' => $pendingLeaves,
                 'avg_productivity' => $avgProductivity,
@@ -215,7 +209,7 @@ class ReportController extends Controller
                         'email' => $employee->email,
                         'department' => $employee->department,
                         'position' => $employee->position ?? 'N/A',
-                        'status' => 'active', // Default status
+                        'status' => 'active',
                         'productivity' => $this->calculateEmployeeProductivity($employee, $filters),
                         'last_attendance' => $employee->attendances->sortByDesc('date')->first()->date ?? 'N/A',
                     ];
@@ -248,10 +242,7 @@ class ReportController extends Controller
         $employees = $query->get();
         $reportData = $employees->map(function ($employee) use ($filters) {
             $productivity = $this->calculateEmployeeProductivity($employee, $filters);
-            
-            // Calculate tasks completed (you can replace this with actual task logic)
             $tasksCompleted = $this->calculateTaskCompletionRate($employee, $filters);
-            // Calculate attendance rate for period
             $attendanceRate = $this->calculateAttendanceRate($employee, $filters);
             return [
                 'id' => $employee->id,
@@ -288,18 +279,19 @@ class ReportController extends Controller
     {
         $score = 0;
         $factors = 0;
-        // Factor 1: Attendance (weight: 40%)
+        
         $attendanceRate = $this->calculateAttendanceRate($employee, $filters);
         $score += $attendanceRate * 0.4;
         $factors++;
-        // Factor 2: Task completion (weight: 40%)
+        
         $taskCompletionRate = $this->calculateTaskCompletionRate($employee, $filters);
         $score += $taskCompletionRate * 0.4;
         $factors++;
-        // Factor 3: Punctuality (weight: 20%)
+        
         $punctualityRate = $this->calculatePunctualityRate($employee, $filters);
         $score += $punctualityRate * 0.2;
         $factors++;
+        
         return min(100, max(0, round($score)));
     }
 
@@ -326,9 +318,7 @@ class ReportController extends Controller
      */
     private function calculateTaskCompletionRate(Employee $employee, array $filters): int
     {
-        // Since you don't have a tasks relationship, return a default value
-        // You can implement actual task logic when you add tasks to your system
-        return 80; // Default task completion rate
+        return 80;
     }
 
     /**
@@ -345,8 +335,6 @@ class ReportController extends Controller
             $attendanceQuery->where('date', '<=', $filters['end_date']);
         }
         $totalAttendance = $attendanceQuery->count();
-        
-        // Count on-time attendance (assuming 9:15 AM as cutoff for on-time)
         $onTimeAttendance = $attendanceQuery->whereTime('clock_in', '<=', '09:15:00')->count();
         return $totalAttendance > 0 ? round(($onTimeAttendance / $totalAttendance) * 100) : 100;
     }
@@ -367,12 +355,9 @@ class ReportController extends Controller
             $startDate = Carbon::parse($validated['start_date']);
             $endDate = Carbon::parse($validated['end_date']);
             
-            // Base query for attendance
             $query = Attendance::with(['employee.user'])
                 ->whereBetween('date', [$startDate, $endDate]);
 
-            // Apply department filter ONLY if provided and not empty
-            // Empty string means "All Departments"
             if (!empty($validated['department'])) {
                 $query->whereHas('employee', function ($q) use ($validated) {
                     $q->where('department', $validated['department']);
@@ -381,8 +366,6 @@ class ReportController extends Controller
 
             $attendanceData = $query->get();
             
-            // Calculate summary statistics
-            // For employee count, apply the same department filter
             $totalEmployees = Employee::when(!empty($validated['department']), function ($q) use ($validated) {
                 $q->where('department', $validated['department']);
             })->count();
@@ -397,7 +380,6 @@ class ReportController extends Controller
 
             $attendanceRate = $workingDays > 0 ? round(($presentDays / ($totalEmployees * $workingDays)) * 100, 2) : 0;
 
-            // Determine department display name
             $departmentName = !empty($validated['department']) 
                 ? $validated['department'] 
                 : 'All Departments';
@@ -448,11 +430,9 @@ class ReportController extends Controller
             $startDate = Carbon::parse($validated['start_date']);
             $endDate = Carbon::parse($validated['end_date']);
             
-            // Base query for leaves
             $query = Leave::with(['employee.user'])
                 ->whereBetween('start_date', [$startDate, $endDate]);
 
-            // Apply filters - only if not empty
             if (!empty($validated['leave_type'])) {
                 $query->where('leave_type', $validated['leave_type']);
             }
@@ -463,7 +443,6 @@ class ReportController extends Controller
 
             $leaveData = $query->get();
 
-            // Calculate statistics
             $totalLeaveRequests = $leaveData->count();
             $statusBreakdown = $leaveData->groupBy('status')->map->count();
             
@@ -506,12 +485,11 @@ class ReportController extends Controller
         try {
             $startDate = $filters['start_date'] ?? now()->startOfMonth()->format('Y-m-d');
             $endDate = $filters['end_date'] ?? now()->format('Y-m-d');
-            // Get all reports data
+            
             $attendanceReport = $this->generateAttendanceReport(new Request($filters))->getData(true);
             $leaveReport = $this->generateLeaveReport(new Request($filters))->getData(true);
             $payrollReport = $this->generatePayrollReport(new Request($filters))->getData(true);
             
-            // Calculate organization statistics
             $totalEmployees = Employee::count();
             $totalDepartments = Employee::distinct('department')->count('department');
             $presentToday = Attendance::whereDate('date', now()->format('Y-m-d'))
@@ -582,7 +560,7 @@ class ReportController extends Controller
                     'leave_utilization' => 0,
                 ];
             }
-            // Calculate attendance rate
+            
             $attendanceQuery = Attendance::whereIn('employee_id', $employees->pluck('id'));
             if (isset($filters['start_date'])) {
                 $attendanceQuery->where('date', '>=', $filters['start_date']);
@@ -593,7 +571,7 @@ class ReportController extends Controller
             $totalAttendance = $attendanceQuery->count();
             $presentAttendance = $attendanceQuery->where('status', 'present')->count();
             $attendanceRate = $totalAttendance > 0 ? ($presentAttendance / $totalAttendance) * 100 : 0;
-            // Calculate leave utilization
+            
             $leaveQuery = Leave::whereIn('employee_id', $employees->pluck('id'))
                 ->where('status', 'approved');
             
@@ -604,13 +582,14 @@ class ReportController extends Controller
                 $leaveQuery->where('end_date', '<=', $filters['end_date']);
             }
             $totalLeaveDays = $leaveQuery->sum('total_days');
-            $maxPossibleLeaveDays = $employeeCount * 30; // Assuming 30 working days per month
+            $maxPossibleLeaveDays = $employeeCount * 30;
             $leaveUtilization = $maxPossibleLeaveDays > 0 ? ($totalLeaveDays / $maxPossibleLeaveDays) * 100 : 0;
+            
             return [
                 'department' => $department,
                 'employee_count' => $employeeCount,
                 'attendance_rate' => round($attendanceRate, 2),
-                'productivity_score' => round($attendanceRate * 0.8), // Simplified productivity score
+                'productivity_score' => round($attendanceRate * 0.8),
                 'leave_utilization' => round($leaveUtilization, 2),
                 'active_employees' => $employeeCount,
             ];
@@ -618,15 +597,14 @@ class ReportController extends Controller
     }
 
     /**
-     * Generate comprehensive payroll report with filters
+     * Generate comprehensive payroll report with filters including other deductions
      */
-        public function generatePayrollReport(Request $request): JsonResponse
+    public function generatePayrollReport(Request $request): JsonResponse
     {
-        // Custom validation to allow empty string for department
         $validated = $request->validate([
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
-            'department' => 'nullable|string', // Changed to nullable
+            'department' => 'nullable|string',
             'status' => 'sometimes|in:all,paid,pending'
         ]);
 
@@ -634,7 +612,6 @@ class ReportController extends Controller
             $startDate = Carbon::parse($validated['start_date']);
             $endDate = Carbon::parse($validated['end_date']);
             
-            // Clean up department parameter - treat empty string as null
             $department = !empty($validated['department']) ? $validated['department'] : null;
             
             Log::info('Generating payroll report', [
@@ -656,6 +633,8 @@ class ReportController extends Controller
             $totalPaye = 0;
             $totalNapsa = 0;
             $totalNhima = 0;
+            $totalOtherDeductions = 0;
+            $totalAllDeductions = 0;
             $processedEmployees = 0;
             $payslipDetails = [];
             $departmentBreakdown = [];
@@ -678,12 +657,16 @@ class ReportController extends Controller
                     $paye = $payslip->paye ?? 0;
                     $napsa = $payslip->napsa ?? 0;
                     $nhima = $payslip->nhima ?? 0;
+                    $otherDeductions = $payslip->other_deductions ?? 0;
+                    $totalDeductions = $payslip->total_deductions ?? 0;
 
                     $totalGrossSalary += $grossSalary;
                     $totalNetSalary += $netPay;
                     $totalPaye += $paye;
                     $totalNapsa += $napsa;
                     $totalNhima += $nhima;
+                    $totalOtherDeductions += $otherDeductions;
+                    $totalAllDeductions += $totalDeductions;
                     $totalTaxAmount += ($paye + $napsa + $nhima);
                     $processedEmployees++;
 
@@ -694,22 +677,25 @@ class ReportController extends Controller
                             'employee_count' => 0,
                             'total_net_salary' => 0,
                             'total_gross_salary' => 0,
+                            'total_other_deductions' => 0,
                         ];
                     }
                     $departmentBreakdown[$empDepartment]['employee_count']++;
                     $departmentBreakdown[$empDepartment]['total_net_salary'] += $netPay;
                     $departmentBreakdown[$empDepartment]['total_gross_salary'] += $grossSalary;
+                    $departmentBreakdown[$empDepartment]['total_other_deductions'] += $otherDeductions;
 
                     $payslipDetails[] = [
-                        'employee_id' => $payslip->employee->id,
+                        'employee_id' => $payslip->employee_id,
                         'employee_name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
                         'department' => $empDepartment,
                         'gross_salary' => number_format($grossSalary, 2),
-                        'deductions' => number_format($payslip->total_deductions ?? 0, 2),
+                        'deductions' => number_format($totalDeductions, 2),
                         'net_salary' => number_format($netPay, 2),
                         'paye' => number_format($paye, 2),
                         'napsa' => number_format($napsa, 2),
                         'nhima' => number_format($nhima, 2),
+                        'other_deductions' => number_format($otherDeductions, 2),
                         'tax_amount' => number_format($paye + $napsa + $nhima, 2),
                         'pay_period' => $payroll->payroll_period,
                         'status' => $payslip->status ?? 'pending',
@@ -720,7 +706,6 @@ class ReportController extends Controller
             $averageNetSalary = $processedEmployees > 0 ? $totalNetSalary / $processedEmployees : 0;
             $averageGrossSalary = $processedEmployees > 0 ? $totalGrossSalary / $processedEmployees : 0;
 
-            // Determine department display name
             $departmentName = $department ?? 'All Departments';
 
             $reportData = [
@@ -731,18 +716,21 @@ class ReportController extends Controller
                 'total_paye' => number_format($totalPaye, 2),
                 'total_napsa' => number_format($totalNapsa, 2),
                 'total_nhima' => number_format($totalNhima, 2),
+                'total_other_deductions' => number_format($totalOtherDeductions, 2),
+                'total_all_deductions' => number_format($totalAllDeductions, 2),
                 'processed_employees' => $processedEmployees,
                 'average_gross_salary' => number_format($averageGrossSalary, 2),
                 'average_net_salary' => number_format($averageNetSalary, 2),
                 'payslip_details' => $payslipDetails,
-                'department_breakdown' => $department === null ? $departmentBreakdown : null, // Only include for "All Departments"
+                'department_breakdown' => $department === null ? $departmentBreakdown : null,
                 'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
                 'generated_at' => now()->toDateTimeString(),
             ];
 
             Log::info('Payroll report generated successfully', [
                 'processed_employees' => $processedEmployees,
-                'total_net_salary' => $totalNetSalary
+                'total_net_salary' => $totalNetSalary,
+                'total_other_deductions' => $totalOtherDeductions
             ]);
 
             return response()->json([
@@ -762,7 +750,8 @@ class ReportController extends Controller
             ], 500);
         }
     }
- public function exportReport(Request $request, string $type)
+
+    public function exportReport(Request $request, string $type)
     {
         $validated = $request->validate([
             'format' => 'required|in:pdf,csv',
@@ -776,7 +765,6 @@ class ReportController extends Controller
             $filters = $validated;
             $format = $validated['format'];
             
-            // Generate appropriate report data
             switch ($type) {
                 case 'payroll':
                     $reportData = $this->reportService->generatePayrollReport($filters);
@@ -860,7 +848,6 @@ class ReportController extends Controller
      */
     private function generatePayrollReportData(array $filters): array
     {
-        // Reuse the logic from generatePayrollReport
         $query = Payslip::with('employee');
         if (isset($filters['department'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
@@ -902,16 +889,14 @@ class ReportController extends Controller
 
     /**
      * Generate Payroll CSV in the exact template format from the shared document
-     * Data sourced from payslips within the filter period
      */
     private function generatePayrollCsvTemplate(array $filters): string
     {
-        // Header rows from the template (hardcoded as per shared document; customize IDs/dates as needed)
         $csv = "BInSol - U ver 1.00,,,,,,,, \n";
-        $csv .= now()->format('m/d/Y') . ",,,,,,,,, \n"; // Dynamic date instead of 7/2/2015
-        $csv .= "62000031451,1.23457E+11,,,,,,, \n"; // Company/Batch IDs (customize from config)
+        $csv .= now()->format('m/d/Y') . ",,,,,,,,, \n";
+        $csv .= "62000031451,1.23457E+11,,,,,,, \n";
         $csv .= "RECIPIENT NAME,RECIPIENT ACCOUNT,RECIPIENT ACCOUNT TYPE,BRANCHCODE,AMOUNT,OWN REFERENCE,RECIPIENT REFERENCE,EMAIL 1 NOTIFY,EMAIL 1 ADDRESS\n";
-        // Fetch payslips for the period (source data from payslips)
+        
         $query = Payslip::with('employee');
         if (isset($filters['department'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
@@ -924,19 +909,19 @@ class ReportController extends Controller
         $query->where('pay_period_start', '>=', $filters['start_date'])
               ->where('pay_period_end', '<=', $filters['end_date']);
         $payslips = $query->get();
-        // Map payslips to CSV rows
+        
         foreach ($payslips as $payslip) {
             $employee = $payslip->employee;
             $row = [
-                '"' . ($employee->user ? ($employee->user->first_name . ' ' . $employee->user->last_name) : 'N/A') . '"', // RECIPIENT NAME (quoted for commas)
-                $employee->bank_account ?? '', // RECIPIENT ACCOUNT (assume field exists on Employee; add if needed)
-                $employee->account_type ?? 'Checking', // RECIPIENT ACCOUNT TYPE (assume field; default)
-                $employee->branch_code ?? '', // BRANCHCODE (assume field; add if needed)
-                number_format($payslip->net_pay ?? 0, 2, '.', ''), // AMOUNT (net pay, formatted)
-                'Payroll-' . ($payslip->payroll_id ?? $payslip->id), // OWN REFERENCE (e.g., payroll ID)
-                $employee->id, // RECIPIENT REFERENCE (employee ID)
-                'Y', // EMAIL 1 NOTIFY (flag for email notification)
-                '"' . ($employee->user?->email ?? '') . '"', // EMAIL 1 ADDRESS (quoted)
+                '"' . ($employee->user ? ($employee->user->first_name . ' ' . $employee->user->last_name) : 'N/A') . '"',
+                $employee->bank_account ?? '',
+                $employee->account_type ?? 'Checking',
+                $employee->branch_code ?? '',
+                number_format($payslip->net_pay ?? 0, 2, '.', ''),
+                'Payroll-' . ($payslip->payroll_id ?? $payslip->id),
+                $employee->id,
+                'Y',
+                '"' . ($employee->user?->email ?? '') . '"',
             ];
             $csv .= implode(',', $row) . "\n";
         }

@@ -155,7 +155,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
             Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
         });
-      
+      Route::get('/countries', [EmployeeController::class, 'countries']);
+
         // Report Generation
         Route::post('generate/attendance', [ReportController::class, 'generateAttendanceReport']);
         Route::post('generate/leave', [ReportController::class, 'generateLeaveReport']);

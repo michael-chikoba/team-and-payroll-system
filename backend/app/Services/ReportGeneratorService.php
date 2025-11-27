@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Log;
 class ReportGeneratorService
 {
     /**
-     * Generate payroll report data
+     * Generate payroll report data with other deductions
      */
-       public function generatePayrollReport(array $filters = [])
+    public function generatePayrollReport(array $filters = [])
     {
         // Query payslips directly
         $query = Payslip::with(['employee.user']);
@@ -42,12 +42,14 @@ class ReportGeneratorService
 
         $payslips = $query->orderBy('pay_period_start', 'desc')->get();
 
-        // Calculate totals
+        // Calculate totals including other deductions
         $totalGrossSalary = $payslips->sum('gross_salary');
         $totalNetSalary = $payslips->sum('net_pay');
         $totalPaye = $payslips->sum('paye');
         $totalNapsa = $payslips->sum('napsa');
         $totalNhima = $payslips->sum('nhima');
+        $totalOtherDeductions = $payslips->sum('other_deductions');
+        $totalAllDeductions = $payslips->sum('total_deductions');
         $totalTaxAmount = $totalPaye + $totalNapsa + $totalNhima;
         $processedEmployees = $payslips->count();
         $averageNetSalary = $processedEmployees > 0 ? $totalNetSalary / $processedEmployees : 0;
@@ -65,6 +67,7 @@ class ReportGeneratorService
                         'total_gross_salary' => 0,
                         'total_net_salary' => 0,
                         'total_tax' => 0,
+                        'total_other_deductions' => 0,
                     ];
                 }
                 
@@ -72,10 +75,11 @@ class ReportGeneratorService
                 $departmentBreakdown[$dept]['total_gross_salary'] += $payslip->gross_salary ?? 0;
                 $departmentBreakdown[$dept]['total_net_salary'] += $payslip->net_pay ?? 0;
                 $departmentBreakdown[$dept]['total_tax'] += ($payslip->paye ?? 0) + ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0);
+                $departmentBreakdown[$dept]['total_other_deductions'] += $payslip->other_deductions ?? 0;
             }
         }
 
-        // Format payslip details
+        // Format payslip details with other deductions
         $payslipDetails = $payslips->map(function ($payslip) {
             return [
                 'employee_id' => $payslip->employee_id,
@@ -89,6 +93,7 @@ class ReportGeneratorService
                 'paye' => $payslip->paye ?? 0,
                 'napsa' => $payslip->napsa ?? 0,
                 'nhima' => $payslip->nhima ?? 0,
+                'other_deductions' => $payslip->other_deductions ?? 0,
                 'tax_amount' => ($payslip->paye ?? 0) + ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0),
                 'pay_period' => Carbon::parse($payslip->pay_period_start)->format('M d, Y') 
                     . ' - ' 
@@ -115,6 +120,8 @@ class ReportGeneratorService
                 'total_paye' => $totalPaye,
                 'total_napsa' => $totalNapsa,
                 'total_nhima' => $totalNhima,
+                'total_other_deductions' => $totalOtherDeductions,
+                'total_all_deductions' => $totalAllDeductions,
                 'department_breakdown' => !empty($departmentBreakdown) ? $departmentBreakdown : null,
             ],
             'filters' => $filters,
@@ -259,7 +266,7 @@ class ReportGeneratorService
                 'data_keys' => array_keys($data)
             ]);
 
-            // Prepare data for the view
+            // Prepare data for the view - FIXED: Pass the complete data structure
             $reportData = $this->prepareDataForPdf($data);
 
             // Generate PDF
@@ -282,23 +289,49 @@ class ReportGeneratorService
     }
 
     /**
-     * Prepare data structure for PDF views
+     * Prepare data structure for PDF views - FIXED VERSION
      */
     private function prepareDataForPdf(array $data): array
     {
-        // If data already has the correct structure, return it
+        Log::info('Preparing data for PDF', [
+            'data_structure' => array_keys($data),
+            'has_summary' => isset($data['summary']),
+            'has_data' => isset($data['data'])
+        ]);
+
+        // If data already has the correct structure from ReportController, return it directly
+        if (isset($data['total_net_salary']) && isset($data['payslip_details'])) {
+            Log::info('Using direct data structure from ReportController');
+            return $data;
+        }
+
+        // If data has summary and data sections (from ReportGeneratorService)
         if (isset($data['summary']) && isset($data['data'])) {
+            Log::info('Using summary/data structure from ReportGeneratorService', [
+                'summary_keys' => array_keys($data['summary'])
+            ]);
+            
             return [
                 'period_start' => $data['summary']['period_start'] ?? $data['filters']['start_date'] ?? now()->startOfMonth()->format('Y-m-d'),
                 'period_end' => $data['summary']['period_end'] ?? $data['filters']['end_date'] ?? now()->format('Y-m-d'),
                 'processed_employees' => $data['summary']['processed_employees'] ?? 0,
+                'total_gross_salary' => $data['summary']['total_gross_salary'] ?? 0,
                 'total_net_salary' => $data['summary']['total_net_salary'] ?? 0,
                 'average_net_salary' => $data['summary']['average_net_salary'] ?? 0,
                 'total_tax_amount' => $data['summary']['total_tax_amount'] ?? 0,
+                'total_paye' => $data['summary']['total_paye'] ?? 0,
+                'total_napsa' => $data['summary']['total_napsa'] ?? 0,
+                'total_nhima' => $data['summary']['total_nhima'] ?? 0,
+                'total_other_deductions' => $data['summary']['total_other_deductions'] ?? 0,
+                'total_all_deductions' => $data['summary']['total_all_deductions'] ?? 0,
                 'payslip_details' => $data['data'] ?? [],
                 'generated_at' => $data['generated_at'] ?? now(),
             ];
         }
+
+        Log::warning('Unknown data structure for PDF preparation', [
+            'data_keys' => array_keys($data)
+        ]);
 
         return $data;
     }

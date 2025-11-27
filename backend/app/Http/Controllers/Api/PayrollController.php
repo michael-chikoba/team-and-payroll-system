@@ -1,6 +1,7 @@
 <?php
-// app/Http/Controllers/Api/PayrollController.php
+
 namespace App\Http\Controllers\Api;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Payroll\ProcessPayrollRequest;
 use App\Http\Resources\PayrollResource;
@@ -12,13 +13,17 @@ use App\Models\TaxConfiguration;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+
 class PayrollController extends Controller
 {
     public function __construct(private PayrollCalculationService $payrollService) {}
+
     public function processPayroll(ProcessPayrollRequest $request): JsonResponse
     {
         $validated = $request->validated();
         $period = $validated['payroll_period'];
+        $adjustments = $validated['adjustments'] ?? [];
+
         // Find or create payroll
         $payroll = Payroll::firstOrCreate(
             ['payroll_period' => $period],
@@ -28,39 +33,55 @@ class PayrollController extends Controller
                 'status' => 'draft',
             ]
         );
+
         try {
             $employeeIds = $validated['employee_ids'] ?? [];
-           
+            
             if (empty($employeeIds)) {
                 $employeeIds = Employee::pluck('id')->toArray();
             }
+
             $processedCount = 0;
             foreach ($employeeIds as $empId) {
                 $employee = Employee::find($empId);
-               
+                
                 if (!$employee) {
                     continue;
                 }
+
+                // Get adjustments for this employee
+                $employeeAdjustments = $adjustments[$empId] ?? [];
+
                 // Check if payslip already exists
                 $payslip = Payslip::where('payroll_id', $payroll->id)
                     ->where('employee_id', $empId)
                     ->first();
+
                 if ($payslip) {
-                    // Update existing payslip to 'paid'
+                    // Update existing payslip to 'paid' and apply adjustments
+                    if (!empty($employeeAdjustments)) {
+                        $this->applyAdjustmentsToPayslip($payslip, $employeeAdjustments);
+                    }
                     $payslip->status = 'paid';
                     $payslip->save();
                 } else {
-                    // Create new payslip with 'paid' status
-                    $this->payrollService->createPayslip($employee, $payroll, 'paid');
+                    // Create new payslip with 'paid' status and adjustments
+                    if (!empty($employeeAdjustments)) {
+                        $this->payrollService->createPayslipWithAdjustments($employee, $payroll, 'paid', $employeeAdjustments);
+                    } else {
+                        $this->payrollService->createPayslip($employee, $payroll, 'paid');
+                    }
                 }
-               
+                
                 $processedCount++;
             }
+
             // Update totals and mark as completed
             $this->payrollService->updatePayrollTotals($payroll);
             $payroll->status = 'completed';
             $payroll->processed_at = now();
             $payroll->save();
+
             return response()->json([
                 'payroll' => new PayrollResource($payroll->fresh()),
                 'message' => "Successfully processed payroll for {$processedCount} employee(s)",
@@ -72,15 +93,48 @@ class PayrollController extends Controller
                 'payroll_id' => $payroll->id,
                 'period' => $period,
             ]);
+
             if ($payroll->status === 'draft') {
                 $payroll->update(['status' => 'failed']);
             }
-           
+            
             return response()->json([
                 'message' => 'Failed to process payroll: ' . $e->getMessage()
             ], 500);
         }
     }
+
+    /**
+     * Apply adjustments to existing payslip
+     */
+    private function applyAdjustmentsToPayslip(Payslip $payslip, array $adjustments): void
+    {
+        $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
+        $deductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
+        
+        // Update gross salary with bonuses
+        $payslip->gross_salary += $bonuses;
+        $payslip->bonuses += $bonuses;
+        
+        // Update other_deductions with additional deductions
+        $payslip->other_deductions += $deductions;
+        
+        // Recalculate total deductions and net pay
+        $payslip->total_deductions = $payslip->paye + $payslip->napsa + $payslip->nhima + $payslip->other_deductions;
+        $payslip->net_pay = $payslip->gross_salary - $payslip->total_deductions;
+        
+        // Store adjustments in breakdown
+        $breakdown = $payslip->breakdown ?? [];
+        $breakdown['adjustments'] = $adjustments;
+        $breakdown['adjustments_applied'] = [
+            'total_bonuses' => $bonuses,
+            'total_additional_deductions' => $deductions,
+            'net_effect' => $bonuses - $deductions
+        ];
+        
+        $payslip->breakdown = $breakdown;
+    }
+
     public function updateStatus(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -90,9 +144,16 @@ class PayrollController extends Controller
             'payroll_period' => 'required|string',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
+            'adjustments' => 'sometimes|array',
+            'adjustments.*.overtime_bonus' => 'sometimes|numeric|min:0',
+            'adjustments.*.other_bonuses' => 'sometimes|numeric|min:0',
+            'adjustments.*.loan_deductions' => 'sometimes|numeric|min:0',
+            'adjustments.*.advance_deductions' => 'sometimes|numeric|min:0',
         ]);
+
         $period = $validated['payroll_period'];
-       
+        $adjustments = $validated['adjustments'] ?? [];
+        
         // Find or create payroll for the period
         $payroll = Payroll::firstOrCreate(
             ['payroll_period' => $period],
@@ -102,33 +163,48 @@ class PayrollController extends Controller
                 'status' => 'draft',
             ]
         );
+
         $updatedCount = 0;
         $createdCount = 0;
+
         foreach ($validated['employee_ids'] as $empId) {
             $employee = Employee::find($empId);
-           
+            
             if (!$employee) {
                 continue;
             }
+
+            // Get adjustments for this employee
+            $employeeAdjustments = $adjustments[$empId] ?? [];
+
             // Find existing payslip
             $payslip = Payslip::where('payroll_id', $payroll->id)
                 ->where('employee_id', $empId)
                 ->first();
+
             if ($payslip) {
-                // Update existing payslip status
+                // Update existing payslip status and apply adjustments
+                if (!empty($employeeAdjustments)) {
+                    $this->applyAdjustmentsToPayslip($payslip, $employeeAdjustments);
+                }
                 $payslip->status = $validated['status'];
                 $payslip->save();
                 $updatedCount++;
             } else {
-                // Create new payslip with calculated values
-                $this->payrollService->createPayslip($employee, $payroll, $validated['status']);
+                // Create new payslip with calculated values and adjustments
+                if (!empty($employeeAdjustments)) {
+                    $this->payrollService->createPayslipWithAdjustments($employee, $payroll, $validated['status'], $employeeAdjustments);
+                } else {
+                    $this->payrollService->createPayslip($employee, $payroll, $validated['status']);
+                }
                 $createdCount++;
             }
         }
+
         // Update payroll totals
         if ($updatedCount > 0 || $createdCount > 0) {
             $this->payrollService->updatePayrollTotals($payroll);
-           
+            
             // Mark payroll as completed if it was draft
             if ($payroll->status === 'draft') {
                 $payroll->status = 'completed';
@@ -136,11 +212,13 @@ class PayrollController extends Controller
                 $payroll->save();
             }
         }
+
         $message = sprintf(
             'Successfully processed: %d updated, %d created.',
             $updatedCount,
             $createdCount
         );
+
         return response()->json([
             'message' => $message,
             'updated_count' => $updatedCount,
@@ -148,6 +226,7 @@ class PayrollController extends Controller
             'payroll_id' => $payroll->id,
         ]);
     }
+
     /**
      * Get payroll summary for employees in a period with pre-calculated values
      * This endpoint ensures all calculations are done backend-side
@@ -202,6 +281,8 @@ class PayrollController extends Controller
                 'email' => $employee->user?->email,
                 'position' => $employee->position ?? $employee->department ?? 'Unassigned',
                 'base_salary' => (float) ($employee->base_salary ?? 0),
+                'transport_allowance' => (float) ($employee->transport_allowance ?? 0),
+                'lunch_allowance' => (float) ($employee->lunch_allowance ?? 0),
                 'gross_salary' => (float) ($payslipData['summary']['gross_pay'] ?? 0),
                 'net_pay' => (float) ($payslipData['summary']['net_pay'] ?? 0),
                 'payroll_status' => $payrollStatus,
@@ -218,6 +299,7 @@ class PayrollController extends Controller
             'total_employees' => count($summaryData),
         ]);
     }
+
     /**
      * Format preview payslip data to match detailed format
      */
@@ -249,6 +331,7 @@ class PayrollController extends Controller
             'is_preview' => true,
         ];
     }
+
     /**
      * Get detailed view of employee payslip for a specific period
      */
@@ -257,8 +340,9 @@ class PayrollController extends Controller
         $validated = $request->validate([
             'payroll_period' => 'required|string',
         ]);
+
         $employee = Employee::with('user')->findOrFail($employeeId);
-       
+        
         // Find payroll for the period
         $payroll = Payroll::where('payroll_period', $validated['payroll_period'])->first();
         if (!$payroll) {
@@ -267,20 +351,23 @@ class PayrollController extends Controller
                 'data' => null
             ], 404);
         }
+
         // Find or generate payslip data
         $payslip = Payslip::where('payroll_id', $payroll->id)
             ->where('employee_id', $employeeId)
             ->first();
+
         if (!$payslip) {
             // Generate preview without saving
             $payslipData = $this->payrollService->generatePayslipPreview($employee, $payroll);
-           
+            
             return response()->json([
                 'message' => 'Payslip preview generated (not yet processed)',
                 'data' => $this->formatPreviewPayslip($payslipData, $employee, $payroll),
                 'is_preview' => true
             ]);
         }
+
         // Return actual payslip with full breakdown
         $formattedPayslip = $this->formatDetailedPayslip($payslip);
         return response()->json([
@@ -288,13 +375,14 @@ class PayrollController extends Controller
             'is_preview' => false
         ]);
     }
+
     /**
      * Format detailed payslip with full breakdown
      */
     private function formatDetailedPayslip(Payslip $payslip): array
     {
         $breakdown = $payslip->breakdown ?? [];
-       
+        
         return [
             'id' => $payslip->id,
             'employee' => [
@@ -340,21 +428,22 @@ class PayrollController extends Controller
             'created_at' => $payslip->created_at->format('Y-m-d H:i:s'),
         ];
     }
+
     public function history(Request $request): JsonResponse
     {
         $period = $request->query('payroll_period', Carbon::now()->format('Y-m'));
-       
+        
         // Get the payroll for this period
         $payroll = Payroll::where('payroll_period', $period)->first();
-       
+        
         $data = [];
-       
+        
         if ($payroll) {
             // Get all payslips for this payroll
             $payslips = Payslip::where('payroll_id', $payroll->id)
                 ->with(['employee.user', 'payroll'])
                 ->get();
-           
+            
             // Map payslips to response format
             $data = $payslips->map(function ($ps) {
                 return [
@@ -368,13 +457,14 @@ class PayrollController extends Controller
                 ];
             })->toArray();
         }
-       
+        
         return response()->json([
             'data' => $data,
             'payroll_period' => $period,
             'payroll_id' => $payroll->id ?? null,
         ]);
     }
+
     public function cycles(Request $request): JsonResponse
     {
         $cycles = Payroll::select('payroll_period')
@@ -382,16 +472,19 @@ class PayrollController extends Controller
             ->orderBy('payroll_period', 'desc')
             ->get()
             ->pluck('payroll_period');
+
         return response()->json([
             'cycles' => $cycles
         ]);
     }
+
     public function show(Payroll $payroll): PayrollResource
     {
         $payroll->load(['payslips.employee.user', 'payslips.payroll']);
         
         return new PayrollResource($payroll);
     }
+
     public function destroy(Payroll $payroll): JsonResponse
     {
         if ($payroll->status !== 'draft') {
@@ -399,7 +492,9 @@ class PayrollController extends Controller
                 'message' => 'Only draft payrolls can be deleted'
             ], 422);
         }
+
         $payroll->delete();
+
         return response()->json([
             'message' => 'Payroll deleted successfully'
         ]);
