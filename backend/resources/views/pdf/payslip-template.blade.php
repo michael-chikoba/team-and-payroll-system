@@ -186,6 +186,12 @@
                 <td class="label">Base Salary</td>
                 <td class="value">K{{ number_format($employee->base_salary ?? 0, 2) }}</td>
             </tr>
+            <tr>
+                <td class="label">Employment Type</td>
+                <td class="value">{{ ucfirst(str_replace('_', ' ', $employee->employment_type ?? 'N/A')) }}</td>
+                <td class="label"></td>
+                <td class="value"></td>
+            </tr>
         </table>
       
         <!-- Earnings & Deductions Table -->
@@ -223,16 +229,23 @@
                 <tr>
                     <td>Lunch Allowance</td>
                     <td class="amount">{{ number_format($payslip->other_allowances ?? 0, 2) }}</td>
-                    <td>Other Deductions</td>
-                    <td class="amount">{{ number_format($payslip->other_deductions ?? 0, 2) }}</td>
+                    <td>Pension </td>
+                    <td class="amount">{{ number_format($payslip->pension ?? 0, 2) }}</td>
                 </tr>
               
                 @if($payslip->overtime_hours > 0)
                 <tr>
                     <td>Overtime Pay ({{ $payslip->overtime_hours }} hrs @ K{{ number_format($payslip->overtime_rate ?? 0, 2) }})</td>
                     <td class="amount">{{ number_format($payslip->overtime_pay ?? 0, 2) }}</td>
+                    <td>Other Deductions</td>
+                    <td class="amount">{{ number_format($payslip->other_deductions ?? 0, 2) }}</td>
+                </tr>
+                @else
+                <tr>
                     <td></td>
                     <td class="amount"></td>
+                    <td>Other Deductions</td>
+                    <td class="amount">{{ number_format($payslip->other_deductions ?? 0, 2) }}</td>
                 </tr>
                 @endif
               
@@ -250,12 +263,19 @@
             NET PAY: K{{ number_format($payslip->net_pay ?? 0, 2) }}
         </div>
       
+        <!-- Deduction Notes (only show if pension is zero for full-time employees) -->
+        @if($employee->employment_type === 'full_time' && ($payslip->pension ?? 0) == 0)
+        <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 11px;">
+            <strong>Note:</strong> Pension contribution (5% of basic salary) applies to full-time employees only.
+        </div>
+        @endif
+      
         <!-- Footer -->
         <div class="footer">
             <p><strong>Generated on:</strong> {{ now()->format('d/m/Y H:i:s') }}</p>
             <p>This payslip is computer generated and does not require a signature.</p>
             <p>Confidential - For Employee Use Only</p>
-            <p><em>Castle Holdings Ltd - 54 Seble Road, Lusaka, Zambia</em></p>
+            <p><em>Castlebet - 117/CL/1 Kabulonga, Lusaka, Zambia</em></p>
         </div>
     </div>
 </body>

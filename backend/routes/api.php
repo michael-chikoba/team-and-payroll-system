@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\AdminController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\TaskCommentController;
+use App\Http\Controllers\Api\Business\BusinessController;
 /*
 |--------------------------------------------------------------------------
 | Public Routes (No Authentication Required)
@@ -23,7 +24,11 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 
-      
+   
+// CSRF Cookie route (must be public)
+Route::get('/sanctum/csrf-cookie', function (Request $request) {
+    return response()->json(['message' => 'CSRF cookie set']);
+});
 /*
 |--------------------------------------------------------------------------
 | Protected Routes (Authentication Required)
@@ -155,8 +160,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
             Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
         });
-      Route::get('/countries', [EmployeeController::class, 'countries']);
-
+       Route::get('/countries', [EmployeeController::class, 'countries']);
+       Route::get('/departments', [EmployeeController::class, 'departments']);
         // Report Generation
         Route::post('generate/attendance', [ReportController::class, 'generateAttendanceReport']);
         Route::post('generate/leave', [ReportController::class, 'generateLeaveReport']);
@@ -249,4 +254,39 @@ Route::post('/profile/password', [EmployeeController::class, 'updatePassword']);
         Route::get('/documents/{id}/download', [EmployeeController::class, 'downloadDocument']); // Download document
         Route::post('/profile-pic', [EmployeeController::class, 'uploadProfilePic']); // Upload profile picture
     });
+});
+
+
+
+/*
+|--------------------------------------------------------------------------
+| Country Management Routes (Admin Only)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
+    // Country CRUD operations
+    Route::prefix('countries')->group(function () {
+        Route::get('/', [App\Http\Controllers\Api\CountryController::class, 'index']);
+        Route::post('/', [App\Http\Controllers\Api\CountryController::class, 'store']);
+        Route::get('/{country}', [App\Http\Controllers\Api\CountryController::class, 'show']);
+        Route::put('/{country}', [App\Http\Controllers\Api\CountryController::class, 'update']);
+        Route::delete('/{country}', [App\Http\Controllers\Api\CountryController::class, 'destroy']);
+        
+        // Additional country operations
+        Route::post('/{country}/toggle-status', [App\Http\Controllers\Api\CountryController::class, 'toggleStatus']);
+        Route::get('/{country}/statistics', [App\Http\Controllers\Api\CountryController::class, 'statistics']);
+    });
+    // Business Routes
+
+    //Route::get('/countries', [BusinessController::class, 'getCountries']);
+    
+    Route::prefix('businesses')->group(function () {
+        Route::get('/', [BusinessController::class, 'index']);
+        Route::post('/', [BusinessController::class, 'store']);
+        Route::get('/{business}', [BusinessController::class, 'show']);
+        Route::put('/{business}', [BusinessController::class, 'update']);
+        Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
+        Route::delete('/{business}', [BusinessController::class, 'destroy']);
+    });
+
 });

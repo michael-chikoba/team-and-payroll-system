@@ -170,21 +170,13 @@ class PayslipGeneratorService
     public function generateForPayroll(Payroll $payroll): void
     {
         $payslips = $payroll->payslips()->whereNull('pdf_path')->get();
-        
-        // Log::info('PayslipGeneratorService: Bulk generation started for payroll', [
-        //     'payroll_id' => $payroll->id,
-        //     'payslips_count' => $payslips->count(),
-        //     'payroll_period' => $payroll->payroll_period ?? null,
-        // ]);
+      
         
         foreach ($payslips as $payslip) {
             GeneratePayslipPdf::dispatch($payslip);
         }
         
-        // Log::info('PayslipGeneratorService: Bulk generation jobs dispatched', [
-        //     'payroll_id' => $payroll->id,
-        //     'jobs_dispatched' => $payslips->count(),
-        // ]);
+      
     }
     
     public function bulkDownload(Payroll $payroll): string

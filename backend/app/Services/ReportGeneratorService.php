@@ -13,13 +13,13 @@ use Illuminate\Support\Facades\Log;
 
 class ReportGeneratorService
 {
-    /**
-     * Generate payroll report data with other deductions
+     /**
+     * Generate payroll report data with business and country filters
      */
-    public function generatePayrollReport(array $filters = [])
+ public function generatePayrollReport(array $filters = [])
     {
         // Query payslips directly
-        $query = Payslip::with(['employee.user']);
+        $query = Payslip::with(['employee.user', 'employee.business']);
 
         if (isset($filters['start_date'])) {
             $query->where('pay_period_start', '>=', $filters['start_date']);
@@ -33,10 +33,26 @@ class ReportGeneratorService
             $query->where('status', $filters['status']);
         }
 
-        // Only filter by department if a specific department is provided (not null or empty)
+        // Apply department filter
         if (isset($filters['department']) && !empty($filters['department'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
                 $q->where('department', $filters['department']);
+            });
+        }
+
+        // Apply business filter
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('business_id', $filters['business_id']);
+            });
+        }
+
+        // Apply country filter
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $query->whereHas('employee.business', function ($q) use ($filters) {
+                $q->where('country', $filters['country']);
+            })->orWhereHas('employee', function ($q) use ($filters) {
+                $q->where('country', $filters['country']);
             });
         }
 
@@ -79,7 +95,7 @@ class ReportGeneratorService
             }
         }
 
-        // Format payslip details with other deductions
+        // Format payslip details with business/country info
         $payslipDetails = $payslips->map(function ($payslip) {
             return [
                 'employee_id' => $payslip->employee_id,
@@ -87,6 +103,8 @@ class ReportGeneratorService
                     ? ($payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name) 
                     : 'N/A',
                 'department' => $payslip->employee->department ?? 'Unassigned',
+                'business' => $payslip->employee->business ? $payslip->employee->business->name : 'No Business',
+                'country' => $payslip->employee->country ?? $payslip->employee->business->country ?? 'N/A',
                 'gross_salary' => $payslip->gross_salary ?? 0,
                 'deductions' => $payslip->total_deductions ?? 0,
                 'net_salary' => $payslip->net_pay ?? 0,
@@ -104,6 +122,16 @@ class ReportGeneratorService
                 'status' => $payslip->status ?? 'N/A',
             ];
         })->toArray();
+
+        // Add filter info to summary
+        $filterInfo = [];
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $business = Business::find($filters['business_id']);
+            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+        }
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $filterInfo['country'] = $filters['country'];
+        }
 
         return [
             'data' => $payslipDetails,
@@ -123,6 +151,7 @@ class ReportGeneratorService
                 'total_other_deductions' => $totalOtherDeductions,
                 'total_all_deductions' => $totalAllDeductions,
                 'department_breakdown' => !empty($departmentBreakdown) ? $departmentBreakdown : null,
+                'filters' => $filterInfo,
             ],
             'filters' => $filters,
             'generated_at' => now(),
@@ -130,11 +159,11 @@ class ReportGeneratorService
     }
 
     /**
-     * Generate attendance report
+     * Generate attendance report with business and country filters
      */
     public function generateAttendanceReport(array $filters = [])
     {
-        $query = Attendance::with('employee.user');
+        $query = Attendance::with(['employee.user', 'employee.business']);
 
         if (isset($filters['employee_id'])) {
             $query->where('employee_id', $filters['employee_id']);
@@ -158,6 +187,22 @@ class ReportGeneratorService
             });
         }
 
+        // Apply business filter
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('business_id', $filters['business_id']);
+            });
+        }
+
+        // Apply country filter
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $query->whereHas('employee.business', function ($q) use ($filters) {
+                $q->where('country', $filters['country']);
+            })->orWhereHas('employee', function ($q) use ($filters) {
+                $q->where('country', $filters['country']);
+            });
+        }
+
         $attendances = $query->orderBy('date', 'desc')->get();
 
         $summary = [
@@ -176,6 +221,9 @@ class ReportGeneratorService
                 'employee_name' => $attendance->employee->user 
                     ? ($attendance->employee->user->first_name . ' ' . $attendance->employee->user->last_name)
                     : 'N/A',
+                'department' => $attendance->employee->department ?? 'N/A',
+                'business' => $attendance->employee->business ? $attendance->employee->business->name : 'No Business',
+                'country' => $attendance->employee->country ?? $attendance->employee->business->country ?? 'N/A',
                 'date' => Carbon::parse($attendance->date)->format('M d, Y'),
                 'clock_in' => $attendance->clock_in ? Carbon::parse($attendance->clock_in)->format('H:i A') : 'N/A',
                 'clock_out' => $attendance->clock_out ? Carbon::parse($attendance->clock_out)->format('H:i A') : 'N/A',
@@ -184,14 +232,23 @@ class ReportGeneratorService
             ];
         })->toArray();
 
+        // Add filter info
+        $filterInfo = [];
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $business = Business::find($filters['business_id']);
+            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+        }
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $filterInfo['country'] = $filters['country'];
+        }
+
         return [
             'data' => $attendanceData,
             'summary' => $summary,
-            'filters' => $filters,
+            'filters' => array_merge($filters, $filterInfo),
             'generated_at' => now(),
         ];
     }
-
     /**
      * Generate leave report
      */

@@ -1,3 +1,4 @@
+<!-- layouts/AdminLayout.vue -->
 <template>
   <div class="admin-layout">
     <!-- Header -->
@@ -14,6 +15,7 @@
             <button class="profile-trigger" @click="toggleProfileDropdown">
               <span class="user-avatar">{{ getUserInitials }}</span>
               <span class="user-name">{{ user?.name || 'Admin User' }}</span>
+              <span class="user-email">{{ user?.email }}</span>
               <span class="dropdown-arrow">▼</span>
             </button>
             <!-- Profile dropdown menu -->
@@ -65,6 +67,17 @@
             <span class="nav-text">Employees</span>
           </router-link>
          
+          <!-- Add Employees - Only show for specific user -->
+          <router-link 
+            v-if="canAccessAddEmployees"
+            to="/admin/employ" 
+            class="nav-item"
+          >
+            <span class="nav-icon">➕</span>
+            <span class="nav-text">Add Employees</span>
+            <span class="super-admin-badge">Super Admin</span>
+          </router-link>
+         
           <router-link to="/admin/payroll" class="nav-item">
             <span class="nav-icon">💰</span>
             <span class="nav-text">Payroll</span>
@@ -100,9 +113,31 @@
             <span class="nav-text">Audit Logs</span>
           </router-link>
          
+          <!-- Country Management - Only show for specific user -->
+          <router-link 
+            v-if="canAccessCountryManagement"
+            to="/admin/countries" 
+            class="nav-item"
+          >
+            <span class="nav-icon">🌍</span>
+            <span class="nav-text">Countries</span>
+            <span class="super-admin-badge">Super Admin</span>
+          </router-link>
+         
           <router-link to="/admin/settings" class="nav-item">
             <span class="nav-icon">⚙️</span>
             <span class="nav-text">Settings</span>
+          </router-link>
+         
+          <!-- Business Management - Only show for specific user -->
+          <router-link 
+            v-if="canAccessBusinessManagement"
+            to="/admin/businesses" 
+            class="nav-item business-management-item"
+          >
+            <span class="nav-icon">🏢</span>
+            <span class="nav-text">Business Management</span>
+            <span class="super-admin-badge">Super Admin</span>
           </router-link>
         </nav>
       </aside>
@@ -159,6 +194,18 @@ export default {
         .join('')
         .toUpperCase()
         .substring(0, 2)
+    },
+    // Check if current user can access business management
+    canAccessBusinessManagement() {
+      return this.user?.email === 'michaelchikoba0@gmail.com'
+    },
+    // Check if current user can access add employees
+    canAccessAddEmployees() {
+      return this.user?.email === 'michaelchikoba0@gmail.com'
+    },
+    // Check if current user can access country management
+    canAccessCountryManagement() {
+      return this.user?.email === 'michaelchikoba0@gmail.com'
     }
   },
   methods: {
@@ -176,8 +223,10 @@ export default {
     }
   },
   mounted() {
-    console.log('AdminLayout mounted - current route:', this.$route.path)
-    console.log('Current user:', this.user)
+    console.log('AdminLayout mounted - current user:', this.user?.email)
+    console.log('Business Management access:', this.canAccessBusinessManagement)
+    console.log('Add Employees access:', this.canAccessAddEmployees)
+    console.log('Country Management access:', this.canAccessCountryManagement)
     // Add click outside listener
     document.addEventListener('click', this.handleClickOutside)
   },
@@ -189,6 +238,40 @@ export default {
 </script>
 
 <style scoped>
+/* Add these styles to your existing AdminLayout styles */
+
+.user-email {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin-left: 0.5rem;
+}
+
+.business-management-item,
+.nav-item:has(.super-admin-badge) {
+  position: relative;
+}
+
+.super-admin-badge {
+  margin-left: auto;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Enhanced navigation item styles for better visual hierarchy */
+.nav-item {
+  position: relative;
+}
+
+.nav-item.router-link-active .super-admin-badge {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+}
+
 .admin-layout {
   min-height: 100vh;
   display: flex;

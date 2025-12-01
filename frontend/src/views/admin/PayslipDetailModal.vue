@@ -154,7 +154,7 @@
 
               <div class="calc-row indent">
 
-                <span class="calc-label">Housing Allowance (25%)</span>
+                <span class="calc-label">Housing Allowance </span>
 
                 <span class="calc-value">{{ formatCurrency(payslip.earnings?.house_allowance) }}</span>
 
@@ -214,56 +214,53 @@
 
           <!-- Deductions Breakdown -->
 
-          <section class="section deductions-section">
-
-            <h3>Deductions Breakdown</h3>
-
-            <div class="calculation-table">
-
-              <div class="calc-row">
-
-                <span class="calc-label">PAYE</span>
-
-                <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.paye) }}</span>
-
-              </div>
-
-              <div class="calc-row">
-
-                <span class="calc-label">NAPSA</span>
-
-                <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.napsa) }}</span>
-
-              </div>
-
-              <div class="calc-row">
-
-                <span class="calc-label">NHIMA</span>
-
-                <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.nhima) }}</span>
-
-              </div>
-
-              <div v-if="payslip.deductions?.other_deductions > 0" class="calc-row">
-
-                <span class="calc-label">Other Deductions</span>
-
-                <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.other_deductions) }}</span>
-
-              </div>
-
-              <div class="calc-row total">
-
-                <span class="calc-label">Total Deductions</span>
-
-                <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.total_deductions) }}</span>
-
-              </div>
-
-            </div>
-
-          </section>
-
+          <!-- Deductions Breakdown Section - UPDATED WITH PENSION -->
+<section class="section deductions-section">
+  <h3>Deductions Breakdown</h3>
+  <div class="calculation-table">
+    <div class="calc-row">
+      <span class="calc-label">PAYE</span>
+      <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.paye) }}</span>
+    </div>
+    
+    <div class="calc-row">
+      <span class="calc-label">NAPSA</span>
+      <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.napsa) }}</span>
+    </div>
+    
+    <div class="calc-row">
+      <span class="calc-label">NHIMA</span>
+      <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.nhima) }}</span>
+    </div>
+    
+    <!-- ADDED PENSION ROW -->
+    <div class="calc-row">
+      <span class="calc-label">
+        Pension 
+        <span v-if="payslip.employee?.employment_type !== 'full_time'" class="pension-note">
+          (Full-time only)
+        </span>
+      </span>
+      <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.pension || 0) }}</span>
+    </div>
+    
+    <div v-if="payslip.deductions?.other_deductions > 0" class="calc-row">
+      <span class="calc-label">Other Deductions</span>
+      <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.other_deductions) }}</span>
+    </div>
+    
+    <div class="calc-row total">
+      <span class="calc-label">Total Deductions</span>
+      <span class="calc-value negative">-{{ formatCurrency(payslip.deductions?.total_deductions) }}</span>
+    </div>
+  </div>
+  
+  <!-- ADDED: Pension eligibility note -->
+  <div v-if="payslip.employee?.employment_type === 'full_time' && (payslip.deductions?.pension || 0) === 0" 
+       class="pension-warning">
+    <small>⚠️ Note: Pension deduction applies to full-time employees but was not calculated for this payslip.</small>
+  </div>
+</section>
           <!-- Net Pay Summary -->
 
           <section class="section summary-section">
@@ -1141,5 +1138,32 @@ export default {
   }
 
 }
+/* Add these styles to the PayslipDetailModal component */
 
+.pension-note {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-style: italic;
+  font-weight: normal;
+}
+
+.pension-warning {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background-color: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+}
+
+.pension-warning small {
+  color: #92400e;
+  font-size: 0.875rem;
+  display: block;
+}
+
+.calc-row .calc-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 </style>

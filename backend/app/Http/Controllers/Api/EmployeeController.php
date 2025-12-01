@@ -8,6 +8,9 @@ use App\Models\Employee;
 use App\Models\Manager;
 use App\Models\Document;
 use App\Models\User;
+use App\Models\SystemSetting;
+use App\Models\Country; // Added missing import
+use App\Models\LeaveBalance; // Added missing import
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Http\JsonResponse;
@@ -20,45 +23,228 @@ use Illuminate\Validation\ValidationException;
 
 class EmployeeController extends Controller
 {
-    public function index(): AnonymousResourceCollection
+
+ 
+     public function index(Request $request): AnonymousResourceCollection
     {
         try {
             $startTime = microtime(true);
-            $employees = Employee::with(['user', 'manager'])->get();
-            Log::info('Raw employees data', [
-                'sample' => $employees->first() ? $employees->first()->toArray() : 'no data'
+            
+            $employees = $this->getBusinessScopedEmployees($request)->get();
+            
+            Log::info('EMPLOYEE_CONTROLLER: Raw employees data', [
+                'count' => $employees->count(),
+                'business_filter' => $request->query('business_id'),
+                'sample' => $employees->first() ? [
+                    'id' => $employees->first()->id,
+                    'business_id' => $employees->first()->business_id,
+                    'user_id' => $employees->first()->user_id,
+                ] : 'no data'
             ]);
+            
             $resourceCollection = EmployeeResource::collection($employees);
-            Log::info('Transformed employees data', [
-                'sample' => $employees->first() ? (new EmployeeResource($employees->first()))->toArray(request()) : 'no data'
-            ]);
+            
             $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+            
             Log::info('EMPLOYEE_CONTROLLER: Employees fetched successfully', [
                 'count' => $employees->count(),
                 'execution_time_ms' => $executionTime,
+                'user_id' => $request->user()->id,
+                'user_role' => $request->user()->role,
+                'user_business_id' => $request->user()->current_business_id,
+                'requested_business_id' => $request->query('business_id'),
             ]);
+            
             return $resourceCollection;
         } catch (\Exception $e) {
             Log::error('EMPLOYEE_CONTROLLER: Failed to fetch employees', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()->id ?? null,
             ]);
             throw $e;
         }
     }
+    /**
+     * Get business-scoped employees query - IMPROVED LOGIC
+     */
+  private function getBusinessScopedEmployees(Request $request)
+    {
+        $user = $request->user();
+        $requestedBusinessId = $request->query('business_id');
+        $query = Employee::with(['user', 'manager', 'business', 'country']);
 
+        Log::info('EMPLOYEE_CONTROLLER: Getting business scoped employees', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'requested_business_id' => $requestedBusinessId,
+        ]);
+
+        // If user is admin
+        if ($user->role === 'admin') {
+            // If a specific business is requested via query parameter, filter by that
+            if ($requestedBusinessId) {
+                $businessId = (int)$requestedBusinessId;
+                
+                // Verify admin has access to this business
+                if ($user->current_business_id && $user->current_business_id !== $businessId) {
+                    // Admin has a current business set but is trying to access a different one
+                    // Check if they manage this business
+                    if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+                        Log::warning('EMPLOYEE_CONTROLLER: Admin attempting to access unauthorized business', [
+                            'admin_id' => $user->id,
+                            'admin_business_id' => $user->current_business_id,
+                            'requested_business_id' => $businessId,
+                        ]);
+                        // Return empty result
+                        $query->where('business_id', 0);
+                        return $query;
+                    }
+                }
+                
+                $query->where('business_id', $businessId);
+                
+                Log::info('EMPLOYEE_CONTROLLER: Admin filtering by requested business', [
+                    'admin_id' => $user->id,
+                    'business_id' => $businessId,
+                ]);
+            }
+            // If admin has a current business, show only employees in that business
+            elseif ($user->current_business_id) {
+                $query->where('business_id', $user->current_business_id);
+                
+                Log::info('EMPLOYEE_CONTROLLER: Admin filtering by current business', [
+                    'admin_id' => $user->id,
+                    'business_id' => $user->current_business_id,
+                ]);
+            } 
+            // If admin doesn't have a current business BUT is a business admin (has business associations)
+            elseif ($user->businesses()->exists()) {
+                // Get all businesses this admin manages
+                $businessIds = $user->businesses()->pluck('businesses.id');
+                $query->whereIn('business_id', $businessIds);
+                
+                Log::info('EMPLOYEE_CONTROLLER: Admin filtering by managed businesses', [
+                    'admin_id' => $user->id,
+                    'business_ids' => $businessIds,
+                ]);
+            }
+            // If admin has no business association at all (super admin), show ALL employees
+            else {
+                // Don't apply any filter - show all employees
+                Log::info('EMPLOYEE_CONTROLLER: Super admin - showing all employees', [
+                    'admin_id' => $user->id,
+                ]);
+            }
+        }
+        // For managers, show their team within the same business
+        elseif ($user->role === 'manager') {
+            $managerEmployee = Employee::where('user_id', $user->id)->first();
+            
+            if ($managerEmployee && $managerEmployee->business_id) {
+                $query->where('business_id', $managerEmployee->business_id)
+                      ->where('manager_id', $user->id);
+                      
+                Log::info('EMPLOYEE_CONTROLLER: Manager filtering by business and team', [
+                    'manager_id' => $user->id,
+                    'business_id' => $managerEmployee->business_id,
+                ]);
+            } elseif ($managerEmployee) {
+                $query->whereNull('business_id')
+                      ->where('manager_id', $user->id);
+                      
+                Log::info('EMPLOYEE_CONTROLLER: Manager without business filtering team', [
+                    'manager_id' => $user->id,
+                ]);
+            } else {
+                $query->where('id', 0); // No employee record for this manager
+                
+                Log::info('EMPLOYEE_CONTROLLER: Manager has no employee record', [
+                    'manager_id' => $user->id,
+                ]);
+            }
+        }
+        // For regular employees, they should only see their own record
+        elseif ($user->role === 'employee') {
+            $query->where('user_id', $user->id);
+            
+            Log::info('EMPLOYEE_CONTROLLER: Employee viewing own record', [
+                'employee_user_id' => $user->id,
+            ]);
+        }
+
+        return $query;
+    }
+public function managers(Request $request): JsonResponse
+{
+    try {
+        $currentUser = $request->user();
+        $requestedBusinessId = $request->query('business_id');
+        
+        // Start with employees who are managers/admins, then get their user info
+         $query = Employee::select(['employees.*', 'users.first_name', 'users.last_name', 'users.email', 'users.role'])
+            ->join('users', 'employees.user_id', '=', 'users.id')
+            ->whereIn('users.role', ['manager', 'admin'])
+            ->whereHas('user', function($q) {
+                $q->whereIn('role', ['manager', 'admin']);
+            })
+            ->with(['country']);
+        
+        // Apply business scoping based on requested business or user's business
+        $filterBusinessId = $requestedBusinessId ?: $currentUser->current_business_id;
+        
+        if ($filterBusinessId) {
+            $query->where('employees.business_id', $filterBusinessId);
+        } 
+        // If admin doesn't have current business but manages businesses
+        elseif ($currentUser->role === 'admin' && $currentUser->businesses()->exists()) {
+            $managedBusinessIds = $currentUser->businesses()->pluck('businesses.id');
+            $query->whereIn('employees.business_id', $managedBusinessIds);
+        }
+        
+        $managers = $query->get()->map(function ($employee) {
+            return [
+                'id' => $employee->user_id,
+                'first_name' => $employee->user->first_name,
+                'last_name' => $employee->user->last_name,
+                'email' => $employee->user->email,
+                'department' => $employee->department,
+                'position' => $employee->position,
+                'business_id' => $employee->business_id
+            ];
+        });
+        
+        Log::info('EMPLOYEE_CONTROLLER: Managers fetched', [
+            'count' => $managers->count(),
+            'user_business_id' => $currentUser->current_business_id,
+            'requested_business_id' => $requestedBusinessId,
+        ]);
+        
+        return response()->json($managers);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to fetch managers', [
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'message' => 'Failed to fetch managers list'
+        ], 500);
+    }
+}
     /**
      * Get all available countries
      */
-    public function countries(): JsonResponse
+  public function countries(): JsonResponse
     {
         try {
             $countries = Country::where('is_active', true)
                 ->orderBy('name')
-                ->get(['id', 'code', 'name', 'currency_code', 'currency_symbol', 'phone_code']);
+                ->get(['id', 'code', 'name', 'currency_code', 'currency_symbol', 'phone_code', 'flag']);
+                
             Log::info('EMPLOYEE_CONTROLLER: Countries fetched', [
                 'count' => $countries->count(),
             ]);
+            
             return response()->json([
                 'data' => $countries
             ]);
@@ -72,125 +258,234 @@ class EmployeeController extends Controller
         }
     }
 
-    public function store(Request $request): JsonResponse
+    /**
+     * Get all businesses for admin
+     */
+    public function businesses(): JsonResponse
     {
         try {
-            $validated = $request->validate([
-                'first_name' => 'required|string|max:255',
-                'last_name' => 'required|string|max:255',
-                'email' => 'required|email|unique:users,email',
-                'role' => 'required|in:employee,manager,admin',
-                'position' => 'required|string|max:255',
-                'department' => 'required|string|max:255',
-                'base_salary' => 'required|numeric|min:0',
-                'transport_allowance' => 'required|numeric|min:0',
-                'lunch_allowance' => 'required|numeric|min:0',
-                'hire_date' => 'required|date',
-                'employment_type' => 'required|in:full_time,part_time,contract',
-                'manager_id' => 'nullable|exists:users,id',
-            ]);
-            Log::info('EMPLOYEE_CONTROLLER: Employee validation passed', [
-                'email' => $validated['email'],
-                'role' => $validated['role'],
-            ]);
-            DB::beginTransaction();
-            // Create user
-            $user = User::create([
-                'first_name' => $validated['first_name'],
-                'last_name' => $validated['last_name'],
-                'email' => $validated['email'],
-                'password' => Hash::make('Password123!'),
-                'role' => $validated['role'],
-            ]);
-            Log::info('EMPLOYEE_CONTROLLER: User created', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'role' => $user->role,
-            ]);
-            // Generate unique employee ID
-            $lastEmployee = Employee::latest('id')->first();
-            $nextNumber = $lastEmployee ? (intval(substr($lastEmployee->employee_id, 3)) + 1) : 1;
-            $employeeId = 'EMP' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
-            // Create employee record for all roles
-            $employee = Employee::create([
-                'user_id' => $user->id,
-                'manager_id' => $validated['role'] !== 'manager' && $validated['role'] !== 'admin'
-                    ? $validated['manager_id']
-                    : null,
-                'employee_id' => $employeeId,
-                'position' => $validated['position'],
-                'department' => $validated['department'],
-                'base_salary' => $validated['base_salary'],
-                'transport_allowance' => $validated['transport_allowance'],
-                'lunch_allowance' => $validated['lunch_allowance'],
-                'hire_date' => $validated['hire_date'],
-                'employment_type' => $validated['employment_type'],
-            ]);
-            // Handle manager record creation
-            if ($validated['role'] === 'manager' || $validated['role'] === 'admin') {
-                // Check if manager record already exists for this user
-                $existingManager = Manager::where('user_id', $user->id)->first();
-                if (!$existingManager) {
-                    Manager::create([
-                        'user_id' => $user->id,
-                        'department' => $validated['department'],
-                        'max_team_size' => 10,
-                        'permissions' => json_encode([]),
-                    ]);
-                    Log::info('EMPLOYEE_CONTROLLER: Manager record created', [
-                        'user_id' => $user->id,
-                        'department' => $validated['department']
-                    ]);
-                } else {
-                    Log::info('EMPLOYEE_CONTROLLER: Manager record already exists', [
-                        'user_id' => $user->id
-                    ]);
+            $user = request()->user();
+            $businesses = [];
+            
+            if ($user->role === 'admin') {
+                // If user has businesses they manage
+                if ($user->businesses()->exists()) {
+                    $businesses = $user->businesses()
+                        ->where('status', 'active')
+                        ->orderBy('name')
+                        ->get(['id', 'name', 'industry', 'currency_code']);
+                } 
+                // If super admin, show all businesses
+                else {
+                    $businesses = \App\Models\Business::where('status', 'active')
+                        ->orderBy('name')
+                        ->get(['id', 'name', 'industry', 'currency_code']);
                 }
             }
-            DB::commit();
-            Log::info('EMPLOYEE_CONTROLLER: Employee created successfully', [
-                'employee_id' => $employee->id,
-                'employee_number' => $employeeId,
-                'role' => $validated['role'],
+            
+            Log::info('EMPLOYEE_CONTROLLER: Businesses fetched', [
+                'count' => $businesses->count(),
+                'user_id' => $user->id,
+                'user_role' => $user->role,
             ]);
-            $employee->load(['user', 'manager']);
+            
             return response()->json([
-                'employee' => new EmployeeResource($employee),
-                'message' => 'Employee created successfully. Default password is: Password123!'
-            ], 201);
-        } catch (ValidationException $e) {
-            DB::rollBack();
-            Log::warning('EMPLOYEE_CONTROLLER: Employee validation failed', [
-                'errors' => $e->errors(),
+                'data' => $businesses
             ]);
-            throw $e;
-        } catch (\Illuminate\Database\QueryException $e) {
-            DB::rollBack();
-            Log::error('EMPLOYEE_CONTROLLER: Database error during employee creation', [
-                'error_code' => $e->getCode(),
-                'error_message' => $e->getMessage(),
-                'sql_state' => $e->errorInfo[0] ?? 'unknown',
-            ]);
-            return response()->json([
-                'message' => 'Database error occurred. This might be due to a duplicate entry. Please check if the manager for this department already exists.',
-                'details' => config('app.debug') ? $e->getMessage() : null
-            ], 500);
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('EMPLOYEE_CONTROLLER: Unexpected error during employee creation', [
+            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch businesses', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             return response()->json([
-                'message' => 'An unexpected error occurred while creating employee. Please try again.'
+                'message' => 'Failed to fetch businesses'
             ], 500);
         }
     }
 
-    public function show(Employee $employee): EmployeeResource
+    public function store(Request $request): JsonResponse
+{
+    try {
+        $validated = $request->validate([
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'role' => 'required|in:employee,manager,admin',
+            'position' => 'required|string|max:255',
+            'department' => 'required|string|max:255',
+            'base_salary' => 'required|numeric|min:0',
+            'transport_allowance' => 'required|numeric|min:0',
+            'lunch_allowance' => 'required|numeric|min:0',
+            'hire_date' => 'required|date',
+            'employment_type' => 'required|in:full_time,part_time,contract',
+            'manager_id' => 'nullable|exists:users,id',
+            'business_id' => 'required|exists:businesses,id',
+            'country_id' => 'required|exists:countries,id',
+        ]);
+        
+        $currentUser = $request->user();
+        
+        Log::info('EMPLOYEE_CONTROLLER: Employee validation passed', [
+            'email' => $validated['email'],
+            'role' => $validated['role'],
+            'business_id' => $validated['business_id'],
+            'country_id' => $validated['country_id'],
+            'created_by' => $currentUser->id,
+        ]);
+        
+        DB::beginTransaction();
+        
+        // GET DEFAULT PASSWORD FROM SYSTEM SETTINGS
+        $defaultPasswordSetting = SystemSetting::where('key', 'default_password')->first();
+        $defaultPassword = $defaultPasswordSetting ? $defaultPasswordSetting->value : 'Password123!';
+        
+        Log::info('EMPLOYEE_CONTROLLER: Using default password', [
+            'password_source' => $defaultPasswordSetting ? 'system_settings' : 'fallback',
+            'default_password' => $defaultPassword,
+        ]);
+        
+        // Create user
+        $user = User::create([
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'email' => $validated['email'],
+            'password' => Hash::make($defaultPassword),
+            'role' => $validated['role'],
+            'current_business_id' => $validated['business_id'],
+        ]);
+        
+        Log::info('EMPLOYEE_CONTROLLER: User created', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+            'business_id' => $validated['business_id'],
+            'password_set' => $defaultPassword,
+        ]);
+        
+        // Generate unique employee ID scoped to business
+        $lastEmployee = Employee::where('business_id', $validated['business_id'])
+            ->latest('id')
+            ->first();
+        
+        $nextNumber = $lastEmployee ? (intval(substr($lastEmployee->employee_id, 3)) + 1) : 1;
+        $employeeId = 'EMP' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
+        
+        // Validate manager is in same business if provided
+        if (isset($validated['manager_id'])) {
+            $managerEmployee = Employee::where('user_id', $validated['manager_id'])->first();
+            
+            if ($managerEmployee && $managerEmployee->business_id !== (int)$validated['business_id']) {
+                throw new \Exception('Manager must be in the same business');
+            }
+        }
+        
+        // Create employee record
+        $employee = Employee::create([
+            'user_id' => $user->id,
+            'business_id' => $validated['business_id'],
+            'country_id' => $validated['country_id'],
+            'manager_id' => ($validated['role'] === 'employee') ? $validated['manager_id'] : null,
+            'employee_id' => $employeeId,
+            'position' => $validated['position'],
+            'department' => $validated['department'],
+            'base_salary' => $validated['base_salary'],
+            'transport_allowance' => $validated['transport_allowance'],
+            'lunch_allowance' => $validated['lunch_allowance'],
+            'hire_date' => $validated['hire_date'],
+            'employment_type' => $validated['employment_type'],
+        ]);
+        
+        // Handle manager record creation (with business_id and country_id)
+        if ($validated['role'] === 'manager' || $validated['role'] === 'admin') {
+            Manager::create([
+                'user_id' => $user->id,
+                'department' => $validated['department'],
+                'max_team_size' => 10,
+                'permissions' => json_encode([]),
+                'business_id' => $validated['business_id'],
+                'country_id' => $validated['country_id'],
+            ]);
+            
+            Log::info('EMPLOYEE_CONTROLLER: Manager record created', [
+                'user_id' => $user->id,
+                'department' => $validated['department'],
+                'business_id' => $validated['business_id'],
+                'country_id' => $validated['country_id']
+            ]);
+        }
+        
+        DB::commit();
+        
+        Log::info('EMPLOYEE_CONTROLLER: Employee created successfully', [
+            'employee_id' => $employee->id,
+            'employee_number' => $employeeId,
+            'role' => $validated['role'],
+            'business_id' => $validated['business_id'],
+            'country_id' => $validated['country_id'],
+            'default_password' => $defaultPassword,
+        ]);
+        
+        $employee->load(['user', 'manager', 'business', 'country']);
+        
+        return response()->json([
+            'employee' => new EmployeeResource($employee),
+            'message' => 'Employee created successfully.',
+            'credentials' => [
+                'email' => $user->email,
+                'password' => $defaultPassword,
+                'note' => 'Use these credentials to login. Please change password after first login.'
+            ]
+        ], 201);
+    } catch (ValidationException $e) {
+        DB::rollBack();
+        Log::warning('EMPLOYEE_CONTROLLER: Employee validation failed', [
+            'errors' => $e->errors(),
+        ]);
+        throw $e;
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('EMPLOYEE_CONTROLLER: Failed to create employee', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
+
+    public function show(Request $request, Employee $employee): EmployeeResource
     {
         try {
-            $employee->load(['user', 'manager', 'attendances', 'leaves', 'payslips']);
+            $currentUser = $request->user();
+            
+            // Verify access
+            if ($currentUser->role === 'admin') {
+                if ($currentUser->current_business_id && 
+                    $employee->business_id !== $currentUser->current_business_id) {
+                    abort(403, 'Unauthorized access to employee from different business');
+                }
+                // If admin doesn't have current business but manages businesses
+                elseif (!$currentUser->current_business_id && $currentUser->businesses()->exists()) {
+                    $managedBusinessIds = $currentUser->businesses()->pluck('businesses.id');
+                    if (!$managedBusinessIds->contains($employee->business_id)) {
+                        abort(403, 'Unauthorized access to employee from unmanaged business');
+                    }
+                }
+            }
+            // Verify access for managers
+            elseif ($currentUser->role === 'manager') {
+                if ($employee->manager_id !== $currentUser->id) {
+                    abort(403, 'Unauthorized access to employee not in your team');
+                }
+            }
+            // Verify access for regular employees
+            elseif ($currentUser->role === 'employee') {
+                if ($employee->user_id !== $currentUser->id) {
+                    abort(403, 'Unauthorized access to other employee records');
+                }
+            }
+            
+            $employee->load(['user', 'manager', 'business', 'country', 'attendances', 'leaves', 'payslips']);
             return new EmployeeResource($employee);
         } catch (\Exception $e) {
             Log::error('EMPLOYEE_CONTROLLER: Failed to fetch employee details', [
@@ -201,6 +496,7 @@ class EmployeeController extends Controller
         }
     }
 
+ 
     public function update(Request $request, Employee $employee): JsonResponse
     {
         try {
@@ -216,65 +512,67 @@ class EmployeeController extends Controller
                 'lunch_allowance' => 'sometimes|numeric|min:0',
                 'employment_type' => 'sometimes|in:full_time,part_time,contract',
                 'manager_id' => 'nullable|exists:users,id',
+                'business_id' => 'sometimes|exists:businesses,id',
+                'country_id' => 'sometimes|exists:countries,id',
             ]);
-            Log::info('EMPLOYEE_CONTROLLER: Updating employee', [
-                'employee_id' => $employee->id,
-                'current_role' => $employee->user->role,
-                'new_role' => $validated['role'] ?? null,
-            ]);
+            
             DB::beginTransaction();
             $userUpdates = [];
             $employeeUpdates = [];
+            
             // Store old role for comparison
             $oldRole = $employee->user->role;
             $newRole = $validated['role'] ?? $oldRole;
+            
             // Update user details if provided
             if (isset($validated['first_name'])) $userUpdates['first_name'] = $validated['first_name'];
             if (isset($validated['last_name'])) $userUpdates['last_name'] = $validated['last_name'];
             if (isset($validated['email'])) $userUpdates['email'] = $validated['email'];
             if (isset($validated['role'])) $userUpdates['role'] = $validated['role'];
+            
+            // Update business if provided
+            if (isset($validated['business_id'])) {
+                $userUpdates['current_business_id'] = $validated['business_id'];
+                $employeeUpdates['business_id'] = $validated['business_id'];
+            }
+            
+            // Update country if provided
+            if (isset($validated['country_id'])) {
+                $employeeUpdates['country_id'] = $validated['country_id'];
+            }
+            
             if (!empty($userUpdates)) {
                 $employee->user->update($userUpdates);
             }
-            // Handle role changes for manager records
+            
+            // Handle role changes
             if ($oldRole !== $newRole) {
-                Log::info('EMPLOYEE_CONTROLLER: Role change detected', [
-                    'old_role' => $oldRole,
-                    'new_role' => $newRole,
-                    'user_id' => $employee->user_id
-                ]);
                 // Changing TO manager or admin
                 if (($newRole === 'manager' || $newRole === 'admin') &&
                     ($oldRole !== 'manager' && $oldRole !== 'admin')) {
-                    $existingManager = Manager::where('user_id', $employee->user_id)->first();
-                    if (!$existingManager) {
-                        Manager::create([
-                            'user_id' => $employee->user_id,
-                            'department' => $validated['department'] ?? $employee->department,
-                            'max_team_size' => 10,
-                            'permissions' => json_encode([]),
-                        ]);
-                        Log::info('EMPLOYEE_CONTROLLER: Manager record created on role change');
-                    }
-                    // Clear manager_id when becoming a manager/admin
+                    Manager::firstOrCreate([
+                        'user_id' => $employee->user_id,
+                    ], [
+                        'department' => $validated['department'] ?? $employee->department,
+                        'max_team_size' => 10,
+                        'permissions' => json_encode([]),
+                    ]);
                     $employeeUpdates['manager_id'] = null;
                 }
                 // Changing FROM manager or admin to employee
                 elseif ($newRole === 'employee' &&
                         ($oldRole === 'manager' || $oldRole === 'admin')) {
                     Manager::where('user_id', $employee->user_id)->delete();
-                    Log::info('EMPLOYEE_CONTROLLER: Manager record deleted on role change');
-                    // Employee should have a manager assigned
                     if (isset($validated['manager_id'])) {
                         $employeeUpdates['manager_id'] = $validated['manager_id'];
                     }
                 }
             }
+            
             // Update employee details
             if (isset($validated['position'])) $employeeUpdates['position'] = $validated['position'];
             if (isset($validated['department'])) {
                 $employeeUpdates['department'] = $validated['department'];
-                // Update manager's department if user is a manager/admin
                 if ($newRole === 'manager' || $newRole === 'admin') {
                     Manager::where('user_id', $employee->user_id)
                         ->update(['department' => $validated['department']]);
@@ -284,42 +582,28 @@ class EmployeeController extends Controller
             if (isset($validated['transport_allowance'])) $employeeUpdates['transport_allowance'] = $validated['transport_allowance'];
             if (isset($validated['lunch_allowance'])) $employeeUpdates['lunch_allowance'] = $validated['lunch_allowance'];
             if (isset($validated['employment_type'])) $employeeUpdates['employment_type'] = $validated['employment_type'];
+            
             // Handle manager_id updates for employees only
             if ($newRole === 'employee' && isset($validated['manager_id'])) {
                 $employeeUpdates['manager_id'] = $validated['manager_id'];
             } elseif ($newRole !== 'employee') {
                 $employeeUpdates['manager_id'] = null;
             }
+            
             if (!empty($employeeUpdates)) {
                 $employee->update($employeeUpdates);
             }
+            
             DB::commit();
-            Log::info('EMPLOYEE_CONTROLLER: Employee updated successfully', [
-                'employee_id' => $employee->id,
-                'role_changed' => $oldRole !== $newRole,
-            ]);
-            $employee->load(['user', 'manager']);
+            
+            $employee->load(['user', 'manager', 'business', 'country']);
             return response()->json([
                 'employee' => new EmployeeResource($employee),
                 'message' => 'Employee updated successfully'
             ]);
         } catch (ValidationException $e) {
             DB::rollBack();
-            Log::warning('EMPLOYEE_CONTROLLER: Employee update validation failed', [
-                'employee_id' => $employee->id,
-                'errors' => $e->errors(),
-            ]);
             throw $e;
-        } catch (\Illuminate\Database\QueryException $e) {
-            DB::rollBack();
-            Log::error('EMPLOYEE_CONTROLLER: Database error during employee update', [
-                'employee_id' => $employee->id,
-                'error' => $e->getMessage(),
-            ]);
-            return response()->json([
-                'message' => 'Database error occurred during update. Please try again.',
-                'details' => config('app.debug') ? $e->getMessage() : null
-            ], 500);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('EMPLOYEE_CONTROLLER: Failed to update employee', [
@@ -334,26 +618,25 @@ class EmployeeController extends Controller
 
     public function destroy(Employee $employee): JsonResponse
     {
-        Log::info('EMPLOYEE_CONTROLLER: Deleting employee', [
-            'employee_id' => $employee->id,
-            'user_id' => $employee->user_id,
-        ]);
         try {
             DB::beginTransaction();
             $user = $employee->user;
+            
             // Delete manager record if exists
             if ($user->role === 'manager' || $user->role === 'admin') {
                 Manager::where('user_id', $user->id)->delete();
-                Log::info('EMPLOYEE_CONTROLLER: Manager record deleted');
             }
+            
             // Delete employee record
             $employee->delete();
+            
             // Delete user
             if ($user) {
                 $user->delete();
             }
+            
             DB::commit();
-            Log::info('EMPLOYEE_CONTROLLER: Employee deleted successfully');
+            
             return response()->json([
                 'message' => 'Employee deleted successfully'
             ]);
@@ -368,51 +651,21 @@ class EmployeeController extends Controller
             ], 500);
         }
     }
+   
 
-    public function managers(): JsonResponse
-    {
-        try {
-            $managers = User::whereIn('role', ['manager', 'admin'])
-                ->with(['employee'])
-                ->get()
-                ->map(function ($user) {
-                    return [
-                        'id' => $user->id,
-                        'first_name' => $user->first_name,
-                        'last_name' => $user->last_name,
-                        'email' => $user->email,
-                        'department' => $user->employee->department ?? 'General',
-                        'position' => $user->employee->position ?? 'Manager'
-                    ];
-                });
-            Log::info('EMPLOYEE_CONTROLLER: Managers fetched', [
-                'count' => $managers->count(),
-            ]);
-            return response()->json($managers);
-        } catch (\Exception $e) {
-            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch managers', [
-                'error' => $e->getMessage(),
-            ]);
-            return response()->json([
-                'message' => 'Failed to fetch managers list'
-            ], 500);
-        }
-    }
-
-    /**
-     * Search employees by name or email
-     */
     public function search(Request $request): AnonymousResourceCollection
     {
         $searchTerm = $request->query('q');
         try {
-            $employees = Employee::with(['user', 'manager'])
-                ->whereHas('user', function($query) use ($searchTerm) {
-                    $query->where('first_name', 'like', "%{$searchTerm}%")
-                          ->orWhere('last_name', 'like', "%{$searchTerm}%")
-                          ->orWhere('email', 'like', "%{$searchTerm}%");
-                })
-                ->get();
+            $query = $this->getBusinessScopedEmployees($request)
+                ->whereHas('user', function($q) use ($searchTerm) {
+                    $q->where('first_name', 'like', "%{$searchTerm}%")
+                      ->orWhere('last_name', 'like', "%{$searchTerm}%")
+                      ->orWhere('email', 'like', "%{$searchTerm}%");
+                });
+            
+            $employees = $query->get();
+            
             return EmployeeResource::collection($employees);
         } catch (\Exception $e) {
             Log::error('EMPLOYEE_CONTROLLER: Employee search failed', [
@@ -479,14 +732,65 @@ class EmployeeController extends Controller
             ], 500);
         }
     }
+    
+/**
+ * Get all available departments from system settings
+ */
+public function departments(): JsonResponse
+{
+    try {
+        $departmentsSetting = \App\Models\SystemSetting::where('key', 'departments')->first();
+        
+        if (!$departmentsSetting) {
+            return response()->json([
+                'data' => []
+            ]);
+        }
 
+        $departments = json_decode($departmentsSetting->value, true) ?? [];
+        
+        // Extract department names from the JSON structure
+        $departmentList = array_map(function($dept) {
+            return $dept['name'];
+        }, $departments);
+
+        Log::info('EMPLOYEE_CONTROLLER: Departments fetched', [
+            'count' => count($departmentList),
+        ]);
+
+        return response()->json([
+            'data' => $departmentList
+        ]);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to fetch departments', [
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'message' => 'Failed to fetch departments'
+        ], 500);
+    }
+}
+    
     public function teamEmployees(Request $request): AnonymousResourceCollection
     {
         $managerId = $request->query('manager_id');
         if (!$managerId) abort(400, 'Manager ID required');
-        $employees = Employee::where('manager_id', $managerId)
-                             ->with(['user'])
-                             ->get();
+        
+        $manager = User::findOrFail($managerId);
+        $managerEmployee = Employee::where('user_id', $managerId)->first();
+        
+        if ($managerEmployee && $managerEmployee->business_id) {
+            $employees = Employee::where('business_id', $managerEmployee->business_id)
+                                 ->where('manager_id', $managerId)
+                                 ->with(['user'])
+                                 ->get();
+        } else {
+            $employees = Employee::whereNull('business_id')
+                                 ->where('manager_id', $managerId)
+                                 ->with(['user'])
+                                 ->get();
+        }
+        
         return EmployeeResource::collection($employees);
     }
 
@@ -505,6 +809,7 @@ class EmployeeController extends Controller
                 'user_id' => $user->id,
                 'role' => $user->role,
                 'has_employee_record' => $employee !== null,
+                'business_id' => $employee ? $employee->business_id : null,
             ]);
             return response()->json([
                 'user' => [
@@ -513,6 +818,7 @@ class EmployeeController extends Controller
                     'last_name' => $user->last_name,
                     'email' => $user->email,
                     'role' => $user->role,
+                    'current_business_id' => $user->current_business_id,
                 ],
                 'employee' => $employee ? new EmployeeResource($employee) : null,
             ]);
@@ -588,6 +894,7 @@ class EmployeeController extends Controller
                     'last_name' => $user->last_name,
                     'email' => $user->email,
                     'role' => $user->role,
+                    'current_business_id' => $user->current_business_id,
                 ],
                 'employee' => $employee ? new EmployeeResource($employee) : null,
             ]);
@@ -821,4 +1128,40 @@ class EmployeeController extends Controller
             ], 500);
         }
     }
+    /**
+ * Get default password from system settings
+ */
+private function getDefaultPassword(): string
+{
+    try {
+        $defaultPasswordSetting = SystemSetting::where('key', 'default_password')->first();
+        
+        if (!$defaultPasswordSetting || empty($defaultPasswordSetting->value)) {
+            Log::warning('EMPLOYEE_CONTROLLER: No default password found in system settings, using fallback');
+            return 'Password123!';
+        }
+        
+        $password = trim($defaultPasswordSetting->value);
+        
+        // Validate password meets minimum requirements
+        if (strlen($password) < 8) {
+            Log::warning('EMPLOYEE_CONTROLLER: Default password too short, using fallback', [
+                'password_length' => strlen($password),
+            ]);
+            return 'Password123!';
+        }
+        
+        Log::info('EMPLOYEE_CONTROLLER: Retrieved default password from system settings', [
+            'password_length' => strlen($password),
+            'password_stars' => str_repeat('*', strlen($password)),
+        ]);
+        
+        return $password;
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to get default password', [
+            'error' => $e->getMessage(),
+        ]);
+        return 'Password123!';
+    }
+}
 }

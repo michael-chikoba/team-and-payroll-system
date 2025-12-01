@@ -240,7 +240,7 @@ const approveLeave = async (leaveId) => {
 
   submitting.value = true
   try {
-    console.log(`✅ Approving leave ID: ${leaveId}`)
+  //  console.log(`✅ Approving leave ID: ${leaveId}`)
     await axios.post(`/api/manager/leaves/${leaveId}/approve`)
     alert('Leave approved successfully!')
     await fetchLeaves()
@@ -321,7 +321,7 @@ const filteredLeaves = computed(() => {
     return matchesSearch && matchesStatus
   })
 
-  console.log('🔍 Filtered leaves count:', results.length)
+  //console.log('🔍 Filtered leaves count:', results.length)
   return results
 })
 

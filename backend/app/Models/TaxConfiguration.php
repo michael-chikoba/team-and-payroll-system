@@ -40,15 +40,34 @@ class TaxConfiguration extends Model
     }
 
     /**
+     * Calculate pension deduction (5% of basic pay for full-time employees only)
+     */
+    public function calculatePension(Employee $employee, float $basicSalary): float
+    {
+        // Only apply pension deduction to full-time employees
+        if ($employee->employment_type !== 'full_time') {
+            return 0.0;
+        }
+
+        $config = $this->config_data;
+        $rate = ($config['pensionRate'] ?? 5) / 100;
+        $maxSalary = $config['pensionMaxSalary'] ?? PHP_FLOAT_MAX;
+        
+        $base = min($basicSalary, $maxSalary);
+        $contrib = $base * $rate;
+        
+        return $this->applyRounding($contrib);
+    }
+
+    /**
      * Calculate progressive PAYE on GROSS salary
      */
     public function calculatePAYE(float $grossSalary): float
     {
         $tax = 0.0;
-        $remaining = $grossSalary; // Use gross salary for PAYE calculation
+        $remaining = $grossSalary;
         $bands = $this->config_data['taxBands'] ?? [];
         
-        // Sort bands by lower limit
         usort($bands, function($a, $b) {
             return ($a['lowerLimit'] ?? 0) <=> ($b['lowerLimit'] ?? 0);
         });
@@ -61,7 +80,6 @@ class TaxConfiguration extends Model
             $rate = ($band['rate'] ?? 0) / 100;
 
             if ($upper === null) {
-                // Unlimited upper - last band
                 $tax += $remaining * $rate;
                 break;
             }
@@ -83,7 +101,7 @@ class TaxConfiguration extends Model
         $config = $this->config_data;
         $rate = ($config['napsaRate'] ?? 5) / 100;
         $maxSalary = $config['napsaMaxSalary'] ?? 34164.00;
-        $maxContrib = 1708.20; // 2025 hardcoded cap for employee
+        $maxContrib = 1708.20;
         
         $assessable = min($grossSalary, $maxSalary);
         $contrib = min($assessable * $rate, $maxContrib);
@@ -112,7 +130,7 @@ class TaxConfiguration extends Model
     public function calculateAllowances(Employee $employee): array
     {
         $basicSalary = $employee->base_salary;
-        $housing = $basicSalary * 0.25; // 25% of basic
+        $housing = $basicSalary * 0.25;
         $transport = $employee->transport_allowance ?? 0.00;
         $lunch = $employee->lunch_allowance ?? 0.00;
         
@@ -125,11 +143,12 @@ class TaxConfiguration extends Model
     }
 
     /**
-     * Full payroll calculation with proper breakdown
+     * Full payroll calculation with proper breakdown including pension
      */
     public function calculatePayroll(Employee $employee, float $overtimePay = 0, float $bonuses = 0): array
     {
         $basicSalary = $employee->base_salary;
+        
         // Calculate allowances
         $allowances = $this->calculateAllowances($employee);
         
@@ -137,11 +156,12 @@ class TaxConfiguration extends Model
         $grossSalary = $basicSalary + $allowances['total'] + $overtimePay + $bonuses;
         
         // Calculate deductions
-        $paye = $this->calculatePAYE($grossSalary); // PAYE from gross
-        $napsa = $this->calculateNAPSA($grossSalary); // NAPSA from gross
-        $nhima = $this->calculateNHIMA($basicSalary); // NHIMA from basic
+        $paye = $this->calculatePAYE($grossSalary);
+        $napsa = $this->calculateNAPSA($grossSalary);
+        $nhima = $this->calculateNHIMA($basicSalary);
+        $pension = $this->calculatePension($employee, $basicSalary); // New pension deduction
         
-        $totalDeductions = $paye + $napsa + $nhima;
+        $totalDeductions = $paye + $napsa + $nhima + $pension;
         $netSalary = $grossSalary - $totalDeductions;
 
         return [
@@ -154,6 +174,7 @@ class TaxConfiguration extends Model
                 'paye_tax' => $paye,
                 'napsa_deduction' => $napsa,
                 'nhima_deduction' => $nhima,
+                'pension_deduction' => $pension, // Added pension
                 'total_deductions' => $this->applyRounding($totalDeductions),
             ],
             'net_salary' => $this->applyRounding($netSalary),
@@ -161,7 +182,10 @@ class TaxConfiguration extends Model
                 'paye_base' => 'Gross Salary',
                 'napsa_base' => 'Gross Salary',
                 'nhima_base' => 'Basic Salary',
-                'housing_rate' => '25% of Basic'
+                'pension_base' => 'Basic Salary (Full-time only)',
+                'housing_rate' => '25% of Basic',
+                'employment_type' => $employee->employment_type,
+                'pension_applied' => $pension > 0
             ]
         ];
     }

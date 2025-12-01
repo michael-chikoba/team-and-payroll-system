@@ -13,14 +13,12 @@ const showGenerateModal = ref(false);
 const showBulkGenerate = ref(false);
 const submitting = ref(false);
 const formError = ref(null);
-
 const filters = reactive({
   pay_period: 'current',
   department: '',
   status: '',
   custom_month: ''
 });
-
 const generateForm = reactive({
   employee_id: '',
   pay_period_start: '',
@@ -33,7 +31,6 @@ const generateForm = reactive({
   overtime_rate: 0,
   generate_pdf: true
 });
-
 const bulkForm = reactive({
   pay_period_start: '',
   pay_period_end: '',
@@ -55,11 +52,19 @@ const selectedBulkEmployees = computed(() => {
   );
 });
 
-// Date utilities
+// FIXED: Date utilities - ensure we get correct current month
 const getCurrentMonthDates = () => {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
+  console.log('Current month dates:', {
+    firstDay: formatDateForInput(firstDay),
+    lastDay: formatDateForInput(lastDay),
+    currentMonth: now.getMonth() + 1,
+    currentYear: now.getFullYear()
+  });
+  
   return {
     start: formatDateForInput(firstDay),
     end: formatDateForInput(lastDay)
@@ -70,6 +75,14 @@ const getLastMonthDates = () => {
   const now = new Date();
   const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+  
+  console.log('Last month dates:', {
+    firstDay: formatDateForInput(firstDay),
+    lastDay: formatDateForInput(lastDay),
+    lastMonth: now.getMonth(), // Note: 0-based, so this is correct
+    year: now.getFullYear()
+  });
+  
   return {
     start: formatDateForInput(firstDay),
     end: formatDateForInput(lastDay)
@@ -78,7 +91,7 @@ const getLastMonthDates = () => {
 
 const getMonthDates = (yearMonth) => {
   if (!yearMonth) return getCurrentMonthDates();
-  
+ 
   const [year, month] = yearMonth.split('-').map(Number);
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
@@ -92,7 +105,8 @@ const getMonthDates = (yearMonth) => {
 watch(() => filters.pay_period, (newValue) => {
   if (newValue === 'custom' && !filters.custom_month) {
     // Set default to current month when switching to custom
-    filters.custom_month = new Date().toISOString().slice(0, 7);
+    const now = new Date();
+    filters.custom_month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }
   fetchPayslips();
 });
@@ -103,9 +117,9 @@ watch(() => filters.custom_month, () => {
   }
 });
 
-// --- Core Calculation Functions (for display only - backend does actual calculations) ---
+// --- Core Calculation Functions ---
 const calculatePreviewEarnings = (basicSalary, transportAllowance = 0, lunchAllowance = 0, overtimeHours = 0, overtimeRate = 0) => {
-  const housingAllowance = basicSalary * 0.25; // 25% of basic (unchanged)
+  const housingAllowance = basicSalary * 0.25;
   const overtimePay = overtimeHours * overtimeRate;
   return {
     basic_salary: basicSalary,
@@ -143,11 +157,18 @@ const initializeDates = () => {
   const today = new Date();
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-  
+
+  console.log('Initializing dates for current month:', {
+    today: today.toISOString().split('T')[0],
+    firstDay: formatDateForInput(firstDay),
+    lastDay: formatDateForInput(lastDay),
+    currentMonth: today.getMonth() + 1
+  });
+
   generateForm.pay_period_start = formatDateForInput(firstDay);
   generateForm.pay_period_end = formatDateForInput(lastDay);
   generateForm.payment_date = formatDateForInput(today);
-  
+
   bulkForm.pay_period_start = formatDateForInput(firstDay);
   bulkForm.pay_period_end = formatDateForInput(lastDay);
   bulkForm.payment_date = formatDateForInput(today);
@@ -156,47 +177,59 @@ const initializeDates = () => {
 const fetchPayslips = async () => {
   loading.value = true;
   error.value = null;
-  
+
   try {
     const params = new URLSearchParams();
-    
+   
     // Handle different period types
+    let periodInfo = {};
     if (filters.pay_period === 'custom' && filters.custom_month) {
-      const { start, end } = getMonthDates(filters.custom_month);
-      params.append('start', start);
-      params.append('end', end);
+      periodInfo = getMonthDates(filters.custom_month);
+      params.append('start', periodInfo.start);
+      params.append('end', periodInfo.end);
     } else if (filters.pay_period === 'last') {
-      const { start, end } = getLastMonthDates();
-      params.append('start', start);
-      params.append('end', end);
+      periodInfo = getLastMonthDates();
+      params.append('start', periodInfo.start);
+      params.append('end', periodInfo.end);
     } else {
       // Default to current month
-      const { start, end } = getCurrentMonthDates();
-      params.append('start', start);
-      params.append('end', end);
+      periodInfo = getCurrentMonthDates();
+      params.append('start', periodInfo.start);
+      params.append('end', periodInfo.end);
     }
-    
+   
+    console.log('Fetching payslips with params:', {
+      period: filters.pay_period,
+      start: periodInfo.start,
+      end: periodInfo.end,
+      department: filters.department,
+      status: filters.status
+    });
+
     if (filters.department) params.append('department', filters.department);
     if (filters.status) params.append('status', filters.status);
-
+    
     const response = await axios.get('/api/admin/payslips', { params });
     payslips.value = response.data.data || response.data;
-
+    
+    console.log(`Found ${payslips.value.length} payslips for current filters`);
+    
     // Log PDF availability for debugging
     payslips.value.forEach(payslip => {
       console.log(`Payslip ${payslip.id}: PDF available: ${payslip.pdf_available}, PDF path: ${payslip.pdf_path}`);
     });
-
   } catch (err) {
     error.value = 'Failed to fetch payslips';
     console.error('Fetch payslips error:', err);
-
-    // Retry once after 2 seconds
+    
+    // Retry once after 2 seconds with simpler request
     setTimeout(async () => {
       try {
+        console.log('Retrying payslip fetch...');
         const retryResponse = await axios.get('/api/admin/payslips');
         payslips.value = retryResponse.data.data || retryResponse.data;
         error.value = null;
+        console.log('Retry successful, found:', payslips.value.length, 'payslips');
       } catch (retryErr) {
         console.error('Retry failed:', retryErr);
       }
@@ -210,10 +243,8 @@ const fetchEmployees = async () => {
   try {
     console.log('Fetching employees...');
     const response = await axios.get('/api/admin/employees');
-
     console.log('Employees response:', response.data);
-
-    // Handle different response structures
+    
     let employeesData = [];
     if (response.data && response.data.employees) {
       employeesData = response.data.employees;
@@ -222,9 +253,8 @@ const fetchEmployees = async () => {
     } else {
       employeesData = response.data || [];
     }
-
     employees.value = employeesData;
-    console.log('Processed employees:', employees.value);
+    console.log('Processed employees:', employees.value.length);
   } catch (err) {
     console.error('Failed to fetch employees:', err);
   }
@@ -256,20 +286,20 @@ const generateClientPdf = (payslip) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  
+
   // Header
   doc.setFontSize(20);
   doc.text('PAYSLIP', pageWidth / 2, 20, { align: 'center' });
-  
+
   // Company info (left side)
   doc.setFontSize(10);
   doc.text('Castle Holdings Ltd', 20, 40);
   doc.text('54 Seble Road, Lusaka, Zambia', 20, 48);
   doc.text('Phone: +260 211 123456 | Email: payroll@castleholdings.co.zm', 20, 56);
-  
+
   // Period (right side)
   doc.text(`Period: ${formatDate(payslip.pay_period_start)} to ${formatDate(payslip.pay_period_end)}`, pageWidth / 2, 40, { align: 'center' });
-  
+
   // Employee details
   let y = 80;
   doc.setFontSize(12);
@@ -279,8 +309,9 @@ const generateClientPdf = (payslip) => {
   doc.text(`Name: ${payslip.employee_name || 'N/A'}`, 20, y); y += 8;
   doc.text(`Employee ID: ${payslip.employee_id || 'N/A'}`, 20, y); y += 8;
   doc.text(`Department: ${payslip.department || 'N/A'}`, 20, y); y += 8;
+  doc.text(`Employment Type: ${payslip.employment_type || 'N/A'}`, 20, y); y += 8;
   doc.text(`Payment Date: ${formatDate(payslip.payment_date)}`, 20, y); y += 10;
-  
+
   // Earnings section
   doc.setFontSize(12);
   doc.text('Earnings', 20, y);
@@ -294,19 +325,29 @@ const generateClientPdf = (payslip) => {
   doc.setFontSize(12);
   doc.text(`Gross Earnings: K${formatNumber(payslip.gross_salary || 0)}`, 20, y);
   y += 15;
-  
+
   // Deductions section (right column)
-  const deductY = 110; // Start deductions earlier on right
+  const deductY = 118;
   doc.setFontSize(12);
   doc.text('Deductions', 105, deductY);
   let deductYPos = deductY + 10;
   doc.setFontSize(10);
   doc.text(`PAYE Tax: K${formatNumber(payslip.paye || 0)}`, 105, deductYPos); deductYPos += 8;
-  doc.text(`NAPSA (10% of gross): K${formatNumber(payslip.napsa || 0)}`, 105, deductYPos); deductYPos += 8;
-  doc.text(`NHIMA (1% of gross): K${formatNumber(payslip.nhima || 0)}`, 105, deductYPos); deductYPos += 8;
+  doc.text(`NAPSA (5% of gross): K${formatNumber(payslip.napsa || 0)}`, 105, deductYPos); deductYPos += 8;
+  doc.text(`NHIMA (1% of basic): K${formatNumber(payslip.nhima || 0)}`, 105, deductYPos); deductYPos += 8;
+  doc.text(`Pension (5% of basic): K${formatNumber(payslip.pension || 0)}`, 105, deductYPos); deductYPos += 8;
+
+  // Add note if pension is 0 for non-full-time
+  if ((payslip.pension || 0) === 0 && payslip.employment_type !== 'full_time') {
+    doc.setFontSize(8);
+    doc.text('(Full-time employees only)', 105, deductYPos);
+    deductYPos += 6;
+    doc.setFontSize(10);
+  }
+
   doc.setFontSize(12);
   doc.text(`Total Deductions: K${formatNumber(payslip.total_deductions || 0)}`, 105, deductYPos);
-  
+
   // Net Pay (centered below)
   y = Math.max(y, deductYPos + 15);
   doc.setFontSize(16);
@@ -318,7 +359,7 @@ const generateClientPdf = (payslip) => {
   doc.setFontSize(10);
   doc.text(`(${convertToWords(payslip.net_pay || 0)})`, pageWidth / 2, y, { align: 'center' });
   y += 20;
-  
+
   // Footer
   doc.setLineWidth(0.5);
   doc.line(20, y, pageWidth - 20, y);
@@ -327,13 +368,13 @@ const generateClientPdf = (payslip) => {
   y += 10;
   doc.setFontSize(8);
   doc.text('Notes: This is a computer-generated payslip. Please contact HR for any discrepancies.', 20, y, { maxWidth: pageWidth - 40 });
-  
+
   // Generate filename
   const period = payslip.pay_period_start
     ? new Date(payslip.pay_period_start).toISOString().slice(0, 7)
     : new Date().toISOString().slice(0, 7);
   const filename = `payslip-${payslip.employee_id || payslip.employee_name || 'unknown'}-${period}-client.pdf`;
-  
+
   // Save the PDF
   doc.save(filename);
 };
@@ -342,8 +383,8 @@ const generateClientPdf = (payslip) => {
 const generatePayslip = async () => {
   submitting.value = true;
   formError.value = null;
-  
-  // Validate required fields - only basic salary is needed for calculations
+
+  // Validate required fields
   if (!generateForm.employee_id || !generateForm.pay_period_start ||
       !generateForm.pay_period_end || !generateForm.payment_date ||
       generateForm.basic_salary <= 0) {
@@ -351,9 +392,8 @@ const generatePayslip = async () => {
     submitting.value = false;
     return;
   }
-  
+
   try {
-    // Send only basic data - backend will calculate everything using tax configuration
     const formData = {
       employee_id: generateForm.employee_id.toString(),
       pay_period_start: generateForm.pay_period_start,
@@ -364,7 +404,8 @@ const generatePayslip = async () => {
       overtime_rate: generateForm.overtime_rate || 0,
       generate_pdf: true
     };
-    
+   
+    console.log('Generating payslip with data:', formData);
     const response = await axios.post('/api/admin/payslips', formData);
     payslips.value.unshift(response.data.data || response.data);
     closeModals();
@@ -380,18 +421,18 @@ const generatePayslip = async () => {
 const bulkGeneratePayslips = async () => {
   submitting.value = true;
   formError.value = null;
-  
+
   if (bulkForm.employee_ids.length === 0) {
     formError.value = 'Please select at least one employee.';
     submitting.value = false;
     return;
   }
-  
+
   try {
     const promises = bulkForm.employee_ids.map(async (id) => {
       const emp = employees.value.find(e => e.id === id);
       if (!emp) return null;
-    
+   
       const formData = {
         employee_id: id.toString(),
         pay_period_start: bulkForm.pay_period_start,
@@ -402,11 +443,11 @@ const bulkGeneratePayslips = async () => {
         overtime_rate: 0,
         generate_pdf: true
       };
-      
+     
       const response = await axios.post('/api/admin/payslips', formData);
       return response.data.data || response.data;
     });
-    
+   
     const results = await Promise.all(promises);
     const newPayslips = results.filter(Boolean);
     payslips.value.unshift(...newPayslips);
@@ -420,20 +461,18 @@ const bulkGeneratePayslips = async () => {
 };
 
 const viewPayslip = async (payslip) => {
-  // Check if PDF is available before showing details
   if (!payslip.pdf_available && !payslip.pdf_path) {
     try {
       alert('Generating PDF for this payslip...');
       await generatePdf(payslip.id);
-    
+   
       // Refresh the payslip data
       const response = await axios.get(`/api/admin/payslips/${payslip.id}`);
       const updatedPayslip = response.data.data || response.data;
-    
+   
       selectedPayslip.value = updatedPayslip;
     } catch (err) {
       console.error('Failed to generate PDF:', err);
-      // Still show the payslip even if PDF generation fails
       selectedPayslip.value = payslip;
     }
   } else {
@@ -444,18 +483,14 @@ const viewPayslip = async (payslip) => {
 const downloadPayslip = async (payslip) => {
   try {
     console.log('Attempting to download payslip:', payslip.id);
-
-    // Check if PDF is available first
+    
     if (!payslip.pdf_available && !payslip.pdf_path) {
-      // Try to generate PDF first
       try {
         console.log('PDF not available, generating PDF first...');
         await generatePdf(payslip.id);
      
-        // Wait a moment for PDF generation
         await new Promise(resolve => setTimeout(resolve, 1000));
      
-        // Refresh payslip data
         const refreshedResponse = await axios.get(`/api/admin/payslips/${payslip.id}`);
         const refreshedPayslip = refreshedResponse.data.data || refreshedResponse.data;
      
@@ -463,7 +498,6 @@ const downloadPayslip = async (payslip) => {
           throw new Error('PDF generation failed');
         }
      
-        // Update the payslip in our local state
         const index = payslips.value.findIndex(p => p.id === payslip.id);
         if (index !== -1) {
           payslips.value[index] = { ...payslips.value[index], ...refreshedPayslip };
@@ -475,23 +509,20 @@ const downloadPayslip = async (payslip) => {
         return;
       }
     }
-    
-    // Try different download endpoints
+   
     let downloadUrl = '';
     let response;
-
-    // Try admin endpoint first
+    
     try {
       downloadUrl = `/api/admin/payslips/${payslip.id}/download`;
       console.log('Trying admin endpoint:', downloadUrl);
       response = await axios.get(downloadUrl, {
         responseType: 'blob',
-        timeout: 30000 // 30 second timeout
+        timeout: 30000
       });
     } catch (adminError) {
       console.log('Admin endpoint failed, trying regular endpoint...');
-    
-      // Try regular endpoint
+   
       try {
         downloadUrl = `/api/payslips/${payslip.id}/download`;
         console.log('Trying regular endpoint:', downloadUrl);
@@ -502,7 +533,6 @@ const downloadPayslip = async (payslip) => {
       } catch (regularError) {
         console.log('Regular endpoint failed, trying alternative endpoint...');
      
-        // Try alternative endpoint pattern
         try {
           downloadUrl = `/api/payslips/${payslip.id}/pdf`;
           console.log('Trying alternative endpoint:', downloadUrl);
@@ -517,56 +547,44 @@ const downloadPayslip = async (payslip) => {
             altError: altError.response?.status
           });
        
-          // Check if it's an authentication issue
           if (adminError.response?.status === 401 || regularError.response?.status === 401) {
             alert('Authentication required. Please log in again.');
             return;
           }
        
-          // Check if it's a server error
           if (adminError.response?.status === 500 || regularError.response?.status === 500) {
             alert('Server error occurred while generating PDF. Please try again later.');
             return;
           }
        
-          // Fallback to client-side PDF generation to solve 404 error
           console.log('All endpoints failed, generating PDF client-side...');
           generateClientPdf(payslip);
           return;
         }
       }
     }
-    
-    // If we get here, we have a successful response
+   
     console.log('Download successful, creating blob...');
-
-    // Create blob URL and download
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
-
-    // Create filename
+    
     const period = payslip.pay_period_start
       ? new Date(payslip.pay_period_start).toISOString().slice(0, 7)
       : new Date().toISOString().slice(0, 7);
-
     const filename = `payslip-${payslip.employee_id || payslip.employee_name}-${period}.pdf`;
-
+    
     link.href = url;
     link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     link.remove();
-
-    // Clean up URL
+    
     setTimeout(() => window.URL.revokeObjectURL(url), 100);
-
     console.log('Download completed successfully');
-
   } catch (err) {
     console.error('Failed to download payslip:', err);
-
-    // Provide more specific error messages
+    
     if (err.response) {
       switch (err.response.status) {
         case 401:
@@ -576,7 +594,6 @@ const downloadPayslip = async (payslip) => {
           alert('You do not have permission to download this payslip.');
           break;
         case 404:
-          // Fallback to client-side for 404
           console.log('404 detected, generating client-side PDF...');
           generateClientPdf(payslip);
           break;
@@ -669,16 +686,20 @@ const convertToWords = (amount) => {
   return words + ' Only';
 };
 
-// Get display text for current filter
+// FIXED: Get display text for current filter with proper month detection
 const getFilterDisplayText = computed(() => {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  
   if (filters.pay_period === 'current') {
-    const { start } = getCurrentMonthDates();
-    const month = new Date(start).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    return `Current Month (${month})`;
+    const monthName = new Date(currentYear, currentMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return `Current Month (${monthName})`;
   } else if (filters.pay_period === 'last') {
-    const { start } = getLastMonthDates();
-    const month = new Date(start).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    return `Last Month (${month})`;
+    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const monthName = new Date(lastMonthYear, lastMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return `Last Month (${monthName})`;
   } else if (filters.pay_period === 'custom' && filters.custom_month) {
     const [year, month] = filters.custom_month.split('-');
     const date = new Date(year, month - 1);
@@ -696,7 +717,7 @@ const checkEndpoints = async () => {
     '/api/payslips/1/pdf',
     '/api/admin/payslips/1/generate-pdf'
   ];
-  
+
   for (const endpoint of endpoints) {
     try {
       const response = await axios.head(endpoint);
@@ -707,7 +728,27 @@ const checkEndpoints = async () => {
   }
 };
 
-// Exposing functions needed in the template
+// Debug function to check current dates
+const debugCurrentDates = () => {
+  const now = new Date();
+  const currentDates = getCurrentMonthDates();
+  const lastMonthDates = getLastMonthDates();
+  
+  console.log('=== DATE DEBUG INFO ===');
+  console.log('Current date:', now.toISOString().split('T')[0]);
+  console.log('Current month (number):', now.getMonth() + 1);
+  console.log('Current year:', now.getFullYear());
+  console.log('Current month dates:', currentDates);
+  console.log('Last month dates:', lastMonthDates);
+  console.log('Filter display text:', getFilterDisplayText.value);
+  console.log('========================');
+};
+
+// Call debug on mount to verify dates
+onMounted(() => {
+  setTimeout(debugCurrentDates, 1000);
+});
+
 defineExpose({
   fetchPayslips,
   generatePayslip,
@@ -721,10 +762,10 @@ defineExpose({
   formatDate,
   formatStatus,
   convertToWords,
-  getEmployeeName
+  getEmployeeName,
+  debugCurrentDates // Expose for manual debugging
 });
 </script>
-
 <template>
   <div class="payslip-generation">
     <header class="app-header">
@@ -921,19 +962,40 @@ defineExpose({
             </div>
           </div>
           
-          <div class="form-section-group">
-            <h3 class="section-title">Deductions Preview</h3>
-            <div class="deductions-preview">
-              <p class="preview-note">
-                <strong>Note:</strong> Deductions are automatically calculated by the system based on Zambian tax regulations:
-              </p>
-              <ul class="preview-list">
-                <li>PAYE Tax: Calculated from gross-salary salary using progressive tax bands</li>
-                <li>NAPSA: </li>
-                <li>NHIMA: </li>
-              </ul>
-            </div>
-          </div>
+          <!-- Replace the Deductions Preview section in the Generate Payslip Modal -->
+<div class="form-section-group">
+  <h3 class="section-title">Deductions Preview</h3>
+  <div class="deductions-preview">
+    <p class="preview-note">
+      <strong>Note:</strong> Deductions are automatically calculated by the system based on Zambian tax regulations:
+    </p>
+    <ul class="preview-list">
+      <li>PAYE Tax</li>
+      <li>NAPSA</li>
+      <li>NHIMA</li>
+      <li>Pension</li>
+    </ul>
+    
+    <!-- Show employment type indicator -->
+    <div v-if="generateForm.employee_id" class="employment-type-indicator">
+      <template v-if="employees.find(e => e.id === parseInt(generateForm.employee_id))">
+        <span class="indicator-label">Employment Type:</span>
+        <span class="indicator-value" :class="{
+          'full-time': employees.find(e => e.id === parseInt(generateForm.employee_id))?.employment_type === 'full_time'
+        }">
+          {{ employees.find(e => e.id === parseInt(generateForm.employee_id))?.employment_type || 'N/A' }}
+        </span>
+        <span v-if="employees.find(e => e.id === parseInt(generateForm.employee_id))?.employment_type === 'full_time'" 
+              class="pension-applies">
+          ✓ Pension applies
+        </span>
+        <span v-else class="pension-not-applies">
+          ✗ Pension does not apply
+        </span>
+      </template>
+    </div>
+  </div>
+</div>
           
           <div class="summary-preview-card">
             <h4 class="summary-title">Estimated Calculation Summary</h4>
@@ -1107,28 +1169,43 @@ defineExpose({
               </div>
             </section>
          
-            <section class="deductions-section">
-              <h3 class="section-title">Deductions</h3>
-              <div class="amount-list">
-                <div class="amount-item">
-                  <label>PAYE Tax:</label>
-                  <span>K{{ formatNumber(selectedPayslip.paye || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>NAPSA :</label>
-                  <span>K{{ formatNumber(selectedPayslip.napsa || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>NHIMA :</label>
-                  <span>K{{ formatNumber(selectedPayslip.nhima || 0) }}</span>
-                </div>
-                <div class="amount-item filler-item"></div>
-                <div class="amount-item total">
-                  <label>Total Deductions:</label>
-                  <span>K{{ formatNumber(selectedPayslip.total_deductions || 0) }}</span>
-                </div>
-              </div>
-            </section>
+            <!-- Update the deductions section in the payslip detail view modal -->
+<section class="deductions-section">
+  <h3 class="section-title">Deductions</h3>
+  <div class="amount-list">
+    <div class="amount-item">
+      <label>PAYE Tax:</label>
+      <span>K{{ formatNumber(selectedPayslip.paye || 0) }}</span>
+    </div>
+    <div class="amount-item">
+      <label>NAPSA :</label>
+      <span>K{{ formatNumber(selectedPayslip.napsa || 0) }}</span>
+    </div>
+    <div class="amount-item">
+      <label>NHIMA :</label>
+      <span>K{{ formatNumber(selectedPayslip.nhima || 0) }}</span>
+    </div>
+    <!-- ADDED PENSION DEDUCTION -->
+    <div class="amount-item">
+      <label>Pension :</label>
+      <span>K{{ formatNumber(selectedPayslip.pension || 0) }}</span>
+    </div>
+    <div class="amount-item" v-if="selectedPayslip.other_deductions > 0">
+      <label>Other Deductions:</label>
+      <span>K{{ formatNumber(selectedPayslip.other_deductions || 0) }}</span>
+    </div>
+    <div class="amount-item total">
+      <label>Total Deductions:</label>
+      <span>K{{ formatNumber(selectedPayslip.total_deductions || 0) }}</span>
+    </div>
+  </div>
+  
+  <!-- ADDED: Show pension note for full-time employees -->
+  <div v-if="selectedPayslip.employment_type === 'full_time' && (selectedPayslip.pension || 0) === 0" 
+       class="deduction-note">
+    <small>Note: Pension deduction applies to full-time employees only.</small>
+  </div>
+</section>
           </div>
        
           <div class="payslip-detail__net-pay-summary">
@@ -1992,5 +2069,65 @@ defineExpose({
   .large-modal {
     min-width: auto;
   }
+}
+/* Add this to your existing CSS in the <style scoped> section */
+
+.deduction-note {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background-color: #fef3c7;
+  border-left: 4px solid #f59e0b;
+  border-radius: 4px;
+}
+
+.deduction-note small {
+  color: #92400e;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+/* Add this to your existing CSS in the <style scoped> section */
+
+.employment-type-indicator {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #f0f9ff;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.indicator-label {
+  font-weight: 600;
+  color: #0369a1;
+  font-size: 0.875rem;
+}
+
+.indicator-value {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  background-color: #e0e7ff;
+  color: #3730a3;
+}
+
+.indicator-value.full-time {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.pension-applies {
+  color: #059669;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.pension-not-applies {
+  color: #dc2626;
+  font-weight: 600;
+  font-size: 0.875rem;
 }
 </style>

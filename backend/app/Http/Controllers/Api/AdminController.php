@@ -18,15 +18,120 @@ class AdminController extends Controller
     public function __construct(private LeaveBalanceService $leaveBalanceService)
     {
     }
+
+        public function systemStats(Request $request): JsonResponse
+    {
+        $currentUser = $request->user();
+        
+        // Build base queries with business scoping
+        $employeeQuery = \App\Models\Employee::query();
+        $managerQuery = \App\Models\User::where('role', 'manager');
+        $payrollQuery = \App\Models\Payroll::where('status', 'completed');
+        $leaveQuery = \App\Models\Leave::where('status', 'pending');
+        $attendanceQuery = \App\Models\Attendance::query();
+        
+        // Apply business scoping if admin has business
+        if ($currentUser->role === 'admin' && $currentUser->current_business_id) {
+            $businessId = $currentUser->current_business_id;
+            
+            // Scope employees to business
+            $employeeQuery->whereHas('user', function($q) use ($businessId) {
+                $q->where('current_business_id', $businessId);
+            });
+            
+            // Scope managers to business
+            $managerQuery->where('current_business_id', $businessId);
+            
+            // Scope payrolls to business employees
+            $payrollQuery->whereHas('employee.user', function($q) use ($businessId) {
+                $q->where('current_business_id', $businessId);
+            });
+            
+            // Scope leaves to business employees
+            $leaveQuery->whereHas('employee.user', function($q) use ($businessId) {
+                $q->where('current_business_id', $businessId);
+            });
+            
+            // Scope attendance to business employees
+            $attendanceQuery->whereHas('employee.user', function($q) use ($businessId) {
+                $q->where('current_business_id', $businessId);
+            });
+            
+            Log::info('ADMIN_CONTROLLER: Stats scoped to business', [
+                'business_id' => $businessId,
+                'admin_id' => $currentUser->id
+            ]);
+        } 
+        // If admin without business, show only non-business data
+        elseif ($currentUser->role === 'admin' && !$currentUser->current_business_id) {
+            $employeeQuery->whereHas('user', function($q) {
+                $q->whereNull('current_business_id');
+            });
+            
+            $managerQuery->whereNull('current_business_id');
+            
+            $payrollQuery->whereHas('employee.user', function($q) {
+                $q->whereNull('current_business_id');
+            });
+            
+            $leaveQuery->whereHas('employee.user', function($q) {
+                $q->whereNull('current_business_id');
+            });
+            
+            $attendanceQuery->whereHas('employee.user', function($q) {
+                $q->whereNull('current_business_id');
+            });
+            
+            Log::info('ADMIN_CONTROLLER: Stats scoped to non-business data', [
+                'admin_id' => $currentUser->id
+            ]);
+        }
+        
+        $stats = [
+            'total_employees' => $employeeQuery->count(),
+            'total_managers' => $managerQuery->count(),
+            'total_payrolls_processed' => $payrollQuery->count(),
+            'pending_leave_requests' => $leaveQuery->count(),
+            'total_attendance_records' => $attendanceQuery->count(),
+            'system_uptime' => $this->getSystemUptime(),
+            'business_id' => $currentUser->current_business_id,
+            'business_name' => $currentUser->current_business_id 
+                ? $currentUser->currentBusiness->name ?? 'Unknown' 
+                : 'No Business',
+        ];
+        
+        return response()->json(['stats' => $stats]);
+    }
       /**
      * Get active tax configuration
      */
-    public function getTaxConfiguration(): JsonResponse
+        public function getTaxConfiguration(Request $request): JsonResponse
     {
+        $currentUser = $request->user();
+        
+        // If admin has a business, try to get business-specific tax config
+        if ($currentUser->current_business_id) {
+            $business = $currentUser->currentBusiness;
+            
+            // Check if business has custom tax configuration
+            if ($business && $business->tax_configuration_id) {
+                $taxConfig = TaxConfiguration::find($business->tax_configuration_id);
+                
+                if ($taxConfig) {
+                    Log::info('ADMIN_CONTROLLER: Business-specific tax config loaded', [
+                        'business_id' => $currentUser->current_business_id,
+                        'tax_config_id' => $taxConfig->id
+                    ]);
+                    
+                    return response()->json(['tax_configuration' => $taxConfig->toArray()]);
+                }
+            }
+        }
+        
+        // Fall back to global/default tax configuration
         Cache::forget('tax_configuration_active');
         $taxConfig = TaxConfiguration::active()->first();
 
-        // If no configuration exists, return empty object instead of default values
         if (!$taxConfig) {
             return response()->json(['tax_configuration' => null]);
         }
@@ -35,7 +140,7 @@ class AdminController extends Controller
     }
 
     /**
-     * Save or update tax configuration in DB
+     * Save or update tax configuration (business-aware)
      */
     public function updateTaxConfiguration(Request $request): JsonResponse
     {
@@ -63,45 +168,94 @@ class AdminController extends Controller
             'taxConfig.includeHousingAllowance' => 'boolean',
             'taxConfig.includeTransportAllowance' => 'boolean',
             'taxConfig.taxCalculationMethod' => ['required', Rule::in(['cumulative', 'non_cumulative'])],
-            'taxConfig.roundingMethod' => ['required', Rule::in(['nearest', 'up', 'down', 'none'])]
+            'taxConfig.roundingMethod' => ['required', Rule::in(['nearest', 'up', 'down', 'none'])],
+            'apply_to_business' => 'boolean', // New field to indicate if this is business-specific
         ]);
 
+        $currentUser = $request->user();
         $taxConfigData = $validated['taxConfig'];
         $taxConfigData['annualTaxFree'] = $taxConfigData['taxFreeThreshold'] * 12;
+        
+        $applyToBusiness = $validated['apply_to_business'] ?? false;
+
+        // Determine scope name
+        $scopeName = 'Global';
+        if ($applyToBusiness && $currentUser->current_business_id) {
+            $business = $currentUser->currentBusiness;
+            $scopeName = $business ? $business->name : "Business #{$currentUser->current_business_id}";
+        }
 
         // Save to database
-        $taxConfig = TaxConfiguration::updateOrCreate(
-            ['country' => 'Zambia'],
-            [
-                'state' => null,
-                'config_data' => $taxConfigData,
-                'is_active' => true
-            ]
-        );
+        $taxConfig = TaxConfiguration::create([
+            'country' => 'Zambia',
+            'state' => null,
+            'config_data' => $taxConfigData,
+            'is_active' => true,
+            'business_id' => ($applyToBusiness && $currentUser->current_business_id) 
+                ? $currentUser->current_business_id 
+                : null,
+        ]);
 
-        // Deactivate other records
-        TaxConfiguration::where('id', '!=', $taxConfig->id)->update(['is_active' => false]);
+        // If this is a business-specific config, update business reference
+        if ($applyToBusiness && $currentUser->current_business_id && $business) {
+            $business->update(['tax_configuration_id' => $taxConfig->id]);
+        }
+
+        // Deactivate other records in the same scope
+        if ($applyToBusiness && $currentUser->current_business_id) {
+            TaxConfiguration::where('id', '!=', $taxConfig->id)
+                ->where('business_id', $currentUser->current_business_id)
+                ->update(['is_active' => false]);
+        } else {
+            TaxConfiguration::where('id', '!=', $taxConfig->id)
+                ->whereNull('business_id')
+                ->update(['is_active' => false]);
+        }
 
         // Log audit
         AuditLog::log(
             'UPDATE_TAX_CONFIG',
-            'Tax configuration updated for Zambia ' . $taxConfigData['taxYear'],
-            ['tax_config_id' => $taxConfig->id, 'tax_year' => $taxConfigData['taxYear']],
+            "Tax configuration updated for {$scopeName} - {$taxConfigData['taxYear']}",
+            [
+                'tax_config_id' => $taxConfig->id, 
+                'tax_year' => $taxConfigData['taxYear'],
+                'business_id' => $taxConfig->business_id,
+                'scope' => $scopeName
+            ],
             auth()->id()
         );
 
         return response()->json([
             'tax_configuration' => $taxConfig->toArray(),
-            'message' => 'Tax configuration saved successfully'
+            'message' => "Tax configuration saved successfully for {$scopeName}"
         ]);
     }
 
     /**
      * List audit logs
      */
-    public function auditLogs(Request $request): AnonymousResourceCollection
+       public function auditLogs(Request $request): AnonymousResourceCollection
     {
-        $logs = AuditLog::with('user')->orderBy('created_at', 'desc')->paginate(20);
+        $currentUser = $request->user();
+        $query = AuditLog::with('user')->orderBy('created_at', 'desc');
+        
+        // If admin has business, show only logs related to their business
+        if ($currentUser->current_business_id) {
+            $query->where(function($q) use ($currentUser) {
+                // Show logs by users in same business
+                $q->whereHas('user', function($subQ) use ($currentUser) {
+                    $subQ->where('current_business_id', $currentUser->current_business_id);
+                })
+                // Or logs without user (system logs) that mention the business
+                ->orWhere('metadata->business_id', $currentUser->current_business_id);
+            });
+            
+            Log::info('ADMIN_CONTROLLER: Audit logs filtered by business', [
+                'business_id' => $currentUser->current_business_id
+            ]);
+        }
+        
+        $logs = $query->paginate(20);
         return \App\Http\Resources\AuditLogResource::collection($logs);
     }
     public function getSettings(): JsonResponse
@@ -305,19 +459,8 @@ class AdminController extends Controller
         ];
         return $descriptions[$key] ?? null;
     }
-    public function systemStats(): JsonResponse
-    {
-        $stats = [
-            'total_employees' => \App\Models\Employee::count(),
-            'total_managers' => \App\Models\User::where('role', 'manager')->count(),
-            'total_payrolls_processed' => \App\Models\Payroll::where('status', 'completed')->count(),
-            'pending_leave_requests' => \App\Models\Leave::where('status', 'pending')->count(),
-            'total_attendance_records' => \App\Models\Attendance::count(),
-            'system_uptime' => $this->getSystemUptime(),
-        ];
-        return response()->json(['stats' => $stats]);
-    }
-    private function getSystemUptime(): string
+   
+        private function getSystemUptime(): string
     {
         try {
             if (function_exists('shell_exec')) {

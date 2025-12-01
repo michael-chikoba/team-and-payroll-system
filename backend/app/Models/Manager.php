@@ -14,10 +14,13 @@ class Manager extends Model
         'department',
         'max_team_size',
         'permissions',
+        'business_id',    // Add this
+        'country_id',     // Add this
     ];
 
     protected $casts = [
         'permissions' => 'array',
+        'max_team_size' => 'integer'
     ];
 
     /**
@@ -29,11 +32,28 @@ class Manager extends Model
     }
 
     /**
-     * Get all employees in this manager's department.
+     * Get the business associated with the manager.
+     */
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
+    }
+
+    /**
+     * Get the country associated with the manager.
+     */
+    public function country()
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    /**
+     * Get all employees in this manager's department AND business.
      */
     public function employees()
     {
-        return $this->hasMany(Employee::class, 'department', 'department');
+        return $this->hasMany(Employee::class, 'department', 'department')
+                    ->where('business_id', $this->business_id);
     }
 
     /**
@@ -50,5 +70,21 @@ class Manager extends Model
     public function getTeamSizeAttribute()
     {
         return $this->employees()->count();
+    }
+
+    /**
+     * Scope a query to filter by business.
+     */
+    public function scopeInBusiness($query, $businessId)
+    {
+        return $query->where('business_id', $businessId);
+    }
+
+    /**
+     * Scope a query to filter by country.
+     */
+    public function scopeInCountry($query, $countryId)
+    {
+        return $query->where('country_id', $countryId);
     }
 }

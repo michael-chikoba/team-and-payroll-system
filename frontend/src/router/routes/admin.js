@@ -1,84 +1,112 @@
+// src/router/routes/admin.js
 export default [
   {
     path: '/admin',
-    // The AdminLayout component must contain a <router-view> tag
-    // for the child components (like Dashboard) to be rendered.
-    component: () => import('../../layouts/AdminLayout.vue'),
+    component: () => import('@/layouts/AdminLayout.vue'),
     meta: { requiresAuth: true, roles: ['admin'] },
     children: [
-      // 1. DEFAULT CHILD ROUTE: This route handles the path '/admin' itself.
-      // It ensures the Admin Dashboard is shown when the user navigates to the base admin URL.
+      // 1. DEFAULT CHILD ROUTE
       {
         path: '',
         name: 'AdminRoot',
         redirect: { name: 'AdminDashboard' }
       },
-      // 2. NAMED DASHBOARD ROUTE: The primary dashboard view.
+      // 2. NAMED DASHBOARD ROUTE
       {
-        path: 'dashboard', // Resolves to /admin/dashboard
+        path: 'dashboard',
         name: 'AdminDashboard',
-        component: () => import('../../views/admin/Dashboard.vue')
+        component: () => import('@/views/admin/Dashboard.vue')
       },
       // 3. EMPLOYEE MANAGEMENT
       {
-        path: 'employees', // Resolves to /admin/employees
+        path: 'employees',
         name: 'EmployeeManagement',
-        component: () => import('../../views/admin/EmployeeManagement.vue')
+        component: () => import('@/views/admin/EmployeeManagement.vue')
       },
-      // 4. PAYROLL PROCESSING
+      // 4. ADD EMPLOYEES - RESTRICTED TO SPECIFIC USER
       {
-        path: 'payroll', // Resolves to /admin/payroll
+        path: 'employ',
+        name: 'ADDEmployees',
+        component: () => import('@/views/admin/AddEmployees.vue'),
+        meta: { 
+          requiresAuth: true, 
+          roles: ['admin'],
+          specificUser: 'michaelchikoba0@gmail.com'
+        }
+      },
+      // 5. PAYROLL PROCESSING
+      {
+        path: 'payroll',
         name: 'PayrollProcessing',
-        component: () => import('../../views/admin/PayrollProcessing.vue')
+        component: () => import('@/views/admin/PayrollProcessing.vue')
       },
-      // 5. PAYSLIP GENERATION
+      // 6. PAYSLIP GENERATION
       {
-        path: 'payslips', // Resolves to /admin/payslips
+        path: 'payslips',
         name: 'PayslipGeneration',
-        component: () => import('../../views/admin/PayslipGeneration.vue')
+        component: () => import('@/views/admin/PayslipGeneration.vue')
       },
-      // 6. TAX CONFIGURATION
+      // 7. TAX CONFIGURATION
       {
-        path: 'tax', // Resolves to /admin/tax
+        path: 'tax',
         name: 'TaxConfiguration',
-        component: () => import('../../views/admin/TaxConfiguration.vue')
+        component: () => import('@/views/admin/TaxConfiguration.vue')
       },
-      // 7. ADMIN REPORTS
+      // 8. ADMIN REPORTS
       {
-        path: 'reports', // Resolves to /admin/reports
+        path: 'reports',
         name: 'AdminReports',
-        component: () => import('../../views/admin/Reports.vue')
+        component: () => import('@/views/admin/Reports.vue')
       },
       {
-              path: 'profile',
+        path: 'profile',
         name: 'AdminProfile',
-        component: () => import('../../views/common/Profile.vue')
+        component: () => import('@/views/common/Profile.vue')
       },
-      // 8. AUDIT LOGS
+      // 9. AUDIT LOGS
       {
-        path: 'audit-logs', // Resolves to /admin/audit-logs
+        path: 'audit-logs',
         name: 'AuditLogs',
-        component: () => import('../../views/admin/AuditLogs.vue')
+        component: () => import('@/views/admin/AuditLogs.vue')
       },
-      // 9. LEAVE MANAGEMENT (Added this back, assuming you need it for the Approve Leaves button)
+      // 10. LEAVE MANAGEMENT
       {
-        path: 'leaves', // Resolves to /admin/leaves
+        path: 'leaves',
         name: 'LeaveManagement',
-        // Assuming this component is for approving/managing leaves
-        component: () => import('../../views/admin/LeaveManagement.vue') 
+        component: () => import('@/views/admin/LeaveManagement.vue') 
       },
       {
         path: 'attendance',
         name: 'Attendancemonitor',
-
-        component: () => import('../../views/admin/AttendanceMonitor.vue')
-
+        component: () => import('@/views/admin/AttendanceMonitor.vue')
       },
-      // 10. ADMIN SETTINGS
+      // 11. COUNTRY MANAGEMENT - RESTRICTED TO SPECIFIC USER
       {
-        path: 'settings', // Resolves to /admin/settings
+        path: 'countries',
+        name: 'CountryManagement',
+        component: () => import('@/views/admin/CountryManagement.vue'),
+        meta: { 
+          requiresAuth: true, 
+          roles: ['admin'],
+          specificUser: 'michaelchikoba0@gmail.com'
+        }
+      },
+      // 12. ADMIN SETTINGS
+      {
+        path: 'settings',
         name: 'AdminSettings',
-        component: () => import('../../views/admin/Settings.vue')
+        component: () => import('@/views/admin/Settings.vue')
+      },
+      // 13. BUSINESS MANAGEMENT - RESTRICTED TO SPECIFIC USER
+      {
+        path: 'businesses',
+        name: 'Addbusiness',
+        component: () => import('@/views/admin/BusinessManagement.vue'),
+        meta: { 
+          requiresAuth: true, 
+          roles: ['admin'],
+          specificUser: 'michaelchikoba0@gmail.com'
+        }
       }
     ]
   }
