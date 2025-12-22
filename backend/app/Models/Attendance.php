@@ -1,11 +1,13 @@
 <?php
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
 
 class Attendance extends Model
 {
@@ -20,6 +22,8 @@ class Attendance extends Model
         'break_minutes',
         'status',
         'notes',
+        'country_id',
+        'business_id',
     ];
 
     protected $casts = [
@@ -29,11 +33,127 @@ class Attendance extends Model
     ];
 
     /**
+     * Boot method for the model
+     */
+    protected static function booted()
+    {
+        static::creating(function ($attendance) {
+            // Auto-populate country_id and business_id from employee
+            if ($attendance->employee) {
+                $attendance->country_id = $attendance->employee->country_id;
+                $attendance->business_id = $attendance->employee->business_id;
+            }
+        });
+
+        static::updating(function ($attendance) {
+            // Ensure consistency
+            if ($attendance->employee) {
+                $attendance->country_id = $attendance->employee->country_id;
+                $attendance->business_id = $attendance->employee->business_id;
+            }
+        });
+
+        static::saving(function ($attendance) {
+            // Always recalculate if both times are present
+            if ($attendance->clock_in && $attendance->clock_out) {
+                $calculatedHours = $attendance->calculateTotalHours();
+                
+                // Update if different or if not set
+                if (!$attendance->total_hours || 
+                    abs($attendance->total_hours - $calculatedHours) > 0.01) {
+                    $attendance->total_hours = $calculatedHours;
+                    
+                    Log::debug('Auto-updating total hours', [
+                        'attendance_id' => $attendance->id,
+                        'old_hours' => $attendance->getOriginal('total_hours'),
+                        'new_hours' => $calculatedHours
+                    ]);
+                }
+            }
+        });
+    }
+
+    /**
      * Get the employee that owns the attendance
      */
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    /**
+     * Get the country relationship
+     */
+    public function country(): BelongsTo
+    {
+        return $this->belongsTo(Country::class);
+    }
+
+    /**
+     * Get the business relationship
+     */
+    public function business(): BelongsTo
+    {
+        return $this->belongsTo(Business::class);
+    }
+
+    // Add scopes for filtering
+    public function scopeFilterByCountry($query, $countryId = null)
+    {
+        if ($countryId) {
+            return $query->where('country_id', $countryId);
+        }
+        return $query;
+    }
+
+    public function scopeFilterByBusiness($query, $businessId = null)
+    {
+        if ($businessId) {
+            return $query->where('business_id', $businessId);
+        }
+        return $query;
+    }
+
+    public function scopeFilterByDepartment($query, $department = null)
+    {
+        if ($department) {
+            return $query->whereHas('employee', function ($q) use ($department) {
+                $q->where('department', $department);
+            });
+        }
+        return $query;
+    }
+
+    /**
+     * Scope to get attendance for a specific date range
+     */
+    public function scopeDateRange($query, $startDate, $endDate)
+    {
+        return $query->whereBetween('date', [$startDate, $endDate]);
+    }
+
+    /**
+     * Scope to get unclosed attendance
+     */
+    public function scopeUnclosed($query)
+    {
+        return $query->whereNull('clock_out');
+    }
+
+    /**
+     * Scope to get today's attendance
+     */
+    public function scopeToday($query)
+    {
+        return $query->whereDate('date', now()->timezone('Africa/Lusaka')->toDateString());
+    }
+
+    /**
+     * Scope to get completed attendance (with clock out)
+     */
+    public function scopeCompleted($query)
+    {
+        return $query->whereNotNull('clock_out');
     }
 
     /**
@@ -74,7 +194,12 @@ class Attendance extends Model
             return $hours;
 
         } catch (\Exception $e) {
-            // Silent fail - return 0 on error
+            Log::error('Error calculating total hours', [
+                'attendance_id' => $this->id,
+                'clock_in' => $this->clock_in,
+                'clock_out' => $this->clock_out,
+                'error' => $e->getMessage()
+            ]);
             return 0;
         }
     }
@@ -132,6 +257,12 @@ class Attendance extends Model
             return round($totalHours, 2);
 
         } catch (\Exception $e) {
+            Log::error('Error getting monthly total hours', [
+                'employee_id' => $employeeId,
+                'month' => $month,
+                'year' => $year,
+                'error' => $e->getMessage()
+            ]);
             return 0;
         }
     }
@@ -160,7 +291,7 @@ class Attendance extends Model
                 'completed_days' => $completedShifts->count(),
                 'incomplete_days' => $attendances->whereNull('clock_out')->count(),
                 'average_hours_per_day' => round($avgHoursPerDay, 2),
-                'present_days' => $attendances->where('status', 'present')->count(),
+                'present_days' => $attendances->whereIn('status', ['present', 'completed'])->count(),
                 'late_days' => $attendances->where('status', 'late')->count(),
                 'absent_days' => $attendances->where('status', 'absent')->count(),
                 'month' => $month,
@@ -168,6 +299,69 @@ class Attendance extends Model
             ];
 
         } catch (\Exception $e) {
+            Log::error('Error getting monthly stats', [
+                'employee_id' => $employeeId,
+                'month' => $month,
+                'year' => $year,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+    /**
+     * Get monthly statistics with country/business filters
+     */
+    public static function getMonthlyStatsWithFilters(
+        int $month, 
+        int $year, 
+        ?int $countryId = null, 
+        ?int $businessId = null
+    ): array {
+        try {
+            $query = self::whereYear('date', $year)
+                ->whereMonth('date', $month);
+
+            if ($countryId) {
+                $query->where('country_id', $countryId);
+            }
+
+            if ($businessId) {
+                $query->where('business_id', $businessId);
+            }
+
+            $attendances = $query->get();
+
+            $completedShifts = $attendances->whereNotNull('clock_out');
+            $totalHours = $completedShifts->sum('total_hours');
+            $avgHoursPerDay = $completedShifts->count() > 0 
+                ? $totalHours / $completedShifts->count() 
+                : 0;
+
+            return [
+                'total_hours' => round($totalHours, 2),
+                'total_days' => $attendances->count(),
+                'completed_days' => $completedShifts->count(),
+                'incomplete_days' => $attendances->whereNull('clock_out')->count(),
+                'average_hours_per_day' => round($avgHoursPerDay, 2),
+                'present_days' => $attendances->whereIn('status', ['present', 'completed'])->count(),
+                'late_days' => $attendances->where('status', 'late')->count(),
+                'absent_days' => $attendances->where('status', 'absent')->count(),
+                'employee_count' => $attendances->groupBy('employee_id')->count(),
+                'month' => $month,
+                'year' => $year,
+                'country_id' => $countryId,
+                'business_id' => $businessId,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error getting monthly stats with filters', [
+                'month' => $month,
+                'year' => $year,
+                'country_id' => $countryId,
+                'business_id' => $businessId,
+                'error' => $e->getMessage()
+            ]);
             return [];
         }
     }
@@ -292,59 +486,67 @@ class Attendance extends Model
     }
 
     /**
-     * Scope to get attendance for a specific date range
+     * Get summary by country and business for a specific date
      */
-    public function scopeDateRange($query, $startDate, $endDate)
+    public static function getSummaryByFilters(string $date, ?int $countryId = null, ?int $businessId = null): array
     {
-        return $query->whereBetween('date', [$startDate, $endDate]);
-    }
+        try {
+            $query = self::whereDate('date', $date)
+                ->with(['employee', 'country', 'business']);
 
-    /**
-     * Scope to get unclosed attendance
-     */
-    public function scopeUnclosed($query)
-    {
-        return $query->whereNull('clock_out');
-    }
-
-    /**
-     * Scope to get today's attendance
-     */
-    public function scopeToday($query)
-    {
-        return $query->whereDate('date', now()->timezone('Africa/Lusaka')->toDateString());
-    }
-
-    /**
-     * Scope to get completed attendance (with clock out)
-     */
-    public function scopeCompleted($query)
-    {
-        return $query->whereNotNull('clock_out');
-    }
-
-    /**
-     * Auto-calculate and update total hours before saving
-     */
-    protected static function booted()
-    {
-        static::saving(function ($attendance) {
-            // Always recalculate if both times are present
-            if ($attendance->clock_in && $attendance->clock_out) {
-                $calculatedHours = $attendance->calculateTotalHours();
-                
-                // Update if different or if not set
-                if (!$attendance->total_hours || 
-                    abs($attendance->total_hours - $calculatedHours) > 0.01) {
-                    $attendance->total_hours = $calculatedHours;
-                    
-                    Log::debug('Auto-updating total hours', [
-                        'attendance_id' => $attendance->id,
-                        'old_hours' => $attendance->getOriginal('total_hours'),
-                        'new_hours' => $calculatedHours
-                    ]);
-                }
+            if ($countryId) {
+                $query->where('country_id', $countryId);
             }
-        });
+
+            if ($businessId) {
+                $query->where('business_id', $businessId);
+            }
+
+            $attendances = $query->get();
+
+            // Group by country
+            $byCountry = [];
+            foreach ($attendances->groupBy('country_id') as $countryId => $countryAttendances) {
+                $country = $countryAttendances->first()->country ?? null;
+                $byCountry[] = [
+                    'country_id' => $countryId,
+                    'country_name' => $country ? $country->name : 'Unknown',
+                    'total_employees' => $countryAttendances->groupBy('employee_id')->count(),
+                    'present_count' => $countryAttendances->whereIn('status', ['present', 'completed'])->count(),
+                    'absent_count' => $countryAttendances->where('status', 'absent')->count(),
+                    'late_count' => $countryAttendances->where('status', 'late')->count(),
+                ];
+            }
+
+            // Group by business
+            $byBusiness = [];
+            foreach ($attendances->groupBy('business_id') as $businessId => $businessAttendances) {
+                $business = $businessAttendances->first()->business ?? null;
+                $byBusiness[] = [
+                    'business_id' => $businessId,
+                    'business_name' => $business ? $business->name : 'Unknown',
+                    'total_employees' => $businessAttendances->groupBy('employee_id')->count(),
+                    'present_count' => $businessAttendances->whereIn('status', ['present', 'completed'])->count(),
+                    'absent_count' => $businessAttendances->where('status', 'absent')->count(),
+                    'late_count' => $businessAttendances->where('status', 'late')->count(),
+                ];
+            }
+
+            return [
+                'by_country' => $byCountry,
+                'by_business' => $byBusiness,
+                'total_records' => $attendances->count(),
+                'total_employees' => $attendances->groupBy('employee_id')->count(),
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error getting summary by filters', [
+                'date' => $date,
+                'country_id' => $countryId,
+                'business_id' => $businessId,
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
     }
 }

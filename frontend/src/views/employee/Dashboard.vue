@@ -119,25 +119,21 @@
           <div class="info-card">
             <div class="card-header">
               <h3>Leave Balances ({{ new Date().getFullYear() }})</h3>
-              <div class="card-actions">
-                <button class="btn-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                </button>
-              </div>
             </div>
             <div class="leave-balances">
-              <div v-for="(balance, type) in stats.leave_balances" :key="type" class="leave-item">
+              <!-- Loop through balances -->
+              <div v-for="(balanceData, type) in stats.leave_balances" :key="type" class="leave-item">
                 <div class="leave-type-info">
                   <span class="leave-type">{{ formatLeaveType(type) }}</span>
-                  <span class="leave-days">{{ balance }} days</span>
+                  <!-- Display Available / Total -->
+                  <span class="leave-days">
+                    {{ balanceData.available }} / {{ balanceData.total }} days
+                  </span>
                 </div>
                 <div class="leave-progress">
                   <div class="progress-bar">
-                    <div class="progress-fill" :style="{ width: calculateProgress(balance) + '%' }"></div>
+                    <!-- Dynamic width based on Total -->
+                    <div class="progress-fill" :style="{ width: calculateProgress(balanceData) + '%' }"></div>
                   </div>
                 </div>
               </div>
@@ -181,7 +177,7 @@
                     </td>
                     <td>{{ formatDate(leave.start_date) }}</td>
                     <td>{{ formatDate(leave.end_date) }}</td>
-                    <td>{{ leave.number_of_days || 0 }}</td>
+                    <td>{{ leave.number_of_days || leave.total_days || 0 }}</td>
                     <td>
                       <span :class="['status', leave.status.toLowerCase()]">
                         {{ leave.status }}
@@ -212,15 +208,6 @@
           <div class="info-card">
             <div class="card-header">
               <h3>Next Payslip</h3>
-              <div class="card-actions">
-                <button class="btn-icon">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                </button>
-              </div>
             </div>
             <div v-if="stats.upcoming_payslip" class="payslip-info">
               <div class="payslip-icon">
@@ -322,10 +309,10 @@ export default {
      
       this.fetchDashboardData()
      
-      // Refresh data every 5 minutes to catch setting changes
+      // Refresh data every 5 minutes
       this.refreshInterval = setInterval(() => {
         this.fetchDashboardData(true)  // Silent refresh
-      }, 300000) // 5 minutes
+      }, 300000)
     },
     async fetchDashboardData(silent = false) {
       if (!silent) {
@@ -334,19 +321,10 @@ export default {
       this.error = null
      
       try {
-        // Fetch dashboard data
         const response = await axios.get('/api/dashboard')
        
         if (response.data.role === 'employee' && response.data.stats) {
-          // Store old balances for comparison
-          const oldBalances = this.stats.leave_balances || {}
-         
           this.stats = response.data.stats
-         
-          // Check if leave balances have changed (admin updated settings)
-          if (!silent && this.hasBalancesChanged(oldBalances, this.stats.leave_balances)) {
-            this.showBalanceUpdateNotification()
-          }
         } else if (response.data.role !== 'employee') {
           this.error = 'This dashboard is for employees only.'
         }
@@ -361,31 +339,21 @@ export default {
         }
       }
     },
-    hasBalancesChanged(oldBalances, newBalances) {
-      if (!oldBalances || Object.keys(oldBalances).length === 0) {
-        return false  // First load
-      }
-     
-      for (const type in newBalances) {
-        if (oldBalances[type] !== newBalances[type]) {
-          return true
-        }
-      }
-      return false
+    handleApiError(err) {
+      this.error = err.response?.data?.message || 'Failed to load dashboard data.'
     },
-    showBalanceUpdateNotification() {
-      if (this.$notify) {
-        this.$notify({
-          type: 'info',
-          title: 'Leave Balances Updated',
-          text: 'Your leave balances have been updated based on new company policies.',
-          duration: 5000
-        })
-      }
+    retryFetch() {
+        this.fetchDashboardData()
     },
+    // Updated to sum .available properties
     getTotalLeaveBalance() {
       if (!this.stats.leave_balances) return 0
-      return Object.values(this.stats.leave_balances).reduce((sum, val) => sum + val, 0)
+      
+      return Object.values(this.stats.leave_balances).reduce((sum, item) => {
+        // Handle both integer (legacy) and object formats
+        const val = typeof item === 'object' ? item.available : item;
+        return sum + (Number(val) || 0);
+      }, 0)
     },
     formatHours(hours) {
       if (!hours) return '0.00'
@@ -393,8 +361,6 @@ export default {
     },
     formatLeaveType(type) {
       if (!type) return 'N/A'
-     
-      // Map database types to display names
       const typeMap = {
         'annual': 'Annual Leave',
         'sick': 'Sick Leave',
@@ -403,10 +369,7 @@ export default {
         'bereavement': 'Bereavement Leave',
         'unpaid': 'Unpaid Leave'
       }
-     
-      return typeMap[type.toLowerCase()] || type.split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ')
+      return typeMap[type.toLowerCase()] || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     },
     formatDate(date) {
       if (!date) return 'N/A'
@@ -416,16 +379,22 @@ export default {
         day: 'numeric'
       })
     },
-    calculateProgress(balance) {
-      // Simple progress calculation for leave balances
-      // You can customize this based on your business logic
-      const maxBalance = 30; // Assuming 30 days as maximum
-      return Math.min((balance / maxBalance) * 100, 100);
+    // Updated calculation based on backend Total
+    calculateProgress(balanceData) {
+      // If legacy (just a number), fallback to avoiding division by zero
+      if (typeof balanceData !== 'object') {
+        return 50; 
+      }
+      
+      const total = balanceData.total || 1; // Avoid division by zero
+      const available = balanceData.available || 0;
+      
+      // Calculate percentage
+      const percentage = (available / total) * 100;
+      return Math.min(percentage, 100);
     }
   },
-  // Add to lifecycle hooks
   beforeUnmount() {
-    // Clear interval when component is destroyed
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval)
     }
@@ -434,6 +403,7 @@ export default {
 </script>
 
 <style scoped>
+/* Keeping existing styles as they were good */
 .dashboard-view {
   padding: 0;
   max-width: 1400px;

@@ -18,34 +18,121 @@
       </div>
     </div>
     <!-- End Modal System -->
-    <div class="page-header">
-      <div>
-        <h1>Team Attendance Monitor</h1>
-        <p class="subtitle">Monitoring team attendance for {{ safeFormatDate(selectedDate) }}</p>
+    
+    <!-- Country & Business Filters Section -->
+    <div class="filter-section">
+      <div class="filter-group">
+        <label>🌍 Country:</label>
+        <select v-model="selectedCountry" @change="onCountryChange" class="filter-select" :disabled="loadingFilters">
+          <option value="all">All Countries</option>
+          <option v-for="country in availableCountries" :key="country.id" :value="country.id">
+            {{ country.name }} ({{ country.employee_count || 0 }})
+          </option>
+        </select>
       </div>
-      <div class="header-actions">
+      
+      <div class="filter-group">
+        <label>🏢 Business:</label>
+        <!-- MODIFIED: Removed the disabled condition based on selectedCountry -->
+        <select v-model="selectedBusiness" @change="onBusinessChange" class="filter-select" 
+                :disabled="loadingFilters">
+          <option value="all">All Businesses</option>
+          <option v-for="business in availableBusinesses" :key="business.id" :value="business.id">
+            {{ business.name }} ({{ business.employee_count || 0 }})
+          </option>
+        </select>
+      </div>
+      
+      <div class="filter-group">
+        <label>📅 Date:</label>
         <input
           type="date"
           v-model="selectedDate"
           @change="fetchAllData"
           :max="today"
-          class="date-picker"
+          class="filter-select"
+          :disabled="loading"
         />
+      </div>
+    </div>
+
+    <!-- Rest of the template remains exactly the same... -->
+    <div class="page-header">
+      <div>
+        <h1>Team Attendance Monitor</h1>
+        <p class="subtitle">
+          Monitoring team attendance for {{ safeFormatDate(selectedDate) }}
+          <span v-if="selectedCountry !== 'all' || selectedBusiness !== 'all' || selectedDepartment !== 'all'">
+            • 
+            <span v-if="selectedCountry !== 'all'">🌍 {{ getCountryName(selectedCountry) }}</span>
+            <span v-if="selectedBusiness !== 'all'"> • 🏢 {{ getBusinessName(selectedBusiness) }}</span>
+            <span v-if="selectedDepartment !== 'all'"> • 📁 {{ selectedDepartment }}</span>
+          </span>
+        </p>
+      </div>
+      <div class="header-actions">
         <button @click="fetchAllData" class="btn-refresh" :disabled="loading">
           <span v-if="loading">Loading...</span>
           <span v-else>🔄 Refresh</span>
         </button>
       </div>
     </div>
-    <div v-if="loading" class="loading">
+    
+    <div v-if="loadingFilters" class="loading">
+      <div class="spinner"></div>
+      <p>Loading filter options...</p>
+    </div>
+    
+    <div v-else-if="loading" class="loading">
       <div class="spinner"></div>
       <p>Loading attendance data...</p>
     </div>
+    
     <div v-else-if="error" class="error-message">
       {{ error }}
       <button @click="retryFetch" class="btn-primary">Retry</button>
     </div>
+    
     <div v-else>
+      <!-- Country/Business Overview Section -->
+      <div class="overview-section" v-if="summaryData">
+        <div class="overview-card">
+          <div class="overview-header">
+            <h3>📊 Attendance Overview</h3>
+            <div class="overview-filters">
+              <span v-if="selectedCountry !== 'all'" class="filter-badge">
+                🌍 {{ getCountryName(selectedCountry) }}
+              </span>
+              <span v-if="selectedBusiness !== 'all'" class="filter-badge">
+                🏢 {{ getBusinessName(selectedBusiness) }}
+              </span>
+            </div>
+          </div>
+          <div class="overview-metrics">
+            <div class="metric total">
+              <span class="metric-value">{{ summaryData.total_employees }}</span>
+              <span class="metric-label">Total Employees</span>
+            </div>
+            <div class="metric present">
+              <span class="metric-value">{{ summaryData.present_count }}</span>
+              <span class="metric-label">Present</span>
+            </div>
+            <div class="metric absent">
+              <span class="metric-value">{{ summaryData.absent_count }}</span>
+              <span class="metric-label">Absent</span>
+            </div>
+            <div class="metric late">
+              <span class="metric-value">{{ summaryData.late_count }}</span>
+              <span class="metric-label">Late</span>
+            </div>
+            <div class="metric rate">
+              <span class="metric-value">{{ summaryData.attendance_rate }}%</span>
+              <span class="metric-label">Attendance Rate</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Department Overview Section -->
       <div class="department-overview" v-if="departmentStats.length > 0">
         <h2>📊 Department Overview</h2>
@@ -76,40 +163,13 @@
           </div>
         </div>
       </div>
-      <!-- Overview Section -->
-      <div class="overview-section" v-if="currentOverview">
-        <div class="overview-card">
-          <h3>📊 {{ selectedDepartment === 'all' ? 'Team' : selectedDepartment }} Attendance Overview</h3>
-          <div class="overview-metrics">
-            <div class="metric total">
-              <span class="metric-value">{{ currentOverview.totalEmployees }}</span>
-              <span class="metric-label">Total Team Members</span>
-            </div>
-            <div class="metric present">
-              <span class="metric-value">{{ currentOverview.presentCount }}</span>
-              <span class="metric-label">Present</span>
-            </div>
-            <div class="metric absent">
-              <span class="metric-value">{{ currentOverview.absentCount }}</span>
-              <span class="metric-label">Absent</span>
-            </div>
-            <div class="metric late">
-              <span class="metric-value">{{ currentOverview.lateCount }}</span>
-              <span class="metric-label">Late</span>
-            </div>
-            <div class="metric rate">
-              <span class="metric-value">{{ currentOverview.attendanceRate }}%</span>
-              <span class="metric-label">Attendance Rate</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      
       <!-- Employees Section -->
       <div class="employees-section">
         <div class="section-header">
           <h2>Team Members ({{ allCount }})</h2>
-          <div class="department-filter" v-if="departments.length > 0">
-            <select v-model="selectedDepartment" @change="onDepartmentChange" class="dept-select">
+          <div class="filter-group">
+            <select v-model="selectedDepartment" @change="onDepartmentChange" class="dept-select" :disabled="loading">
               <option value="all">All Departments</option>
               <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
             </select>
@@ -146,6 +206,7 @@
             Late ({{ lateCount }})
           </button>
         </div>
+        
         <div class="employees-grid">
           <div v-for="employee in filteredData" :key="employee.id" class="employee-card">
             <div class="employee-header">
@@ -156,6 +217,10 @@
                 <h3>{{ employee.full_name }}</h3>
                 <p class="employee-id">{{ employee.employee_id }} • {{ employee.department }}</p>
                 <p class="employee-position">{{ employee.position }}</p>
+                <div class="employee-location" v-if="employee.country_name || employee.business_name">
+                  <span v-if="employee.country_name" class="location-badge country">🌍 {{ employee.country_name }}</span>
+                  <span v-if="employee.business_name" class="location-badge business">🏢 {{ employee.business_name }}</span>
+                </div>
               </div>
               <div class="attendance-status">
                 <span class="status-badge" :class="getStatusClass(employee.status)">
@@ -197,18 +262,23 @@
               </button>
             </div>
           </div>
+          
           <div v-if="filteredData.length === 0" class="empty-state">
             <div class="empty-icon">📭</div>
             <p>No {{ filterStatus === 'all' ? '' : formatStatus(filterStatus).toLowerCase() }} employees found</p>
-            <p v-if="filterStatus !== 'all' || selectedDepartment !== 'all'">Try changing the filter or date</p>
+            <p v-if="filterStatus !== 'all' || selectedDepartment !== 'all' || selectedCountry !== 'all' || selectedBusiness !== 'all'">
+              Try changing the filters or date
+            </p>
           </div>
         </div>
       </div>
     </div>
   </div>
 </template>
+
 <script>
 import axios from 'axios';
+
 export default {
   name: 'AttendanceMonitor',
   data() {
@@ -218,12 +288,22 @@ export default {
       departments: [],
       selectedDepartment: 'all',
       loading: false,
+      loadingFilters: false,
       error: null,
       retryCount: 0,
       selectedDate: new Date().toISOString().split('T')[0],
       today: new Date().toISOString().split('T')[0],
       filterStatus: 'all',
-      markingPresentId: null, // Track which employee is being marked present
+      markingPresentId: null,
+      
+      // Country/Business filters
+      selectedCountry: 'all',
+      selectedBusiness: 'all',
+      availableCountries: [],
+      availableBusinesses: [],
+      // MODIFIED: Added allBusinesses to cache the master list
+      allBusinesses: [],
+      
       // Enhanced Modal state
       modalVisible: false,
       modalTitle: '',
@@ -235,6 +315,9 @@ export default {
       modalResolve: null,
       modalReject: null,
       currentEmployeeToMark: null,
+      
+      // Summary data
+      summaryData: null
     };
   },
   computed: {
@@ -248,42 +331,30 @@ export default {
       }
       return this.attendanceData.filter(emp => emp.department === this.selectedDepartment);
     },
+    
     allCount() {
       return this.departmentFilteredData.length;
     },
+    
     presentCount() {
       return this.departmentFilteredData.filter(e =>
         ['present', 'completed'].includes(e.status)
       ).length;
     },
+    
     absentCount() {
       return this.departmentFilteredData.filter(e =>
         ['absent', 'on_leave'].includes(e.status)
       ).length;
     },
+    
     lateCount() {
       return this.departmentFilteredData.filter(e => e.status === 'late').length;
     },
-    currentOverview() {
-      const data = this.departmentFilteredData;
-      const total = data.length;
-      const presentOnTime = data.filter(e =>
-        ['present', 'completed'].includes(e.status)
-      ).length;
-      const late = data.filter(e => e.status === 'late').length;
-      const absent = total - (presentOnTime + late);
-      return {
-        totalEmployees: total,
-        presentCount: presentOnTime,
-        absentCount: absent,
-        lateCount: late,
-        attendanceRate: total > 0 ?
-          Math.round(((presentOnTime + late) / total) * 100) : 0
-      };
-    },
+    
     filteredData() {
       let filtered = this.departmentFilteredData;
-      // Filter by status
+      
       if (this.filterStatus === 'all') {
         return filtered;
       }
@@ -304,13 +375,69 @@ export default {
   },
  
   mounted() {
+    this.fetchFilterOptions();
     this.fetchAllData();
   },
  
   methods: {
-    onDepartmentChange() {
-      this.filterStatus = 'all'; // Reset status filter when department changes
+    async fetchFilterOptions() {
+      this.loadingFilters = true;
+      try {
+        const [countriesRes, businessesRes] = await Promise.all([
+          axios.get('/api/admin/attendance/countries'),
+          axios.get('/api/admin/attendance/businesses')
+        ]);
+        
+        this.availableCountries = countriesRes.data.data || [];
+        // MODIFIED: Store in both available and allBusinesses
+        this.allBusinesses = businessesRes.data.data || [];
+        this.availableBusinesses = [...this.allBusinesses];
+        
+      } catch (err) {
+        console.error('Failed to load filter options:', err);
+        this.showError('Failed to load filter options. Please refresh the page.', 'Filter Error');
+      } finally {
+        this.loadingFilters = false;
+      }
     },
+    
+    // MODIFIED: Updated Logic to handle restoring all businesses
+    async onCountryChange() {
+      this.selectedBusiness = 'all'; // Reset business when country changes
+      this.selectedDepartment = 'all';
+      
+      if (this.selectedCountry === 'all') {
+        // If All Countries selected, restore the full business list from cache
+        this.availableBusinesses = [...this.allBusinesses];
+      } else {
+        // If specific country, fetch filtered businesses
+        await this.fetchBusinessesByCountry();
+      }
+      
+      this.fetchAllData();
+    },
+    
+    async fetchBusinessesByCountry() {
+      try {
+        const response = await axios.get('/api/admin/attendance/businesses', {
+          params: { country_id: this.selectedCountry }
+        });
+        this.availableBusinesses = response.data.data || [];
+      } catch (err) {
+        console.error('Failed to fetch businesses for country:', err);
+      }
+    },
+    
+    onBusinessChange() {
+      this.selectedDepartment = 'all';
+      this.fetchAllData();
+    },
+    
+    onDepartmentChange() {
+      this.filterStatus = 'all';
+      this.fetchAllData();
+    },
+    
     // --- Enhanced Modal Methods ---
     showAlert(message, title = 'Notification', type = 'info') {
       this.modalTitle = title;
@@ -325,6 +452,7 @@ export default {
         this.modalResolve = resolve;
       });
     },
+    
     showConfirm(message, title = 'Confirmation') {
       this.modalTitle = title;
       this.modalMessage = message;
@@ -339,22 +467,27 @@ export default {
         this.modalReject = reject;
       });
     },
+    
     showSuccess(message, title = 'Success!') {
       return this.showAlert(message, title, 'success');
     },
+    
     showError(message, title = 'Error') {
       return this.showAlert(message, title, 'error');
     },
+    
     confirmAction() {
       this.modalVisible = false;
       if (this.modalResolve) this.modalResolve(true);
       this.resetModal();
     },
+    
     cancelAction() {
       this.modalVisible = false;
       if (this.modalReject) this.modalReject(false);
       this.resetModal();
     },
+    
     resetModal() {
       this.modalResolve = null;
       this.modalReject = null;
@@ -366,21 +499,28 @@ export default {
       this.modalButtonText = 'Close';
       this.currentEmployeeToMark = null;
     },
+    
     // --- API Methods ---
     async fetchAllData() {
       this.loading = true;
       this.error = null;
+      
       try {
-        const [employeesRes, attendanceRes] = await Promise.all([
-          axios.get('/api/admin/employees'),
-          axios.get('/api/admin/reports/attendance', {
-            params: {
-              date: this.selectedDate,
-              detailed: true
-            }
-          })
-        ]);
-        await this.processAttendanceData(attendanceRes.data, employeesRes.data);
+        const params = {
+          date: this.selectedDate,
+          country_id: this.selectedCountry === 'all' ? null : this.selectedCountry,
+          business_id: this.selectedBusiness === 'all' ? null : this.selectedBusiness,
+          department: this.selectedDepartment === 'all' ? null : this.selectedDepartment
+        };
+
+        const response = await axios.get('/api/admin/attendance/status', { params });
+        
+        if (response.data.success) {
+          await this.processAttendanceData(response.data.data, response.data.summary);
+        } else {
+          throw new Error(response.data.message || 'Failed to fetch attendance data');
+        }
+        
       } catch (err) {
         console.error('❌ Fetch all data error:', err);
         this.handleApiError(err);
@@ -388,104 +528,54 @@ export default {
         this.loading = false;
       }
     },
-    async processAttendanceData(attendanceData, employeesData) {
-      const employees = employeesData.data || employeesData.employees || employeesData || [];
-      const attendances = attendanceData.data || attendanceData.attendances || attendanceData || [];
-     
-      this.departments = [...new Set(employees.map(emp => emp.department || 'Unassigned'))].sort();
-      // Filter attendances for selected date
-      const selectedDateFormatted = new Date(this.selectedDate).toISOString().split('T')[0];
-      const attendancesForDate = attendances.filter(a => {
-        if (!a.date) return false;
-        const attendanceDate = new Date(a.date).toISOString().split('T')[0];
-        return attendanceDate === selectedDateFormatted;
-      });
-      // Create map of attendance records by employee ID
-      const attendanceMap = new Map();
-      attendancesForDate.forEach(att => {
-        const employeeId = att.employee_id || att.employee?.id;
-        if (employeeId) {
-          attendanceMap.set(employeeId, att);
-        }
-      });
-      // Create attendance records for ALL employees
-      this.attendanceData = employees.map(emp => {
-        const att = attendanceMap.get(emp.id) || null;
-       
-        const employeeDetails = att?.employee || emp;
-        const fullName = this.getEmployeeFullName(employeeDetails);
-        const employeeId = employeeDetails.employee_id || `EMP${String(emp.id).padStart(4, '0')}`;
-        const department = employeeDetails.department || emp.department || 'Unassigned';
-        const position = employeeDetails.position || emp.position || 'N/A';
-       
-        const hoursWorked = att ? this.calculateHoursWorked(att.clock_in, att.clock_out) : 0;
-       
-        let status = 'absent';
-        if (att) {
-          status = att.status || 'absent';
-        }
+    
+    async processAttendanceData(attendanceData, summary) {
+      // Store summary data
+      this.summaryData = summary;
+      
+      // Process attendance data
+      this.attendanceData = attendanceData.map(employee => {
+        const fullName = `${employee.first_name} ${employee.last_name}`;
+        const employeeId = employee.employee_id_number || `EMP${String(employee.employee_id).padStart(4, '0')}`;
+        const department = employee.department || 'Unassigned';
+        const position = employee.position || 'N/A';
+        
+        // MODIFIED: Logic to find business name when using cached 'allBusinesses'
+        // We check 'allBusinesses' in addition to availableBusinesses to ensure we find names 
+        // even if the dropdown is currently filtered by something else
+        const country = this.availableCountries.find(c => c.id === employee.country_id);
+        const business = this.availableBusinesses.find(b => b.id === employee.business_id) || 
+                         this.allBusinesses.find(b => b.id === employee.business_id);
+        
         return {
-          id: emp.id,
+          id: employee.employee_id,
           full_name: fullName,
           employee_id: employeeId,
           department: department,
           position: position,
-          status: status,
-          clock_in_time: att ? att.clock_in : null,
-          clock_out_time: att ? att.clock_out : null,
-          hours_worked: hoursWorked,
-          date: this.selectedDate
+          status: employee.status,
+          clock_in_time: employee.clock_in,
+          clock_out_time: employee.clock_out,
+          hours_worked: employee.total_hours,
+          date: employee.date,
+          country_id: employee.country_id,
+          business_id: employee.business_id,
+          country_name: country ? country.name : null,
+          business_name: business ? business.name : null
         };
       });
-      this.calculateDepartmentStats(employees);
+      
+      // Calculate department stats
+      this.calculateDepartmentStats();
+      
+      // Extract unique departments
+      this.departments = [...new Set(this.attendanceData.map(emp => emp.department))].sort();
     },
-    calculateHoursWorked(clockIn, clockOut) {
-      if (!clockIn || !clockOut) return 0;
-     
-      try {
-        let clockInTime, clockOutTime;
-       
-        if (clockIn.includes('T') || clockIn.includes('Z')) {
-          clockInTime = new Date(clockIn);
-          clockOutTime = new Date(clockOut);
-        } else {
-          clockInTime = new Date(`2000-01-01T${clockIn}`);
-          clockOutTime = new Date(`2000-01-01T${clockOut}`);
-        }
-       
-        if (isNaN(clockInTime.getTime()) || isNaN(clockOutTime.getTime())) {
-          return 0;
-        }
-       
-        const diffMs = clockOutTime - clockInTime;
-        const hours = diffMs / (1000 * 60 * 60);
-       
-        return Math.max(0, Math.round(hours * 100) / 100);
-      } catch (e) {
-        console.warn('Error calculating hours worked:', e);
-        return 0;
-      }
-    },
-    getEmployeeFullName(employee) {
-      if (!employee) return 'Unknown Employee';
-     
-      if (employee.first_name && employee.last_name) {
-        return `${employee.first_name} ${employee.last_name}`.trim();
-      }
-     
-      if (employee.full_name) {
-        return employee.full_name;
-      }
-     
-      if (employee.name) {
-        return employee.name;
-      }
-     
-      return 'Unknown Employee';
-    },
-    calculateDepartmentStats(employees) {
+    
+    calculateDepartmentStats() {
       const deptMap = new Map();
-     
+      
+      // Initialize department stats
       this.departments.forEach(dept => {
         deptMap.set(dept, {
           name: dept,
@@ -496,29 +586,49 @@ export default {
           rate: 0
         });
       });
-      employees.forEach(emp => {
+      
+      // Count employees per department
+      this.attendanceData.forEach(emp => {
         const dept = emp.department || 'Unassigned';
         if (deptMap.has(dept)) {
           deptMap.get(dept).total++;
+        } else {
+          deptMap.set(dept, {
+            name: dept,
+            total: 1,
+            present: 0,
+            absent: 0,
+            late: 0,
+            rate: 0
+          });
         }
       });
-      this.attendanceData.forEach(att => {
-        const dept = att.department;
-        if (deptMap.has(dept)) {
-          const deptStat = deptMap.get(dept);
-          if (['present', 'completed'].includes(att.status)) deptStat.present++;
-          else if (att.status === 'late') deptStat.late++;
-          else if (['absent', 'on_leave'].includes(att.status)) deptStat.absent++;
+      
+      // Count attendance status per department
+      this.attendanceData.forEach(emp => {
+        const dept = emp.department || 'Unassigned';
+        const deptStat = deptMap.get(dept);
+        
+        if (['present', 'completed'].includes(emp.status)) {
+          deptStat.present++;
+        } else if (emp.status === 'late') {
+          deptStat.late++;
+        } else if (['absent', 'on_leave'].includes(emp.status)) {
+          deptStat.absent++;
         }
       });
+      
+      // Calculate attendance rates
       deptMap.forEach(deptStat => {
         if (deptStat.total > 0) {
           const attended = deptStat.present + deptStat.late;
           deptStat.rate = Math.round((attended / deptStat.total) * 100);
         }
       });
+      
       this.departmentStats = Array.from(deptMap.values());
     },
+    
     retryFetch() {
       this.retryCount++;
       if (this.retryCount <= 3) {
@@ -528,6 +638,7 @@ export default {
         this.retryCount = 0;
       }
     },
+    
     handleApiError(err) {
       let errorMsg = 'Failed to load attendance data.';
      
@@ -537,7 +648,7 @@ export default {
         } else if (err.response.status === 403) {
           errorMsg = 'Access denied. You must be an admin to view this data.';
         } else if (err.response.status === 404) {
-          errorMsg = 'No attendance data found for this date.';
+          errorMsg = 'No attendance data found for this date/filters.';
           this.resetData();
           return;
         } else if (err.response.data?.message) {
@@ -549,20 +660,26 @@ export default {
      
       this.error = errorMsg;
     },
+    
     resetData() {
       this.attendanceData = [];
       this.departmentStats = [];
+      this.summaryData = null;
     },
+    
     async attemptMarkPresent(employee) {
       this.currentEmployeeToMark = employee;
+      
       const confirmed = await this.showConfirm(
         `Mark ${employee.full_name} as present for ${this.safeFormatDate(this.selectedDate)}? This will register a manual clock-in.`,
         'Mark Employee Present'
       ).catch(() => false);
+      
       if (confirmed) {
         await this.markPresent(employee);
       }
     },
+    
     async markPresent(employee) {
       this.markingPresentId = employee.id;
      
@@ -574,7 +691,6 @@ export default {
        
         console.log('✅ Mark present response:', response.data);
        
-        // Show success message
         await this.showSuccess(
           `${employee.full_name} has been successfully marked as present for ${this.safeFormatDate(this.selectedDate)}.`,
           'Success!'
@@ -587,7 +703,6 @@ export default {
         console.error('❌ Mark present error:', err);
         const errorMessage = err.response?.data?.message || 'Failed to mark employee as present. Please try again.';
        
-        // Show error message
         await this.showError(
           errorMessage,
           'Failed to Mark Present'
@@ -596,9 +711,23 @@ export default {
         this.markingPresentId = null;
       }
     },
+    
     viewHistory(employee) {
       this.showAlert(`Attendance history for ${employee.full_name} would open in a real app.`, 'View History');
     },
+    
+    getCountryName(countryId) {
+      const country = this.availableCountries.find(c => c.id == countryId);
+      return country ? country.name : 'Unknown Country';
+    },
+    
+    getBusinessName(businessId) {
+      // MODIFIED: check allBusinesses as well to prevent "Unknown" when filtered
+      const business = this.availableBusinesses.find(b => b.id == businessId) ||
+                       this.allBusinesses.find(b => b.id == businessId);
+      return business ? business.name : 'Unknown Business';
+    },
+    
     // --- Utility Methods ---
     getInitials(name) {
       if (!name || name === 'Unknown Employee') return '??';
@@ -678,8 +807,9 @@ export default {
   }
 };
 </script>
+
 <style scoped>
-/* Enhanced Modal Styles */
+/* CSS Remains unchanged */
 .simple-modal-overlay.is-success .simple-modal-content {
   border-top: 4px solid #52c41a;
 }
@@ -696,6 +826,7 @@ export default {
 .btn-error {
   background: linear-gradient(135deg, #f5222d 0%, #cf1322 100%) !important;
 }
+
 /* Loading dots for button */
 .loading-dots:after {
   content: '...';
@@ -707,6 +838,7 @@ export default {
   60% { text-shadow: .25em 0 0 white, .5em 0 0 rgba(0,0,0,0); }
   80%, 100% { text-shadow: .25em 0 0 white, .5em 0 0 white; }
 }
+
 /* Disabled button state */
 .btn-mark:disabled {
   opacity: 0.6;
@@ -717,6 +849,110 @@ export default {
   background: #f6ffed !important;
   transform: none !important;
 }
+
+/* Filter Section */
+.filter-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #2d3748;
+  font-size: 0.9rem;
+}
+
+.filter-select {
+  padding: 0.75rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.filter-select:disabled {
+  background: #f7fafc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.overview-filters {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.filter-badge {
+  padding: 0.5rem 1rem;
+  background: #e0e7ff;
+  color: #4f46e5;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Employee location badges */
+.employee-location {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.location-badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.location-badge.country {
+  background: #f0f9ff;
+  color: #0c4a6e;
+  border: 1px solid #bae6fd;
+}
+
+.location-badge.business {
+  background: #f0f9ff;
+  color: #0f766e;
+  border: 1px solid #99f6e4;
+}
+
+/* Department Overview */
 .department-overview {
   margin-bottom: 2rem;
 }
@@ -788,6 +1024,8 @@ export default {
   margin-top: 0.25rem;
   font-weight: 500;
 }
+
+/* Section Header */
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -795,11 +1033,6 @@ export default {
   margin-bottom: 1rem;
   flex-wrap: wrap;
   gap: 1rem;
-}
-.department-filter {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 .dept-select {
   padding: 0.5rem 1rem;
@@ -810,6 +1043,7 @@ export default {
   cursor: pointer;
   min-width: 180px;
 }
+
 /* Rest of your existing styles remain the same */
 .attendance-monitor {
   padding: 2rem;
@@ -819,6 +1053,7 @@ export default {
   min-height: 100vh;
   position: relative;
 }
+
 /* Modal Styles */
 .simple-modal-overlay {
   position: fixed;
@@ -870,6 +1105,7 @@ export default {
 .btn-cancel:hover {
   background: #cbd5e0;
 }
+
 /* Page Header */
 .page-header {
   display: flex;
@@ -890,18 +1126,12 @@ export default {
   color: #718096;
   margin: 0;
   font-size: 1rem;
+  line-height: 1.5;
 }
 .header-actions {
   display: flex;
   gap: 0.75rem;
   align-items: center;
-}
-.date-picker {
-  padding: 0.75rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  cursor: pointer;
 }
 .btn-refresh, .btn-primary {
   padding: 0.75rem 1.5rem;
@@ -923,6 +1153,7 @@ export default {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 /* Loading and Error States */
 .error-message {
   background: #fff1f0;
@@ -953,6 +1184,7 @@ export default {
   from { opacity: 0; transform: translateY(-20px) scale(0.95); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
 /* Overview Section */
 .overview-section {
   margin-bottom: 2rem;
@@ -999,6 +1231,7 @@ export default {
   margin-top: 0.25rem;
   font-weight: 500;
 }
+
 /* Employees Section */
 .employees-section h2 {
   color: #2d3748;
@@ -1165,6 +1398,7 @@ export default {
   font-size: 3rem;
   margin-bottom: 1rem;
 }
+
 @media (max-width: 900px) {
   .department-cards {
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -1182,7 +1416,17 @@ export default {
   .employees-grid {
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
+  
+  .filter-section {
+    grid-template-columns: 1fr;
+  }
+  
+  .overview-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
+
 @media (max-width: 600px) {
   .department-cards {
     grid-template-columns: 1fr;
@@ -1206,6 +1450,7 @@ export default {
   .date-picker {
     flex-grow: 1;
   }
+  
   .employees-grid {
     grid-template-columns: 1fr;
   }
@@ -1215,7 +1460,11 @@ export default {
   }
  
   .filter-tabs {
-    flex-wrap:  wrap;
+    flex-wrap: wrap;
+  }
+  
+  .attendance-monitor {
+    padding: 1rem;
   }
 }
 </style>

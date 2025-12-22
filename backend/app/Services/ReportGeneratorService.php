@@ -7,19 +7,25 @@ use App\Models\Leave;
 use App\Models\Payroll;
 use App\Models\Payslip;
 use App\Models\Employee;
+use App\Models\Business;
+use App\Models\Country;
 use Carbon\Carbon;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
 
 class ReportGeneratorService
 {
-     /**
+    /**
      * Generate payroll report data with business and country filters
      */
- public function generatePayrollReport(array $filters = [])
+    public function generatePayrollReport(array $filters = [])
     {
+        Log::info('REPORT_SERVICE: Generating payroll report', [
+            'filters' => $filters
+        ]);
+
         // Query payslips directly
-        $query = Payslip::with(['employee.user', 'employee.business']);
+        $query = Payslip::with(['employee.user', 'employee.business', 'employee.country']);
 
         if (isset($filters['start_date'])) {
             $query->where('pay_period_start', '>=', $filters['start_date']);
@@ -45,18 +51,28 @@ class ReportGeneratorService
             $query->whereHas('employee', function ($q) use ($filters) {
                 $q->where('business_id', $filters['business_id']);
             });
+            
+            Log::info('REPORT_SERVICE: Applied business filter', [
+                'business_id' => $filters['business_id']
+            ]);
         }
 
         // Apply country filter
         if (isset($filters['country']) && !empty($filters['country'])) {
-            $query->whereHas('employee.business', function ($q) use ($filters) {
-                $q->where('country', $filters['country']);
-            })->orWhereHas('employee', function ($q) use ($filters) {
-                $q->where('country', $filters['country']);
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('country_id', $filters['country']);
             });
+            
+            Log::info('REPORT_SERVICE: Applied country filter', [
+                'country_id' => $filters['country']
+            ]);
         }
 
         $payslips = $query->orderBy('pay_period_start', 'desc')->get();
+
+        Log::info('REPORT_SERVICE: Payslips retrieved', [
+            'count' => $payslips->count()
+        ]);
 
         // Calculate totals including other deductions
         $totalGrossSalary = $payslips->sum('gross_salary');
@@ -104,7 +120,7 @@ class ReportGeneratorService
                     : 'N/A',
                 'department' => $payslip->employee->department ?? 'Unassigned',
                 'business' => $payslip->employee->business ? $payslip->employee->business->name : 'No Business',
-                'country' => $payslip->employee->country ?? $payslip->employee->business->country ?? 'N/A',
+                'country' => $payslip->employee->country ? $payslip->employee->country->name : 'N/A',
                 'gross_salary' => $payslip->gross_salary ?? 0,
                 'deductions' => $payslip->total_deductions ?? 0,
                 'net_salary' => $payslip->net_pay ?? 0,
@@ -124,14 +140,7 @@ class ReportGeneratorService
         })->toArray();
 
         // Add filter info to summary
-        $filterInfo = [];
-        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
-            $business = Business::find($filters['business_id']);
-            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-        }
-        if (isset($filters['country']) && !empty($filters['country'])) {
-            $filterInfo['country'] = $filters['country'];
-        }
+        $filterInfo = $this->buildFilterInfo($filters);
 
         return [
             'data' => $payslipDetails,
@@ -163,7 +172,11 @@ class ReportGeneratorService
      */
     public function generateAttendanceReport(array $filters = [])
     {
-        $query = Attendance::with(['employee.user', 'employee.business']);
+        Log::info('REPORT_SERVICE: Generating attendance report', [
+            'filters' => $filters
+        ]);
+
+        $query = Attendance::with(['employee.user', 'employee.business', 'employee.country']);
 
         if (isset($filters['employee_id'])) {
             $query->where('employee_id', $filters['employee_id']);
@@ -192,18 +205,28 @@ class ReportGeneratorService
             $query->whereHas('employee', function ($q) use ($filters) {
                 $q->where('business_id', $filters['business_id']);
             });
+            
+            Log::info('REPORT_SERVICE: Applied business filter', [
+                'business_id' => $filters['business_id']
+            ]);
         }
 
         // Apply country filter
         if (isset($filters['country']) && !empty($filters['country'])) {
-            $query->whereHas('employee.business', function ($q) use ($filters) {
-                $q->where('country', $filters['country']);
-            })->orWhereHas('employee', function ($q) use ($filters) {
-                $q->where('country', $filters['country']);
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('country_id', $filters['country']);
             });
+            
+            Log::info('REPORT_SERVICE: Applied country filter', [
+                'country_id' => $filters['country']
+            ]);
         }
 
         $attendances = $query->orderBy('date', 'desc')->get();
+
+        Log::info('REPORT_SERVICE: Attendances retrieved', [
+            'count' => $attendances->count()
+        ]);
 
         $summary = [
             'total_days' => $attendances->count(),
@@ -223,7 +246,7 @@ class ReportGeneratorService
                     : 'N/A',
                 'department' => $attendance->employee->department ?? 'N/A',
                 'business' => $attendance->employee->business ? $attendance->employee->business->name : 'No Business',
-                'country' => $attendance->employee->country ?? $attendance->employee->business->country ?? 'N/A',
+                'country' => $attendance->employee->country ? $attendance->employee->country->name : 'N/A',
                 'date' => Carbon::parse($attendance->date)->format('M d, Y'),
                 'clock_in' => $attendance->clock_in ? Carbon::parse($attendance->clock_in)->format('H:i A') : 'N/A',
                 'clock_out' => $attendance->clock_out ? Carbon::parse($attendance->clock_out)->format('H:i A') : 'N/A',
@@ -233,28 +256,26 @@ class ReportGeneratorService
         })->toArray();
 
         // Add filter info
-        $filterInfo = [];
-        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
-            $business = Business::find($filters['business_id']);
-            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-        }
-        if (isset($filters['country']) && !empty($filters['country'])) {
-            $filterInfo['country'] = $filters['country'];
-        }
+        $filterInfo = $this->buildFilterInfo($filters);
 
         return [
             'data' => $attendanceData,
-            'summary' => $summary,
-            'filters' => array_merge($filters, $filterInfo),
+            'summary' => array_merge($summary, ['filters' => $filterInfo]),
+            'filters' => $filters,
             'generated_at' => now(),
         ];
     }
+
     /**
-     * Generate leave report
+     * Generate leave report with business and country filters
      */
     public function generateLeaveReport(array $filters = [])
     {
-        $query = Leave::with(['employee.user']);
+        Log::info('REPORT_SERVICE: Generating leave report', [
+            'filters' => $filters
+        ]);
+
+        $query = Leave::with(['employee.user', 'employee.business', 'employee.country']);
 
         if (isset($filters['employee_id'])) {
             $query->where('employee_id', $filters['employee_id']);
@@ -276,7 +297,33 @@ class ReportGeneratorService
             $query->where('end_date', '<=', $filters['end_date']);
         }
 
+        // Apply business filter
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('business_id', $filters['business_id']);
+            });
+            
+            Log::info('REPORT_SERVICE: Applied business filter', [
+                'business_id' => $filters['business_id']
+            ]);
+        }
+
+        // Apply country filter
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('country_id', $filters['country']);
+            });
+            
+            Log::info('REPORT_SERVICE: Applied country filter', [
+                'country_id' => $filters['country']
+            ]);
+        }
+
         $leaves = $query->orderBy('created_at', 'desc')->get();
+
+        Log::info('REPORT_SERVICE: Leaves retrieved', [
+            'count' => $leaves->count()
+        ]);
 
         $summary = [
             'total_leaves' => $leaves->count(),
@@ -294,6 +341,9 @@ class ReportGeneratorService
                 'employee_name' => $leave->employee->user 
                     ? ($leave->employee->user->first_name . ' ' . $leave->employee->user->last_name)
                     : 'N/A',
+                'department' => $leave->employee->department ?? 'N/A',
+                'business' => $leave->employee->business ? $leave->employee->business->name : 'No Business',
+                'country' => $leave->employee->country ? $leave->employee->country->name : 'N/A',
                 'leave_type' => $leave->type ?? 'N/A',
                 'start_date' => Carbon::parse($leave->start_date)->format('M d, Y'),
                 'end_date' => Carbon::parse($leave->end_date)->format('M d, Y'),
@@ -303,12 +353,37 @@ class ReportGeneratorService
             ];
         })->toArray();
 
+        // Add filter info
+        $filterInfo = $this->buildFilterInfo($filters);
+
         return [
             'data' => $leaveData,
-            'summary' => $summary,
+            'summary' => array_merge($summary, ['filters' => $filterInfo]),
             'filters' => $filters,
             'generated_at' => now(),
         ];
+    }
+
+    /**
+     * Helper method to build filter info
+     */
+    private function buildFilterInfo(array $filters): array
+    {
+        $filterInfo = [];
+        
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $business = Business::find($filters['business_id']);
+            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+            $filterInfo['business_id'] = $filters['business_id'];
+        }
+        
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $country = Country::find($filters['country']);
+            $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
+            $filterInfo['country_id'] = $filters['country'];
+        }
+        
+        return $filterInfo;
     }
 
     /**
@@ -317,13 +392,13 @@ class ReportGeneratorService
     public function exportToPdf(string $view, array $data, string $filename)
     {
         try {
-            Log::info('Generating PDF', [
+            Log::info('REPORT_SERVICE: Generating PDF', [
                 'view' => $view,
                 'filename' => $filename,
                 'data_keys' => array_keys($data)
             ]);
 
-            // Prepare data for the view - FIXED: Pass the complete data structure
+            // Prepare data for the view
             $reportData = $this->prepareDataForPdf($data);
 
             // Generate PDF
@@ -338,19 +413,21 @@ class ReportGeneratorService
             return $pdf->download($filename);
 
         } catch (\Exception $e) {
-            Log::error('PDF Generation Error: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('REPORT_SERVICE: PDF Generation Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             
             throw $e;
         }
     }
 
     /**
-     * Prepare data structure for PDF views - FIXED VERSION
+     * Prepare data structure for PDF views
      */
     private function prepareDataForPdf(array $data): array
     {
-        Log::info('Preparing data for PDF', [
+        Log::info('REPORT_SERVICE: Preparing data for PDF', [
             'data_structure' => array_keys($data),
             'has_summary' => isset($data['summary']),
             'has_data' => isset($data['data'])
@@ -358,13 +435,13 @@ class ReportGeneratorService
 
         // If data already has the correct structure from ReportController, return it directly
         if (isset($data['total_net_salary']) && isset($data['payslip_details'])) {
-            Log::info('Using direct data structure from ReportController');
+            Log::info('REPORT_SERVICE: Using direct data structure from ReportController');
             return $data;
         }
 
         // If data has summary and data sections (from ReportGeneratorService)
         if (isset($data['summary']) && isset($data['data'])) {
-            Log::info('Using summary/data structure from ReportGeneratorService', [
+            Log::info('REPORT_SERVICE: Using summary/data structure', [
                 'summary_keys' => array_keys($data['summary'])
             ]);
             
@@ -383,10 +460,11 @@ class ReportGeneratorService
                 'total_all_deductions' => $data['summary']['total_all_deductions'] ?? 0,
                 'payslip_details' => $data['data'] ?? [],
                 'generated_at' => $data['generated_at'] ?? now(),
+                'filters' => $data['summary']['filters'] ?? [],
             ];
         }
 
-        Log::warning('Unknown data structure for PDF preparation', [
+        Log::warning('REPORT_SERVICE: Unknown data structure for PDF preparation', [
             'data_keys' => array_keys($data)
         ]);
 
@@ -399,7 +477,7 @@ class ReportGeneratorService
     public function exportToCsv(array $data, string $filename)
     {
         try {
-            Log::info('Generating CSV', [
+            Log::info('REPORT_SERVICE: Generating CSV', [
                 'filename' => $filename,
                 'data_count' => count($data)
             ]);
@@ -432,7 +510,10 @@ class ReportGeneratorService
             ]);
 
         } catch (\Exception $e) {
-            Log::error('CSV Generation Error: ' . $e->getMessage());
+            Log::error('REPORT_SERVICE: CSV Generation Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             throw $e;
         }
     }
@@ -442,7 +523,7 @@ class ReportGeneratorService
      */
     public function generateProductivityReport(array $filters = []): array
     {
-        $query = Employee::with(['user', 'attendances', 'leaves']);
+        $query = Employee::with(['user', 'attendances', 'leaves', 'business', 'country']);
 
         if (isset($filters['employee_id'])) {
             $query->where('id', $filters['employee_id']);
@@ -450,6 +531,16 @@ class ReportGeneratorService
 
         if (isset($filters['department'])) {
             $query->where('department', $filters['department']);
+        }
+
+        // Apply business filter
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $query->where('business_id', $filters['business_id']);
+        }
+
+        // Apply country filter
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            $query->where('country_id', $filters['country']);
         }
 
         $employees = $query->get();
@@ -497,6 +588,8 @@ class ReportGeneratorService
                 'employee_name' => $employee->user->first_name . ' ' . $employee->user->last_name ?? 'N/A',
                 'email' => $employee->user->email ?? 'N/A',
                 'department' => $employee->department ?? 'N/A',
+                'business' => $employee->business ? $employee->business->name : 'No Business',
+                'country' => $employee->country ? $employee->country->name : 'N/A',
                 'total_working_days' => $totalDays,
                 'present_days' => $presentDays,
                 'late_days' => $lateDays,
@@ -518,9 +611,12 @@ class ReportGeneratorService
                 round($productivityData->sum('total_hours_worked') / $employees->count(), 2) : 0,
         ];
 
+        // Add filter info
+        $filterInfo = $this->buildFilterInfo($filters);
+
         return [
             'data' => $productivityData->toArray(),
-            'summary' => $summary,
+            'summary' => array_merge($summary, ['filters' => $filterInfo]),
             'filters' => $filters,
             'generated_at' => now(),
         ];

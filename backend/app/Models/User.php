@@ -72,7 +72,27 @@ public function businesses(): BelongsToMany
                 ->withPivot('role', 'is_primary')
                 ->withTimestamps();
 }
-    
+    /**
+     * Get the user's department via their employee record.
+     */
+    public function getDepartmentAttribute()
+    {
+        // Assuming 'employee' is the relationship method on User model
+        return $this->employee ? $this->employee->department : null;
+    }
+
+    /**
+     * Check if user belongs to a specific department.
+     */
+    public function hasDepartment(string $department): bool
+    {
+        // Allow Super Admins to bypass department checks
+        if ($this->hasRole('admin') || $this->hasRole('super-admin')) {
+            return true;
+        }
+
+        return $this->department === $department;
+    }
     /**
      * Get the current business the user is working in
      */

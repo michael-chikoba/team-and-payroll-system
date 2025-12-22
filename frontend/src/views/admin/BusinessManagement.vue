@@ -1,19 +1,24 @@
-<!-- resources/js/pages/BusinessManagement.vue -->
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <!-- Header -->
-    <header class="bg-white shadow-sm border-b border-gray-200">
+  <div class="min-h-screen bg-gray-100">
+    <header class="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-10">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center py-4">
           <div>
-            <h1 class="text-2xl font-bold text-gray-900">Business Management</h1>
-            <p class="text-gray-600">Manage your businesses and organizations</p>
+            <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">
+              <span class="text-indigo-600">Business</span> Management
+            </h1>
+            <p class="text-sm text-gray-500 mt-1">
+              Centralized hub for managing your organizations and business entities.
+            </p>
           </div>
           <div class="flex items-center space-x-4">
             <button
               @click="goToDashboard"
-              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200"
+              class="inline-flex items-center px-5 py-2 border border-transparent text-sm font-medium rounded-xl shadow-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 transition transform hover:scale-[1.02] duration-200 ease-in-out"
             >
+              <svg class="w-5 h-5 mr-2 -ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+              </svg>
               Back to Dashboard
             </button>
           </div>
@@ -21,43 +26,41 @@
       </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- Show Business List by default -->
-      <BusinessList
-        v-if="currentView === 'list'"
-        ref="businessList"
-        @create-business="showRegistrationForm"
-        @edit-business="editBusiness"
-        @delete-business="confirmDeleteBusiness"
-        @manage-admins="manageAdmins"
-      />
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <Transition name="fade" mode="out-in">
+        <div :key="currentView">
+          <BusinessList
+            v-if="currentView === 'list'"
+            ref="businessList"
+            @create-business="showRegistrationForm"
+            @edit-business="editBusiness"
+            @delete-business="confirmDeleteBusiness"
+            @manage-admins="manageAdmins"
+          />
 
-      <!-- Show Registration Form when creating new business -->
-      <BusinessRegistration
-        v-else-if="currentView === 'create'"
-        @cancel="showBusinessList"
-        @success="handleBusinessCreated"
-      />
+          <BusinessRegistration
+            v-else-if="currentView === 'create'"
+            @cancel="showBusinessList"
+            @success="handleBusinessCreated"
+          />
 
-      <!-- Show Edit Form when editing business -->
-      <BusinessEdit
-        v-else-if="currentView === 'edit'"
-        :business="selectedBusiness"
-        @cancel="showBusinessList"
-        @success="handleBusinessUpdated"
-      />
+          <BusinessEdit
+            v-else-if="currentView === 'edit'"
+            :business="selectedBusiness"
+            @cancel="showBusinessList"
+            @success="handleBusinessUpdated"
+          />
 
-      <!-- Show Admin Management -->
-      <AdminManagement
-        v-else-if="currentView === 'admins'"
-        :business="selectedBusiness"
-        @cancel="showBusinessList"
-        @success="handleAdminsUpdated"
-      />
+          <AdminManagement
+            v-else-if="currentView === 'admins'"
+            :business="selectedBusiness"
+            @cancel="showBusinessList"
+            @success="handleAdminsUpdated"
+          />
+        </div>
+      </Transition>
     </main>
 
-    <!-- Delete Confirmation Modal -->
     <DeleteConfirmationModal
       v-if="showDeleteModal"
       :business="businessToDelete"
@@ -142,21 +145,28 @@ export default {
     },
     handleBusinessCreated(business) {
       this.showBusinessList()
-      if (this.$refs.businessList) {
-        this.$refs.businessList.fetchBusinesses()
-      }
+      // Use $nextTick to ensure the ref exists before calling the method
+      this.$nextTick(() => {
+        if (this.$refs.businessList) {
+          this.$refs.businessList.fetchBusinesses()
+        }
+      })
     },
     handleBusinessUpdated(business) {
       this.showBusinessList()
-      if (this.$refs.businessList) {
-        this.$refs.businessList.fetchBusinesses()
-      }
+      this.$nextTick(() => {
+        if (this.$refs.businessList) {
+          this.$refs.businessList.fetchBusinesses()
+        }
+      })
     },
     handleAdminsUpdated() {
       this.showBusinessList()
-      if (this.$refs.businessList) {
-        this.$refs.businessList.fetchBusinesses()
-      }
+      this.$nextTick(() => {
+        if (this.$refs.businessList) {
+          this.$refs.businessList.fetchBusinesses()
+        }
+      })
     },
     goToDashboard() {
       this.$router.push('/admin/dashboard')
@@ -165,3 +175,12 @@ export default {
 }
 </script>
 
+<style scoped>
+/* Modern fade transition for view switching */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+</style>

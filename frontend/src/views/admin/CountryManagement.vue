@@ -479,10 +479,70 @@ export default {
         sick_leave_days: 10,
       },
       timezones: [
-        'Africa/Lusaka', 'Africa/Cairo', 'Africa/Lagos', 'Africa/Johannesburg',
-        'Africa/Nairobi', 'America/New_York', 'America/Chicago', 'America/Los_Angeles',
-        'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Dubai',
-        'Asia/Kolkata', 'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney',
+        // African Timezones (Grouped by UTC offset)
+        'Africa/Abidjan',        // UTC+0 (Côte d'Ivoire)
+        'Africa/Accra',          // UTC+0 (Ghana)
+        'Africa/Algiers',        // UTC+1 (Algeria)
+        'Africa/Bamako',         // UTC+0 (Mali)
+        'Africa/Bangui',         // UTC+1 (Central African Republic)
+        'Africa/Banjul',         // UTC+0 (Gambia)
+        'Africa/Bissau',         // UTC+0 (Guinea-Bissau)
+        'Africa/Blantyre',       // UTC+2 (Malawi)
+        'Africa/Brazzaville',    // UTC+1 (Republic of Congo)
+        'Africa/Bujumbura',      // UTC+2 (Burundi)
+        'Africa/Cairo',          // UTC+2 (Egypt)
+        'Africa/Casablanca',     // UTC+1 (Morocco)
+        'Africa/Ceuta',          // UTC+1 (Spain - North Africa)
+        'Africa/Conakry',        // UTC+0 (Guinea)
+        'Africa/Dakar',          // UTC+0 (Senegal)
+        'Africa/Dar_es_Salaam',  // UTC+3 (Tanzania)
+        'Africa/Djibouti',       // UTC+3 (Djibouti)
+        'Africa/Douala',         // UTC+1 (Cameroon)
+        'Africa/El_Aaiun',       // UTC+1 (Western Sahara)
+        'Africa/Freetown',       // UTC+0 (Sierra Leone)
+        'Africa/Gaborone',       // UTC+2 (Botswana)
+        'Africa/Harare',         // UTC+2 (Zimbabwe)
+        'Africa/Johannesburg',   // UTC+2 (South Africa)
+        'Africa/Juba',           // UTC+2 (South Sudan)
+        'Africa/Kampala',        // UTC+3 (Uganda)
+        'Africa/Khartoum',       // UTC+2 (Sudan)
+        'Africa/Kigali',         // UTC+2 (Rwanda)
+        'Africa/Kinshasa',       // UTC+1 (DR Congo - West)
+        'Africa/Lagos',          // UTC+1 (Nigeria)
+        'Africa/Libreville',     // UTC+1 (Gabon)
+        'Africa/Lome',           // UTC+0 (Togo)
+        'Africa/Luanda',         // UTC+1 (Angola)
+        'Africa/Lubumbashi',     // UTC+2 (DR Congo - East)
+        'Africa/Lusaka',         // UTC+2 (Zambia)
+        'Africa/Malabo',         // UTC+1 (Equatorial Guinea)
+        'Africa/Maputo',         // UTC+2 (Mozambique)
+        'Africa/Maseru',         // UTC+2 (Lesotho)
+        'Africa/Mbabane',        // UTC+2 (Eswatini)
+        'Africa/Mogadishu',      // UTC+3 (Somalia)
+        'Africa/Monrovia',       // UTC+0 (Liberia)
+        'Africa/Nairobi',        // UTC+3 (Kenya)
+        'Africa/Ndjamena',       // UTC+1 (Chad)
+        'Africa/Niamey',         // UTC+1 (Niger)
+        'Africa/Nouakchott',     // UTC+0 (Mauritania)
+        'Africa/Ouagadougou',    // UTC+0 (Burkina Faso)
+        'Africa/Porto-Novo',     // UTC+1 (Benin)
+        'Africa/Sao_Tome',       // UTC+0 (São Tomé and Príncipe)
+        'Africa/Tripoli',        // UTC+2 (Libya)
+        'Africa/Tunis',          // UTC+1 (Tunisia)
+        'Africa/Windhoek',       // UTC+2 (Namibia)
+        
+        // Other Major Timezones
+        'America/New_York',      // UTC-5/-4 (USA East)
+        'America/Chicago',       // UTC-6/-5 (USA Central)
+        'America/Los_Angeles',   // UTC-8/-7 (USA West)
+        'Europe/London',         // UTC+0/+1 (UK)
+        'Europe/Paris',          // UTC+1/+2 (France)
+        'Europe/Berlin',         // UTC+1/+2 (Germany)
+        'Asia/Dubai',            // UTC+4 (UAE)
+        'Asia/Kolkata',          // UTC+5:30 (India)
+        'Asia/Shanghai',         // UTC+8 (China)
+        'Asia/Tokyo',            // UTC+9 (Japan)
+        'Australia/Sydney',      // UTC+10/+11 (Australia)
       ],
       searchTimeout: null,
     };
@@ -609,37 +669,46 @@ export default {
     },
     
     async saveCountry() {
-      this.saving = true;
-      this.errors = {};
+  this.saving = true;
+  this.errors = {};
+  
+  try {
+    await this.ensureCsrfToken();
+    
+    if (this.isEditMode) {
+      await axios.put(`/api/admin/countries/${this.selectedCountry.id}`, this.formData);
+      this.$toast?.success('Country updated successfully');
+    } else {
+      await axios.post('/api/admin/countries', this.formData);
+      this.$toast?.success('Country created successfully');
+    }
+    
+    this.closeModal();
+    this.fetchCountries();
+  } catch (error) {
+    console.error('Error saving country:', error);
+    
+    if (error.response?.status === 422) {
+      this.errors = error.response.data.errors || {};
       
-      try {
-        await this.ensureCsrfToken();
-        
-        if (this.isEditMode) {
-          await axios.put(`/api/admin/countries/${this.selectedCountry.id}`, this.formData);
-          this.$toast?.success('Country updated successfully');
-        } else {
-          await axios.post('/api/admin/countries', this.formData);
-          this.$toast?.success('Country created successfully');
-        }
-        
-        this.closeModal();
-        this.fetchCountries();
-      } catch (error) {
-        console.error('Error saving country:', error);
-        
-        if (error.response?.status === 422) {
-          this.errors = error.response.data.errors || {};
-          const message = error.response.data.message || 'Please check the form for errors';
-          this.$toast?.error(message);
-        } else {
-          const message = error.response?.data?.message || 'Failed to save country';
-          this.$toast?.error(message);
-        }
-      } finally {
-        this.saving = false;
+      // Show specific error messages
+      const errorMessages = Object.values(this.errors).flat();
+      if (errorMessages.length > 0) {
+        this.$toast?.error(errorMessages[0]); // Show first error
+      } else {
+        this.$toast?.error('Please check the form for errors');
       }
-    },
+      
+      // Log all errors for debugging
+      console.error('Validation errors:', this.errors);
+    } else {
+      const message = error.response?.data?.message || 'Failed to save country';
+      this.$toast?.error(message);
+    }
+  } finally {
+    this.saving = false;
+  }
+},
     
     async toggleStatus(country) {
       if (this.togglingStatus === country.id) return;

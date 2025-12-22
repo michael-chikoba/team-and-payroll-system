@@ -353,20 +353,26 @@
               <label>Position *</label>
               <input v-model="form.position" type="text" required placeholder="e.g., Software Developer" />
             </div>
+            
+            <!-- DYNAMIC DEPARTMENTS FROM BACKEND SETTINGS -->
             <div class="form-group">
               <label>Department *</label>
-              <select v-model="form.department" required>
-                <option value="">Select Department</option>
-                <option value="IT">IT</option>
-                <option value="HR">HR</option>
-                <option value="Finance">Finance</option>
-                <option value="Sales">Sales</option>
-                <option value="Marketing">Marketing</option>
-                <option value="Operations">Operations</option>
-                <option value="Administration">Administration</option>
-                <option value="Management">Management</option>
+              <select v-model="form.department" required :disabled="loadingDepartments || !form.business_id">
+                <option value="">{{ loadingDepartments ? 'Loading departments...' : 'Select Department' }}</option>
+                <option 
+                  v-for="(dept, index) in availableDepartments" 
+                  :key="index" 
+                  :value="dept.name"
+                >
+                  {{ dept.name }}
+                </option>
               </select>
+              <small v-if="!form.business_id" class="info-text">Please select a business first.</small>
+              <small v-else-if="!loadingDepartments && availableDepartments.length === 0" class="warning-text">
+                No departments found for this business. Please configure settings.
+              </small>
             </div>
+            
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -447,6 +453,11 @@ export default {
       managers: [],
       countries: [],
       businesses: [],
+      
+      // Department Logic
+      availableDepartments: [],
+      loadingDepartments: false,
+
       loading: false,
       error: null,
       showAddModal: false,
@@ -594,6 +605,19 @@ export default {
       return pages
     }
   },
+  watch: {
+    // Watch for changes in the form's business selection to fetch relevant departments
+    'form.business_id': {
+      handler(newVal) {
+        if (newVal) {
+          this.fetchSettingsForBusiness(newVal)
+        } else {
+          this.availableDepartments = []
+        }
+      },
+      immediate: true
+    }
+  },
   mounted() {
     this.initializeComponent()
     // Close dropdown when clicking outside
@@ -650,6 +674,29 @@ export default {
       }
     },
     
+    // NEW: Fetch department settings for the specific business
+    async fetchSettingsForBusiness(businessId) {
+      this.loadingDepartments = true;
+      try {
+        const response = await axios.get('/api/admin/settings', {
+          params: { business_id: businessId }
+        });
+
+        // Structure from AdminController::getSettings
+        // Returns { settings: { departments: [{name: 'IT'}], ... }, ... }
+        if (response.data && response.data.settings && response.data.settings.departments) {
+          this.availableDepartments = response.data.settings.departments;
+        } else {
+          this.availableDepartments = [];
+        }
+      } catch (error) {
+        console.error('Failed to load business settings:', error);
+        this.availableDepartments = [];
+      } finally {
+        this.loadingDepartments = false;
+      }
+    },
+
     async fetchEmployees() {
       this.loading = true
       this.error = null
@@ -661,8 +708,6 @@ export default {
           url += `?business_id=${this.selectedBusinessId}`
         }
         
-        console.log('Fetching employees from:', url) // Debug log
-        
         const response = await axios.get(url)
         let employeesData = []
         if (response.data && response.data.employees) employeesData = response.data.employees
@@ -672,7 +717,6 @@ export default {
         this.employees = employeesData
         this.currentPage = 1 // Reset to first page when data changes
         
-        console.log('Employees fetched:', this.employees.length, 'for business:', this.selectedBusinessId) // Debug log
       } catch (err) {
         console.error('Fetch employees error:', err)
         this.handleApiError(err)
@@ -690,13 +734,10 @@ export default {
           url += `?business_id=${this.selectedBusinessId}`
         }
         
-        console.log('Fetching managers from:', url) // Debug log
-        
         const response = await axios.get(url)
         this.managers = Array.isArray(response.data) ? response.data :
                      response.data?.data || response.data || []
         
-        console.log('Managers fetched:', this.managers.length, 'for business:', this.selectedBusinessId) // Debug log
       } catch (err) {
         console.error('Failed to fetch managers:', err)
         this.managers = []
@@ -892,12 +933,16 @@ export default {
       this.currentEmployee = employee
       const userRole = this.getEmployeeRole(employee)
       const countryId = employee.country_id || (employee.country && employee.country.id) || ''
+      const businessId = employee.business_id || this.authStore.user?.business_id || ''
+
+      // 1. Set the ID first so the watcher triggers the department fetch
+      this.form.business_id = businessId;
       
       this.form = {
         first_name: employee.first_name || employee.user?.first_name || '',
         last_name: employee.last_name || employee.user?.last_name || '',
         email: employee.email || employee.user?.email || '',
-        business_id: employee.business_id || this.authStore.user?.business_id || '',
+        business_id: businessId,
         country_id: countryId,
         role: userRole,
         position: employee.position || '',
@@ -909,6 +954,10 @@ export default {
         hire_date: employee.hire_date?.split('T')[0] || employee.created_at?.split('T')[0] || '',
         manager_id: userRole === 'employee' ? employee.manager_id : ''
       }
+      
+      // Ensure departments are fetched for the correct business in edit mode
+      this.fetchSettingsForBusiness(businessId);
+
       this.showEditModal = true
     },
     
@@ -931,6 +980,10 @@ export default {
       }
       this.countrySearch = ''
       this.showCountryDropdown = false
+      // Reset departments if no default business
+      if(!this.authStore.user?.business_id) {
+        this.availableDepartments = [];
+      }
     },
     
     getInitials(name) {
@@ -1297,7 +1350,7 @@ export default {
   border: none;
 }
 
-/* Your existing CSS styles remain the same */
+/* Existing CSS styles */
 .business-filter {
   background: #f8fafc;
   padding: 1rem;
@@ -1433,7 +1486,7 @@ export default {
   font-size: 1rem;
   line-height: 1;
 }
-/* Your existing CSS styles remain the same */
+/* Existing CSS styles */
 .employee-management {
   padding: 2rem;
   max-width: 1600px;

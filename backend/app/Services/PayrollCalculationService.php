@@ -17,7 +17,6 @@ class PayrollCalculationService
 
     /**
      * Generate payslip preview without saving
-     * Returns full calculation data as array
      */
     public function generatePayslipPreview(Employee $employee, Payroll $payroll): array
     {
@@ -31,232 +30,186 @@ class PayrollCalculationService
     }
 
     /**
- * Create and save payslip with full calculations (UPDATED WITH PENSION)
- */
-public function createPayslip(Employee $employee, Payroll $payroll, string $status = 'pending'): ?Payslip
-{
-    try {
-        $taxConfig = TaxConfiguration::active()->first();
-        
-        if (!$taxConfig) {
-            throw new \Exception('No active tax configuration found');
-        }
-
-        $calculationData = $this->calculatePayslipData($employee, $payroll, $taxConfig, $status);
-        
-        return Payslip::create([
-            'employee_id' => $employee->id,
-            'payroll_id' => $payroll->id,
-            'pay_period_start' => $payroll->start_date,
-            'pay_period_end' => $payroll->end_date,
-            'payment_date' => $payroll->end_date,
-            'basic_salary' => $calculationData['basic_salary'],
-            'house_allowance' => $calculationData['allowances']['housing'],
-            'transport_allowance' => $calculationData['allowances']['transport'],
-            'other_allowances' => $calculationData['allowances']['lunch'],
-            'overtime_hours' => $calculationData['overtime_hours'],
-            'overtime_rate' => $calculationData['overtime_rate'],
-            'overtime_pay' => $calculationData['overtime_pay'],
-            'bonuses' => $calculationData['bonuses'],
-            'gross_salary' => $calculationData['gross_salary'],
-            'napsa' => $calculationData['deductions']['napsa'],
-            'paye' => $calculationData['deductions']['paye'],
-            'nhima' => $calculationData['deductions']['nhima'],
-            'pension' => $calculationData['deductions']['pension'], // ADDED PENSION
-            'other_deductions' => $calculationData['deductions']['other_deductions'],
-            'total_deductions' => $calculationData['deductions']['total_deductions'],
-            'net_pay' => $calculationData['net_pay'],
-            'status' => $status,
-            'breakdown' => $calculationData['breakdown'],
-        ]);
-    } catch (\Exception $e) {
-        \Log::error("Failed to create payslip for employee {$employee->id}: " . $e->getMessage());
-        return null;
+     * Create and save payslip with full calculations
+     */
+    public function createPayslip(Employee $employee, Payroll $payroll, string $status = 'pending'): ?Payslip
+    {
+        return $this->createPayslipWithAdjustments($employee, $payroll, $status, []);
     }
-}
 
     /**
- * Create payslip with adjustments (UPDATED WITH PENSION)
- */
-public function createPayslipWithAdjustments(
-    Employee $employee,
-    Payroll $payroll,
-    string $status = 'pending',
-    array $adjustments = []
-): ?Payslip {
-    try {
-        $taxConfig = TaxConfiguration::active()->first();
-        
-        if (!$taxConfig) {
-            throw new \Exception('No active tax configuration found');
-        }
+     * Create payslip with adjustments
+     */
+    public function createPayslipWithAdjustments(
+        Employee $employee,
+        Payroll $payroll,
+        string $status = 'pending',
+        array $adjustments = []
+    ): ?Payslip {
+        try {
+            $taxConfig = TaxConfiguration::active()->first();
+            
+            if (!$taxConfig) {
+                throw new \Exception('No active tax configuration found');
+            }
 
-        $calculationData = $this->calculatePayslipData($employee, $payroll, $taxConfig, $status);
+            $calculationData = $this->calculatePayslipData($employee, $payroll, $taxConfig, $status);
+            
+            // Apply adjustments
+            $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
+            $additionalDeductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
+            
+            // Update calculation data with adjustments
+            $calculationData['bonuses'] += $bonuses;
+            $calculationData['gross_salary'] += $bonuses;
+            $calculationData['deductions']['other_deductions'] += $additionalDeductions;
+            $calculationData['deductions']['total_deductions'] += $additionalDeductions;
+            $calculationData['net_pay'] = $calculationData['gross_salary'] - $calculationData['deductions']['total_deductions'];
+            
+            // Update breakdown with adjustments
+            $calculationData['breakdown']['adjustments'] = $adjustments;
+            $calculationData['breakdown']['adjustments_applied'] = [
+                'total_bonuses' => $bonuses,
+                'total_additional_deductions' => $additionalDeductions,
+                'net_effect' => $bonuses - $additionalDeductions
+            ];
+
+            // Map dynamic deductions to legacy columns for reporting compatibility
+            $statutory = collect($calculationData['deductions']['statutory_breakdown']);
+            
+            // Search by name/type for legacy columns
+            $napsaAmount = $statutory->filter(fn($i) => stripos($i['name'], 'NAPSA') !== false)->sum('amount');
+            $nhimaAmount = $statutory->filter(fn($i) => stripos($i['name'], 'NHIMA') !== false)->sum('amount');
+            $pensionAmount = $statutory->filter(fn($i) => $i['type'] === 'pension' && stripos($i['name'], 'NAPSA') === false)->sum('amount');
+
+            return Payslip::create([
+                'employee_id' => $employee->id,
+                'payroll_id' => $payroll->id,
+                'pay_period_start' => $payroll->start_date,
+                'pay_period_end' => $payroll->end_date,
+                'payment_date' => $payroll->end_date,
+                'basic_salary' => $calculationData['basic_salary'],
+                'house_allowance' => $calculationData['allowances']['housing'],
+                'transport_allowance' => $calculationData['allowances']['transport'],
+                'other_allowances' => $calculationData['allowances']['lunch'],
+                'overtime_hours' => $calculationData['overtime_hours'],
+                'overtime_rate' => $calculationData['overtime_rate'],
+                'overtime_pay' => $calculationData['overtime_pay'],
+                'bonuses' => $calculationData['bonuses'],
+                'gross_salary' => $calculationData['gross_salary'],
+                
+                // Legacy columns populated from dynamic data
+                'napsa' => $napsaAmount,
+                'nhima' => $nhimaAmount,
+                'pension' => $pensionAmount,
+                
+                'paye' => $calculationData['deductions']['paye'],
+                'other_deductions' => $calculationData['deductions']['other_deductions'],
+                'total_deductions' => $calculationData['deductions']['total_deductions'],
+                'net_pay' => $calculationData['net_pay'],
+                'status' => $status,
+                'breakdown' => $calculationData['breakdown'], // Full dynamic breakdown stored here
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Failed to create payslip for employee {$employee->id}: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Calculate complete payslip data using tax configuration
+     */
+    private function calculatePayslipData(Employee $employee, Payroll $payroll, TaxConfiguration $taxConfig, string $status): array
+    {
+        // 1. Basic Salary
+        $basicSalary = (float) $employee->base_salary;
         
-        // Apply adjustments
-        $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
-        $additionalDeductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
+        // 2. Allowances
+        $allowances = $this->calculateAllowances($employee, $taxConfig);
         
-        // Update calculation data with adjustments
-        $calculationData['bonuses'] += $bonuses;
-        $calculationData['gross_salary'] += $bonuses;
-        $calculationData['deductions']['other_deductions'] += $additionalDeductions;
-        $calculationData['deductions']['total_deductions'] += $additionalDeductions;
-        $calculationData['net_pay'] = $calculationData['gross_salary'] - $calculationData['deductions']['total_deductions'];
+        // 3. Overtime
+        $overtimeData = $this->calculateOvertimeData($employee, $payroll);
         
-        // Update breakdown with adjustments
-        $calculationData['breakdown']['adjustments'] = $adjustments;
-        $calculationData['breakdown']['adjustments_applied'] = [
-            'total_bonuses' => $bonuses,
-            'total_additional_deductions' => $additionalDeductions,
-            'net_effect' => $bonuses - $additionalDeductions
+        // 4. Bonuses (Placeholder)
+        $bonuses = 0.0;
+        
+        // 5. Gross Salary
+        $grossSalary = $basicSalary + $allowances['total'] + $overtimeData['pay'] + $bonuses;
+        
+        // 6. Deductions (Dynamic Statutory + PAYE)
+        $deductions = $this->calculateDeductions($basicSalary, $grossSalary, $taxConfig, $employee);
+        
+        // 7. Net Pay
+        $netPay = $grossSalary - $deductions['total_deductions'];
+        
+        // 8. Prepare Breakdown
+        $breakdown = [
+            'calculation_method' => 'Dynamic Statutory Deductions',
+            'tax_config_id' => $taxConfig->id,
+            'earnings_breakdown' => [
+                'basic_salary' => $basicSalary,
+                'allowances' => $allowances,
+                'overtime' => $overtimeData,
+                'bonuses' => $bonuses,
+                'gross_total' => $grossSalary,
+            ],
+            'deductions_breakdown' => $deductions,
+            'net_calculation' => [
+                'gross_salary' => $grossSalary,
+                'minus_deductions' => $deductions['total_deductions'],
+                'equals_net_pay' => $netPay,
+            ],
+            'statutory_details' => $deductions['statutory_breakdown'],
         ];
 
-        return Payslip::create([
-            'employee_id' => $employee->id,
-            'payroll_id' => $payroll->id,
-            'pay_period_start' => $payroll->start_date,
-            'pay_period_end' => $payroll->end_date,
-            'payment_date' => $payroll->end_date,
-            'basic_salary' => $calculationData['basic_salary'],
-            'house_allowance' => $calculationData['allowances']['housing'],
-            'transport_allowance' => $calculationData['allowances']['transport'],
-            'other_allowances' => $calculationData['allowances']['lunch'],
-            'overtime_hours' => $calculationData['overtime_hours'],
-            'overtime_rate' => $calculationData['overtime_rate'],
-            'overtime_pay' => $calculationData['overtime_pay'],
-            'bonuses' => $calculationData['bonuses'],
-            'gross_salary' => $calculationData['gross_salary'],
-            'napsa' => $calculationData['deductions']['napsa'],
-            'paye' => $calculationData['deductions']['paye'],
-            'nhima' => $calculationData['deductions']['nhima'],
-            'pension' => $calculationData['deductions']['pension'], // ADDED PENSION
-            'other_deductions' => $calculationData['deductions']['other_deductions'],
-            'total_deductions' => $calculationData['deductions']['total_deductions'],
-            'net_pay' => $calculationData['net_pay'],
-            'status' => $status,
-            'breakdown' => $calculationData['breakdown'],
-        ]);
-    } catch (\Exception $e) {
-        \Log::error("Failed to create payslip with adjustments for employee {$employee->id}: " . $e->getMessage());
-        return null;
-    }
-}
-
-    /**
- * Calculate complete payslip data using tax configuration (UPDATED WITH PENSION)
- * This is the core method for all calculations
- */
-private function calculatePayslipData(Employee $employee, Payroll $payroll, TaxConfiguration $taxConfig, string $status): array
-{
-    // Step 1: Calculate basic salary
-    $basicSalary = $this->calculateBasicSalary($employee, $payroll);
-    
-    // Step 2: Calculate allowances using tax configuration and employee data
-    $allowances = $this->calculateAllowances($employee, $taxConfig);
-    
-    // Step 3: Calculate overtime
-    $overtimeData = $this->calculateOvertimeData($employee, $payroll);
-    
-    // Step 4: Calculate bonuses
-    $bonuses = $this->calculateBonuses($employee, $payroll);
-    
-    // Step 5: Calculate gross salary
-    $grossSalary = $basicSalary + $allowances['total'] + $overtimeData['pay'] + $bonuses;
-    
-    // Step 6: Calculate deductions using tax configuration (NOW INCLUDES PENSION)
-    $deductions = $this->calculateDeductions($basicSalary, $grossSalary, $taxConfig, $employee);
-    
-    // Step 7: Calculate net pay
-    $netPay = $grossSalary - $deductions['total_deductions'];
-    
-    // Step 8: Prepare detailed breakdown
-    $breakdown = [
-        'calculation_method' => 'Tax Configuration Based',
-        'tax_config_id' => $taxConfig->id,
-        'earnings_breakdown' => [
+        return [
+            // Flat data for DB creation
             'basic_salary' => $basicSalary,
             'allowances' => $allowances,
-            'overtime' => [
-                'hours' => $overtimeData['hours'],
-                'rate' => $overtimeData['rate'],
-                'total' => $overtimeData['pay'],
-            ],
-            'bonuses' => $bonuses,
-            'gross_total' => $grossSalary,
-        ],
-        'deductions_breakdown' => $deductions,
-        'net_calculation' => [
-            'gross_salary' => $grossSalary,
-            'minus_deductions' => $deductions['total_deductions'],
-            'equals_net_pay' => $netPay,
-        ],
-        'tax_rates_used' => [
-            'housing_allowance_rate' => $taxConfig->config_data['housing_allowance_rate'] ?? 25,
-            'napsa_rate' => $taxConfig->config_data['napsaRate'] ?? 5,
-            'nhima_rate' => $taxConfig->config_data['nhimaEmployeeRate'] ?? 1,
-            'pension_rate' => $taxConfig->config_data['pensionRate'] ?? 5, // ADDED
-        ],
-        'employee_info' => [
-            'employment_type' => $employee->employment_type, // ADDED
-            'pension_eligible' => $employee->employment_type === 'full_time', // ADDED
-        ],
-    ];
-
-    return [
-        'basic_salary' => $basicSalary,
-        'allowances' => $allowances,
-        'overtime_hours' => $overtimeData['hours'],
-        'overtime_rate' => $overtimeData['rate'],
-        'overtime_pay' => $overtimeData['pay'],
-        'bonuses' => $bonuses,
-        'gross_salary' => $grossSalary,
-        'deductions' => $deductions,
-        'net_pay' => $netPay,
-        'breakdown' => $breakdown,
-        'status' => $status,
-        // Structured for response
-        'earnings' => [
-            'basic_salary' => $basicSalary,
-            'house_allowance' => $allowances['housing'],
-            'transport_allowance' => $allowances['transport'],
-            'lunch_allowance' => $allowances['lunch'],
             'overtime_hours' => $overtimeData['hours'],
             'overtime_rate' => $overtimeData['rate'],
             'overtime_pay' => $overtimeData['pay'],
             'bonuses' => $bonuses,
             'gross_salary' => $grossSalary,
-        ],
-        'deductions' => [
-            'paye' => $deductions['paye'],
-            'napsa' => $deductions['napsa'],
-            'nhima' => $deductions['nhima'],
-            'pension' => $deductions['pension'], // ADDED PENSION
-            'other_deductions' => $deductions['other_deductions'],
-            'total_deductions' => $deductions['total_deductions'],
-        ],
-        'summary' => [
-            'gross_pay' => $grossSalary,
-            'total_deductions' => $deductions['total_deductions'],
+            'deductions' => $deductions,
             'net_pay' => $netPay,
-        ],
-    ];
-}
+            'breakdown' => $breakdown,
+            'status' => $status,
+
+            // *** FIX: Structured arrays required by Controller for Preview ***
+            'earnings' => [
+                'basic_salary' => $basicSalary,
+                'house_allowance' => $allowances['housing'],
+                'transport_allowance' => $allowances['transport'],
+                'lunch_allowance' => $allowances['lunch'],
+                'overtime_pay' => $overtimeData['pay'],
+                'bonuses' => $bonuses,
+                'gross_salary' => $grossSalary,
+            ],
+            'summary' => [
+                'gross_pay' => $grossSalary,
+                'total_deductions' => $deductions['total_deductions'],
+                'net_pay' => $netPay,
+            ]
+        ];
+    }
 
     /**
-     * Calculate allowances using tax configuration and employee data
+     * Calculate allowances
      */
     private function calculateAllowances(Employee $employee, TaxConfiguration $taxConfig): array
     {
-        $basicSalary = $employee->base_salary;
+        $basicSalary = (float) $employee->base_salary;
         $config = $taxConfig->config_data;
         
-        $housingRate = $config['housing_allowance_rate'] ?? 25;
-        $housing = $basicSalary * ($housingRate / 100);
-        
-        // Get transport and lunch allowances directly from employee data
-        $transport = $employee->transport_allowance;
-        $lunch = $employee->lunch_allowance;
+        // Check if housing allowance logic is enabled in config
+        $housing = 0;
+        if (!empty($config['includeHousingAllowance']) && $config['includeHousingAllowance'] === true) {
+             $housing = $basicSalary * 0.25; 
+        }
+
+        $transport = (float) $employee->transport_allowance;
+        $lunch = (float) $employee->lunch_allowance;
 
         return [
             'housing' => $this->applyRounding($housing, $config),
@@ -267,130 +220,62 @@ private function calculatePayslipData(Employee $employee, Payroll $payroll, TaxC
     }
 
     /**
- * Calculate all deductions using tax configuration (UPDATED WITH PENSION)
- */
-private function calculateDeductions(float $basicSalary, float $grossSalary, TaxConfiguration $taxConfig, Employee $employee): array
-{
-    $config = $taxConfig->config_data;
-    
-    // Calculate PAYE on gross salary
-    $paye = $this->calculatePAYE($grossSalary, $config);
-    
-    // Calculate NAPSA on gross salary
-    $napsa = $this->calculateNAPSA($grossSalary, $config);
-    
-    // Calculate NHIMA on basic salary
-    $nhima = $this->calculateNHIMA($basicSalary, $config);
-    
-    // Calculate Pension on basic salary (5% for full-time employees only)
-    $pension = $this->calculatePension($basicSalary, $employee, $config);
-    
-    $otherDeductions = 0;
-    $totalDeductions = $paye + $napsa + $nhima + $pension + $otherDeductions;
-
-    return [
-        'paye' => $paye,
-        'napsa' => $napsa,
-        'nhima' => $nhima,
-        'pension' => $pension, // ADDED PENSION
-        'other_deductions' => $otherDeductions,
-        'total_deductions' => $totalDeductions,
-        'calculation_details' => [
-            'paye_base' => $grossSalary,
-            'napsa_base' => $grossSalary,
-            'nhima_base' => $basicSalary,
-            'pension_base' => $basicSalary, // ADDED
-            'pension_applied' => $pension > 0, // ADDED
-            'employment_type' => $employee->employment_type, // ADDED
-        ],
-    ];
-}
-
-/**
- * Calculate Pension contribution (5% of basic salary for full-time employees only)
- */
-private function calculatePension(float $basicSalary, Employee $employee, array $config): float
-{
-    // Only apply pension deduction to full-time employees
-    if ($employee->employment_type !== 'full_time') {
-        return 0.0;
-    }
-
-    $rate = ($config['pensionRate'] ?? 5) / 100;
-    $maxSalary = $config['pensionMaxSalary'] ?? PHP_FLOAT_MAX;
-    
-    $base = min($basicSalary, $maxSalary);
-    $contrib = $base * $rate;
-    
-    return $this->applyRounding($contrib, $config);
-}
-
-    /**
-     * Calculate PAYE using progressive tax bands
+     * Calculate DEDUCTIONS (Dynamic Version)
      */
-    private function calculatePAYE(float $taxableAmount, array $config): float
+    private function calculateDeductions(float $basicSalary, float $grossSalary, TaxConfiguration $taxConfig, Employee $employee): array
     {
-        $taxBands = $config['taxBands'] ?? [];
-        $tax = 0.0;
-        $remaining = $taxableAmount;
-
-        usort($taxBands, function($a, $b) {
-            return ($a['lowerLimit'] ?? 0) <=> ($b['lowerLimit'] ?? 0);
-        });
-
-        foreach ($taxBands as $band) {
-            if ($remaining <= 0) break;
-            
-            $lower = $band['lowerLimit'] ?? 0;
-            $upper = $band['upperLimit'] ?? null;
-            $rate = ($band['rate'] ?? 0) / 100;
-
-            if ($upper === null) {
-                $tax += $remaining * $rate;
-                break;
+        $config = $taxConfig->config_data;
+        
+        // 1. Calculate Statutory Deductions (Dynamic Array)
+        $statutory = $taxConfig->calculateStatutoryDeductions($employee, $basicSalary, $grossSalary);
+        
+        // 2. Determine Taxable Income
+        // Assume pension/social security types reduce taxable income.
+        $taxableIncome = $grossSalary;
+        
+        foreach($statutory['breakdown'] as $item) {
+            if ($item['type'] === 'pension') {
+                $taxableIncome -= $item['amount'];
             }
-
-            $bandWidth = $upper - $lower;
-            $taxableInBand = min($remaining, max(0, $bandWidth));
-            $tax += $taxableInBand * $rate;
-            $remaining -= $taxableInBand;
         }
+
+        // 3. Calculate PAYE
+        $paye = $taxConfig->calculatePAYE($taxableIncome);
         
-        return $this->applyRounding($tax, $config);
+        // 4. Totals
+        $otherDeductions = 0;
+        $totalDeductions = $paye + $statutory['total_employee'] + $otherDeductions;
+
+        return [
+            'paye' => $paye,
+            'statutory_breakdown' => $statutory['breakdown'], 
+            'statutory_total' => $statutory['total_employee'],
+            'employer_total' => $statutory['total_employer'],
+            'other_deductions' => $otherDeductions,
+            'total_deductions' => $this->applyRounding($totalDeductions, $config),
+        ];
     }
 
-    /**
-     * Calculate NAPSA contribution
-     */
-    private function calculateNAPSA(float $grossSalary, array $config): float
+    private function calculateOvertimeData(Employee $employee, Payroll $payroll): array
     {
-        $rate = ($config['napsaRate'] ?? 5) / 100;
-        $maxSalary = $config['napsaMaxSalary'] ?? 34164.00;
-        $maxContrib = 1708.20;
+        $overtimeHours = $this->attendanceService->getOvertimeHours(
+            $employee->id,
+            $payroll->start_date,
+            $payroll->end_date
+        );
         
-        $assessable = min($grossSalary, $maxSalary);
-        $contrib = min($assessable * $rate, $maxContrib);
-        
-        return $this->applyRounding($contrib, $config);
+        // Standard 173.33 hours/month
+        $hourlyRate = $employee->base_salary > 0 ? ($employee->base_salary / 173.33) : 0; 
+        $overtimeRate = $hourlyRate * 1.5;
+        $overtimePay = $overtimeHours * $overtimeRate;
+
+        return [
+            'hours' => $overtimeHours,
+            'rate' => round($overtimeRate, 2),
+            'pay' => round($overtimePay, 2),
+        ];
     }
 
-    /**
-     * Calculate NHIMA contribution
-     */
-    private function calculateNHIMA(float $basicSalary, array $config): float
-    {
-        $rate = ($config['nhimaEmployeeRate'] ?? 1) / 100;
-        $maxSalary = $config['nhimaMaxSalary'] ?? PHP_FLOAT_MAX;
-        
-        $base = min($basicSalary, $maxSalary);
-        $contrib = $base * $rate;
-        
-        return $this->applyRounding($contrib, $config);
-    }
-
-    /**
-     * Apply rounding method from configuration
-     */
     private function applyRounding(float $amount, array $config): float
     {
         $method = $config['roundingMethod'] ?? 'nearest';
@@ -402,62 +287,14 @@ private function calculatePension(float $basicSalary, Employee $employee, array 
             default: return round($amount, 2);
         }
     }
-
-    /**
-     * Calculate basic salary for the period
-     */
-    private function calculateBasicSalary(Employee $employee, Payroll $payroll): float
-    {
-        return (float) $employee->base_salary;
-    }
-
-    /**
-     * Calculate overtime with hours and rate
-     */
-    private function calculateOvertimeData(Employee $employee, Payroll $payroll): array
-    {
-        $overtimeHours = $this->attendanceService->getOvertimeHours(
-            $employee->id,
-            $payroll->start_date,
-            $payroll->end_date
-        );
-        
-        // Calculate overtime rate (1.5x hourly rate)
-        $hourlyRate = $employee->base_salary / 160; // Assuming 160 hours monthly
-        $overtimeRate = $hourlyRate * 1.5;
-        $overtimePay = $overtimeHours * $overtimeRate;
-
-        return [
-            'hours' => $overtimeHours,
-            'rate' => $overtimeRate,
-            'pay' => $overtimePay,
-        ];
-    }
-
-    /**
-     * Calculate bonuses for the period
-     */
-    private function calculateBonuses(Employee $employee, Payroll $payroll): float
-    {
-        // Implement bonus calculation logic as needed
-        return 0.0;
-    }
-
-    /**
-     * Update payroll totals from payslips
-     */
+    
     public function updatePayrollTotals(Payroll $payroll): void
     {
         $payslips = $payroll->payslips()->get();
-        
-        $totalGross = $payslips->sum('gross_salary');
-        $totalNet = $payslips->sum('net_pay');
-        $employeeCount = $payslips->count();
-
         $payroll->update([
-            'total_gross' => $totalGross,
-            'total_net' => $totalNet,
-            'employee_count' => $employeeCount,
+            'total_gross' => $payslips->sum('gross_salary'),
+            'total_net' => $payslips->sum('net_pay'),
+            'employee_count' => $payslips->count(),
         ]);
     }
 }

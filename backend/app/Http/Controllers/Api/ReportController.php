@@ -19,40 +19,117 @@ class ReportController extends Controller
     public function __construct(private ReportGeneratorService $reportService)
     {
     }
-
-    /**
-     * Get business-scoped employees query (similar to EmployeeController)
+ /**
+     * Get business-scoped employees query (following EmployeeController pattern)
      */
     private function getBusinessScopedEmployees(Request $request)
     {
         $user = $request->user();
-        $query = Employee::with(['user', 'manager']);
+        $requestedBusinessId = $request->input('business_id');
+        $requestedCountry = $request->input('country');
+        
+        $query = Employee::with(['user', 'manager', 'business', 'country']);
 
-        // If user is admin and has a business association
-        if ($user->role === 'admin' && $user->current_business_id) {
-            // Only show employees in the same business
-            $query->whereHas('user', function($q) use ($user) {
-                $q->where('current_business_id', $user->current_business_id);
-            });
-            
-            Log::info('REPORT_CONTROLLER: Filtering by business', [
-                'admin_id' => $user->id,
-                'business_id' => $user->current_business_id
-            ]);
-        } 
-        // If admin without business, show only employees without business
-        elseif ($user->role === 'admin' && !$user->current_business_id) {
-            $query->whereHas('user', function($q) {
-                $q->whereNull('current_business_id');
-            });
-            
-            Log::info('REPORT_CONTROLLER: Filtering for non-business employees', [
-                'admin_id' => $user->id
-            ]);
+        Log::info('REPORT_CONTROLLER: Getting business scoped employees', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'requested_business_id' => $requestedBusinessId,
+            'requested_country' => $requestedCountry,
+        ]);
+
+        // If user is admin
+        if ($user->role === 'admin') {
+            // If a specific business is requested via parameter, filter by that
+            if ($requestedBusinessId) {
+                $businessId = (int)$requestedBusinessId;
+                
+                // Verify admin has access to this business
+                if ($user->current_business_id && $user->current_business_id !== $businessId) {
+                    // Admin has a current business set but is trying to access a different one
+                    // Check if they manage this business
+                    if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+                        Log::warning('REPORT_CONTROLLER: Admin attempting to access unauthorized business', [
+                            'admin_id' => $user->id,
+                            'admin_business_id' => $user->current_business_id,
+                            'requested_business_id' => $businessId,
+                        ]);
+                        // Return empty result
+                        $query->where('business_id', 0);
+                        return $query;
+                    }
+                }
+                
+                $query->where('business_id', $businessId);
+                
+                Log::info('REPORT_CONTROLLER: Admin filtering by requested business', [
+                    'admin_id' => $user->id,
+                    'business_id' => $businessId,
+                ]);
+            }
+            // If admin has a current business, show only employees in that business
+            elseif ($user->current_business_id) {
+                $query->where('business_id', $user->current_business_id);
+                
+                Log::info('REPORT_CONTROLLER: Admin filtering by current business', [
+                    'admin_id' => $user->id,
+                    'business_id' => $user->current_business_id,
+                ]);
+            } 
+            // If admin doesn't have a current business BUT is a business admin (has business associations)
+            elseif ($user->businesses()->exists()) {
+                // Get all businesses this admin manages
+                $businessIds = $user->businesses()->pluck('businesses.id');
+                $query->whereIn('business_id', $businessIds);
+                
+                Log::info('REPORT_CONTROLLER: Admin filtering by managed businesses', [
+                    'admin_id' => $user->id,
+                    'business_ids' => $businessIds->toArray(),
+                ]);
+            }
+            // If admin has no business association at all (super admin), show ALL employees
+            else {
+                // Don't apply any business filter - show all employees
+                Log::info('REPORT_CONTROLLER: Super admin - showing all employees', [
+                    'admin_id' => $user->id,
+                ]);
+            }
         }
-        // For managers, show their team
+        // For managers, show their team within the same business
         elseif ($user->role === 'manager') {
-            $query->where('manager_id', $user->id);
+            $managerEmployee = Employee::where('user_id', $user->id)->first();
+            
+            if ($managerEmployee && $managerEmployee->business_id) {
+                $query->where('business_id', $managerEmployee->business_id)
+                      ->where('manager_id', $user->id);
+                      
+                Log::info('REPORT_CONTROLLER: Manager filtering by business and team', [
+                    'manager_id' => $user->id,
+                    'business_id' => $managerEmployee->business_id,
+                ]);
+            } elseif ($managerEmployee) {
+                $query->whereNull('business_id')
+                      ->where('manager_id', $user->id);
+                      
+                Log::info('REPORT_CONTROLLER: Manager without business filtering team', [
+                    'manager_id' => $user->id,
+                ]);
+            } else {
+                $query->where('id', 0); // No employee record for this manager
+                
+                Log::info('REPORT_CONTROLLER: Manager has no employee record', [
+                    'manager_id' => $user->id,
+                ]);
+            }
+        }
+
+        // Apply country filter if provided
+        if ($requestedCountry) {
+            $query->where('country_id', $requestedCountry);
+            
+            Log::info('REPORT_CONTROLLER: Applying country filter', [
+                'country_id' => $requestedCountry,
+            ]);
         }
 
         return $query;
@@ -66,10 +143,22 @@ class ReportController extends Controller
         $user = $request->user();
         $query = $model::query();
 
+        Log::info('REPORT_CONTROLLER: Getting business scoped query', [
+            'model' => get_class($model),
+            'relation' => $employeeRelation,
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+        ]);
+
         if (in_array($user->role, ['admin', 'manager'])) {
             // Get business-scoped employee IDs
             $employeeQuery = $this->getBusinessScopedEmployees($request);
             $employeeIds = $employeeQuery->pluck('id');
+            
+            Log::info('REPORT_CONTROLLER: Business scoped employee IDs', [
+                'count' => $employeeIds->count(),
+                'ids' => $employeeIds->toArray(),
+            ]);
             
             // Filter by employee IDs
             if ($employeeIds->isNotEmpty()) {
@@ -77,10 +166,83 @@ class ReportController extends Controller
             } else {
                 // If no employees found, return empty query
                 $query->where("{$employeeRelation}_id", 0);
+                
+                Log::info('REPORT_CONTROLLER: No employees found for business scope', [
+                    'user_id' => $user->id,
+                ]);
             }
         }
 
         return $query;
+    }
+
+    public function getAdminStats(Request $request): JsonResponse
+    {
+
+        try {
+            // Use business-scoped employees
+            $employeeQuery = $this->getBusinessScopedEmployees($request);
+            $totalEmployees = $employeeQuery->count();
+            
+            // Get business-scoped employee IDs for attendance
+            $employeeIds = $employeeQuery->pluck('id');
+            
+            Log::info('REPORT_CONTROLLER: Getting admin stats', [
+                'total_employees' => $totalEmployees,
+                'employee_ids_count' => $employeeIds->count(),
+                'user_id' => $request->user()->id,
+                'user_role' => $request->user()->role,
+                'requested_business_id' => $request->input('business_id'),
+                'requested_country' => $request->input('country'),
+            ]);
+            
+            $today = Carbon::today()->toDateString();
+            $presentToday = Attendance::whereDate('date', $today)
+                ->where('status', 'present')
+                ->whereIn('employee_id', $employeeIds)
+                ->count();
+            
+            $pendingLeaves = Leave::where('status', 'pending')
+                ->whereIn('employee_id', $employeeIds)
+                ->count();
+            
+            $currentMonthStart = Carbon::now()->startOfMonth();
+            $currentMonthEnd = Carbon::now()->endOfMonth();
+            
+            $totalAttendanceDays = Attendance::whereBetween('date', [$currentMonthStart, $currentMonthEnd])
+                ->where('status', 'present')
+                ->whereIn('employee_id', $employeeIds)
+                ->count();
+                
+            $workingDays = $currentMonthStart->diffInDaysFiltered(function (Carbon $date) {
+                return !$date->isWeekend();
+            }, $currentMonthEnd);
+            
+            $avgAttendance = ($workingDays > 0 && $totalEmployees > 0) 
+                ? round(($totalAttendanceDays / ($totalEmployees * $workingDays)) * 100, 2) 
+                : 0;
+
+            return response()->json([
+                'total_employees' => $totalEmployees,
+                'present_today' => $presentToday,
+                'pending_leaves' => $pendingLeaves,
+                'avg_attendance' => $avgAttendance,
+                'month' => Carbon::now()->format('F Y')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('REPORT_CONTROLLER: Error fetching admin stats', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'total_employees' => 0,
+                'present_today' => 0,
+                'pending_leaves' => 0,
+                'avg_attendance' => 0,
+                'month' => Carbon::now()->format('F Y')
+            ]);
+        }
     }
 
     public function teamReport(Request $request): JsonResponse
@@ -150,66 +312,7 @@ class ReportController extends Controller
         return response()->json($reportData);
     }
 
-    public function getAdminStats(Request $request): JsonResponse
-    {
-        try {
-            // Extract business and country filters from request
-            $filters = [
-                'business_id' => $request->input('business_id'),
-                'country' => $request->input('country')
-            ];
-            
-            // Use business-scoped employees with filters
-            $employeeQuery = $this->getBusinessScopedEmployees($request, $filters);
-            $totalEmployees = $employeeQuery->count();
-            
-            // Get business-scoped employee IDs for attendance
-            $employeeIds = $employeeQuery->pluck('id');
-            
-            $today = Carbon::today()->toDateString();
-            $presentToday = Attendance::whereDate('date', $today)
-                ->where('status', 'present')
-                ->whereIn('employee_id', $employeeIds)
-                ->count();
-            
-            $pendingLeaves = Leave::where('status', 'pending')
-                ->whereIn('employee_id', $employeeIds)
-                ->count();
-            
-            $currentMonthStart = Carbon::now()->startOfMonth();
-            $currentMonthEnd = Carbon::now()->endOfMonth();
-            
-            $totalAttendanceDays = Attendance::whereBetween('date', [$currentMonthStart, $currentMonthEnd])
-                ->where('status', 'present')
-                ->whereIn('employee_id', $employeeIds)
-                ->count();
-                
-            $workingDays = $currentMonthStart->diffInDaysFiltered(function (Carbon $date) {
-                return !$date->isWeekend();
-            }, $currentMonthEnd);
-            
-            $avgAttendance = $workingDays > 0 ? round(($totalAttendanceDays / ($totalEmployees * $workingDays)) * 100, 2) : 0;
-
-            return response()->json([
-                'total_employees' => $totalEmployees,
-                'present_today' => $presentToday,
-                'pending_leaves' => $pendingLeaves,
-                'avg_attendance' => $avgAttendance,
-                'month' => Carbon::now()->format('F Y')
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Error fetching admin stats: ' . $e->getMessage());
-            return response()->json([
-                'total_employees' => 0,
-                'present_today' => 0,
-                'pending_leaves' => 0,
-                'avg_attendance' => 0,
-                'month' => Carbon::now()->format('F Y')
-            ]);
-        }
-    }
-
+  
     /**
      * Generate comprehensive attendance report with business and country filters
      */
@@ -220,7 +323,7 @@ class ReportController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
             'department' => 'sometimes|string',
             'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|string',
+            'country' => 'sometimes|exists:countries,id',
             'report_type' => 'sometimes|in:summary,detailed,daily'
         ]);
 
@@ -228,14 +331,17 @@ class ReportController extends Controller
             $startDate = Carbon::parse($validated['start_date']);
             $endDate = Carbon::parse($validated['end_date']);
             
-            // Get business-scoped attendance query with filters
-            $filters = [
+            Log::info('REPORT_CONTROLLER: Generating attendance report', [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'department' => $validated['department'] ?? 'All',
                 'business_id' => $validated['business_id'] ?? null,
-                'country' => $validated['country'] ?? null
-            ];
+                'country' => $validated['country'] ?? null,
+            ]);
             
-            $query = $this->getBusinessScopedQuery($request, Attendance::class, 'employee', $filters)
-                ->with(['employee.user', 'employee.business'])
+            // Get business-scoped attendance query
+            $query = $this->getBusinessScopedQuery($request, Attendance::class, 'employee')
+                ->with(['employee.user', 'employee.business', 'employee.country'])
                 ->whereBetween('date', [$startDate, $endDate]);
 
             if (!empty($validated['department'])) {
@@ -246,8 +352,8 @@ class ReportController extends Controller
 
             $attendanceData = $query->get();
             
-            // Get business-scoped employees count with filters
-            $employeeQuery = $this->getBusinessScopedEmployees($request, $filters);
+            // Get business-scoped employees count
+            $employeeQuery = $this->getBusinessScopedEmployees($request);
             if (!empty($validated['department'])) {
                 $employeeQuery->where('department', $validated['department']);
             }
@@ -255,13 +361,15 @@ class ReportController extends Controller
 
             $workingDays = $startDate->diffInDaysFiltered(function (Carbon $date) {
                 return !$date->isWeekend();
-            }, $endDate);
+            }, $endDate) + 1; // Include both start and end dates
 
             $presentDays = $attendanceData->where('status', 'present')->count();
             $absentDays = $attendanceData->where('status', 'absent')->count();
             $lateDays = $attendanceData->where('status', 'late')->count();
 
-            $attendanceRate = $workingDays > 0 ? round(($presentDays / ($totalEmployees * $workingDays)) * 100, 2) : 0;
+            $attendanceRate = ($workingDays > 0 && $totalEmployees > 0) 
+                ? round(($presentDays / ($totalEmployees * $workingDays)) * 100, 2) 
+                : 0;
 
             $departmentName = !empty($validated['department']) 
                 ? $validated['department'] 
@@ -272,9 +380,12 @@ class ReportController extends Controller
             if (!empty($validated['business_id'])) {
                 $business = Business::find($validated['business_id']);
                 $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+                $filterInfo['business_id'] = $validated['business_id'];
             }
             if (!empty($validated['country'])) {
-                $filterInfo['country'] = $validated['country'];
+                $country = \App\Models\Country::find($validated['country']);
+                $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
+                $filterInfo['country_id'] = $validated['country'];
             }
 
             $reportData = [
@@ -292,6 +403,12 @@ class ReportController extends Controller
                 'filters' => $filterInfo,
             ];
 
+            Log::info('REPORT_CONTROLLER: Attendance report generated', [
+                'total_employees' => $totalEmployees,
+                'attendance_records' => $attendanceData->count(),
+                'attendance_rate' => $attendanceRate,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Attendance report generated successfully',
@@ -300,7 +417,10 @@ class ReportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Error generating attendance report: ' . $e->getMessage());
+            Log::error('REPORT_CONTROLLER: Error generating attendance report', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate attendance report: ' . $e->getMessage()
@@ -308,6 +428,101 @@ class ReportController extends Controller
         }
     }
 
+    /**
+     * Generate leave report with business and country filters
+     */
+    public function generateLeaveReport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'leave_type' => 'sometimes|string',
+            'status' => 'sometimes|in:pending,approved,rejected,all',
+            'business_id' => 'sometimes|exists:businesses,id',
+            'country' => 'sometimes|exists:countries,id'
+        ]);
+
+        try {
+            $startDate = Carbon::parse($validated['start_date']);
+            $endDate = Carbon::parse($validated['end_date']);
+            
+            Log::info('REPORT_CONTROLLER: Generating leave report', [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'leave_type' => $validated['leave_type'] ?? 'All',
+                'status' => $validated['status'] ?? 'All',
+                'business_id' => $validated['business_id'] ?? null,
+                'country' => $validated['country'] ?? null,
+            ]);
+            
+            // Get business-scoped leave query
+            $query = $this->getBusinessScopedQuery($request, Leave::class, 'employee')
+                ->with(['employee.user', 'employee.business', 'employee.country'])
+                ->whereBetween('start_date', [$startDate, $endDate]);
+
+            if (!empty($validated['leave_type'])) {
+                $query->where('leave_type', $validated['leave_type']);
+            }
+
+            if (!empty($validated['status']) && $validated['status'] !== 'all') {
+                $query->where('status', $validated['status']);
+            }
+
+            $leaveData = $query->get();
+
+            $totalLeaveRequests = $leaveData->count();
+            $statusBreakdown = $leaveData->groupBy('status')->map->count();
+            
+            $approvedCount = $statusBreakdown->get('approved', 0);
+            $approvalRate = $totalLeaveRequests > 0 
+                ? round(($approvedCount / $totalLeaveRequests) * 100, 2) 
+                : 0;
+
+            // Add business/country info to report
+            $filterInfo = [];
+            if (!empty($validated['business_id'])) {
+                $business = Business::find($validated['business_id']);
+                $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+                $filterInfo['business_id'] = $validated['business_id'];
+            }
+            if (!empty($validated['country'])) {
+                $country = \App\Models\Country::find($validated['country']);
+                $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
+                $filterInfo['country_id'] = $validated['country'];
+            }
+
+            $reportData = [
+                'total_leave_requests' => $totalLeaveRequests,
+                'status_breakdown' => $statusBreakdown,
+                'approval_rate' => $approvalRate,
+                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+                'generated_at' => now()->toDateTimeString(),
+                'filters' => $filterInfo,
+            ];
+
+            Log::info('REPORT_CONTROLLER: Leave report generated', [
+                'total_requests' => $totalLeaveRequests,
+                'approval_rate' => $approvalRate,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Leave report generated successfully',
+                'data' => $reportData,
+                'type' => 'leave'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('REPORT_CONTROLLER: Error generating leave report', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate leave report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
     public function getReportParams($type): JsonResponse
     {
         $defaults = [
@@ -527,87 +742,6 @@ class ReportController extends Controller
         return $totalAttendance > 0 ? round(($onTimeAttendance / $totalAttendance) * 100) : 100;
     }
 
-
-
-   public function generateLeaveReport(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'leave_type' => 'sometimes|string',
-            'status' => 'sometimes|in:pending,approved,rejected,all',
-            'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|string'
-        ]);
-
-        try {
-            $startDate = Carbon::parse($validated['start_date']);
-            $endDate = Carbon::parse($validated['end_date']);
-            
-            // Get business-scoped leave query with filters
-            $filters = [
-                'business_id' => $validated['business_id'] ?? null,
-                'country' => $validated['country'] ?? null
-            ];
-            
-            $query = $this->getBusinessScopedQuery($request, Leave::class, 'employee', $filters)
-                ->with(['employee.user', 'employee.business'])
-                ->whereBetween('start_date', [$startDate, $endDate]);
-
-            if (!empty($validated['leave_type'])) {
-                $query->where('leave_type', $validated['leave_type']);
-            }
-
-            if (!empty($validated['status']) && $validated['status'] !== 'all') {
-                $query->where('status', $validated['status']);
-            }
-
-            $leaveData = $query->get();
-
-            $totalLeaveRequests = $leaveData->count();
-            $statusBreakdown = $leaveData->groupBy('status')->map->count();
-            
-            $approvedCount = $statusBreakdown->get('approved', 0);
-            $approvalRate = $totalLeaveRequests > 0 ? round(($approvedCount / $totalLeaveRequests) * 100, 2) : 0;
-
-            // Add business/country info to report
-            $filterInfo = [];
-            if (!empty($validated['business_id'])) {
-                $business = Business::find($validated['business_id']);
-                $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-            }
-            if (!empty($validated['country'])) {
-                $filterInfo['country'] = $validated['country'];
-            }
-
-            $reportData = [
-                'total_leave_requests' => $totalLeaveRequests,
-                'status_breakdown' => $statusBreakdown,
-                'approval_rate' => $approvalRate,
-                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
-                'generated_at' => now()->toDateTimeString(),
-                'filters' => $filterInfo,
-            ];
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Leave report generated successfully',
-                'data' => $reportData,
-                'type' => 'leave'
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Error generating leave report: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to generate leave report: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Generate organization overview report with business scoping
-     */
     public function generateOrganizationReport(Request $request): JsonResponse
     {
         $filters = $request->validate([
@@ -744,8 +878,8 @@ class ReportController extends Controller
         })->filter()->values()->toArray();
     }
 
-    /**
-     * Generate comprehensive payroll report with business and country filters including other deductions
+   /**
+     * Generate comprehensive payroll report with business and country filters
      */
     public function generatePayrollReport(Request $request): JsonResponse
     {
@@ -755,7 +889,7 @@ class ReportController extends Controller
             'department' => 'nullable|string',
             'status' => 'sometimes|in:all,paid,pending',
             'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|string'
+            'country' => 'sometimes|exists:countries,id'
         ]);
 
         try {
@@ -764,7 +898,7 @@ class ReportController extends Controller
             
             $department = !empty($validated['department']) ? $validated['department'] : null;
             
-            Log::info('Generating payroll report', [
+            Log::info('REPORT_CONTROLLER: Generating payroll report', [
                 'start_date' => $startDate->format('Y-m-d'),
                 'end_date' => $endDate->format('Y-m-d'),
                 'department' => $department ?? 'All Departments',
@@ -773,28 +907,21 @@ class ReportController extends Controller
                 'country' => $validated['country'] ?? null
             ]);
             
-            // Get business-scoped employee IDs with filters
-            $filters = [
-                'business_id' => $validated['business_id'] ?? null,
-                'country' => $validated['country'] ?? null
-            ];
-            
-            $employeeQuery = $this->getBusinessScopedEmployees($request, $filters);
+            // Get business-scoped employee IDs
+            $employeeQuery = $this->getBusinessScopedEmployees($request);
             if ($department !== null) {
                 $employeeQuery->where('department', $department);
             }
             $employeeIds = $employeeQuery->pluck('id');
             
+            Log::info('REPORT_CONTROLLER: Employee IDs for payroll report', [
+                'count' => $employeeIds->count(),
+                'department_filter' => $department ?? 'None',
+            ]);
+            
             if ($employeeIds->isEmpty()) {
                 // Add business/country info to report
-                $filterInfo = [];
-                if (!empty($validated['business_id'])) {
-                    $business = Business::find($validated['business_id']);
-                    $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-                }
-                if (!empty($validated['country'])) {
-                    $filterInfo['country'] = $validated['country'];
-                }
+                $filterInfo = $this->buildFilterInfo($validated);
                 
                 return response()->json([
                     'success' => true,
@@ -822,8 +949,8 @@ class ReportController extends Controller
                 ]);
             }
             
-            // Find payrolls in the date range
-            $query = Payslip::with(['employee.user', 'employee.business'])
+            // Find payslips in the date range
+            $query = Payslip::with(['employee.user', 'employee.business', 'employee.country'])
                 ->whereBetween('pay_period_start', [$startDate, $endDate])
                 ->whereIn('employee_id', $employeeIds);
 
@@ -846,12 +973,6 @@ class ReportController extends Controller
             $departmentBreakdown = [];
 
             foreach ($payslips as $payslip) {
-                // Apply status filter
-                if (!empty($validated['status']) && $validated['status'] !== 'all' &&
-                    $payslip->status !== $validated['status']) {
-                    continue;
-                }
-
                 $grossSalary = $payslip->gross_salary ?? 0;
                 $netPay = $payslip->net_pay ?? 0;
                 $paye = $payslip->paye ?? 0;
@@ -890,7 +1011,7 @@ class ReportController extends Controller
                     'employee_name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
                     'department' => $empDepartment,
                     'business' => $payslip->employee->business ? $payslip->employee->business->name : 'No Business',
-                    'country' => $payslip->employee->country ?? 'N/A',
+                    'country' => $payslip->employee->country ? $payslip->employee->country->name : 'N/A',
                     'gross_salary' => number_format($grossSalary, 2),
                     'deductions' => number_format($totalDeductions, 2),
                     'net_salary' => number_format($netPay, 2),
@@ -912,14 +1033,7 @@ class ReportController extends Controller
             $departmentName = $department ?? 'All Departments';
             
             // Add business/country info to report
-            $filterInfo = [];
-            if (!empty($validated['business_id'])) {
-                $business = Business::find($validated['business_id']);
-                $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-            }
-            if (!empty($validated['country'])) {
-                $filterInfo['country'] = $validated['country'];
-            }
+            $filterInfo = $this->buildFilterInfo($validated);
 
             $reportData = [
                 'department' => $departmentName,
@@ -941,12 +1055,10 @@ class ReportController extends Controller
                 'filters' => $filterInfo,
             ];
 
-            Log::info('Payroll report generated successfully', [
+            Log::info('REPORT_CONTROLLER: Payroll report generated successfully', [
                 'processed_employees' => $processedEmployees,
                 'total_net_salary' => $totalNetSalary,
                 'total_other_deductions' => $totalOtherDeductions,
-                'business_filter' => $validated['business_id'] ?? null,
-                'country_filter' => $validated['country'] ?? null
             ]);
 
             return response()->json([
@@ -957,14 +1069,38 @@ class ReportController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error generating payroll report: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('REPORT_CONTROLLER: Error generating payroll report', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate payroll report: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Helper method to build filter info for reports
+     */
+    private function buildFilterInfo(array $validated): array
+    {
+        $filterInfo = [];
+        
+        if (!empty($validated['business_id'])) {
+            $business = Business::find($validated['business_id']);
+            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+            $filterInfo['business_id'] = $validated['business_id'];
+        }
+        
+        if (!empty($validated['country'])) {
+            $country = \App\Models\Country::find($validated['country']);
+            $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
+            $filterInfo['country_id'] = $validated['country'];
+        }
+        
+        return $filterInfo;
     }
 
     public function exportReport(Request $request, string $type)

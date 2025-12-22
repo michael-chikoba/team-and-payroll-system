@@ -44,10 +44,20 @@ export default [
         name: 'ManagerPayslips',
         component: () => import('../../views/manager/Payslips.vue')
       },
+       {
+        path: 'schedule',
+        name: 'TeamSchedule',
+        component: () => import('../../views/manager/TeamSchedule.vue')
+      },
       {
         path: 'tasks',
         name: 'AssignTask',
         component: () => import('../../views/manager/TaskForm.vue')
+      },
+       {
+        path: 'Shifts',
+        name: 'AssignShift',
+        component: () => import('../../views/manager/ShiftAssignments.vue')
       }
     ]
   }

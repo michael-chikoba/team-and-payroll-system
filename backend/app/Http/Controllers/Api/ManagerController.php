@@ -10,12 +10,27 @@ use App\Models\Attendance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Carbon\Carbon;
 
 class ManagerController extends Controller
 {
+    /**
+     * Helper to get the authenticated user's employee profile
+     * to determine their Business and Country context.
+     */
+    private function getManagerProfile(Request $request): ?Employee
+    {
+        return Employee::where('user_id', $request->user()->id)->first();
+    }
+
     public function employees(Request $request): AnonymousResourceCollection
     {
+        $managerProfile = $this->getManagerProfile($request);
+
+        if (!$managerProfile) {
+            // Return empty collection if the manager has no employee profile
+            return EmployeeResource::collection(collect([]));
+        }
+
         $employees = Employee::with(['user', 'attendances' => function ($query) use ($request) {
             if ($request->has('month')) {
                 $query->whereYear('date', $request->get('year', date('Y')))
@@ -23,6 +38,8 @@ class ManagerController extends Controller
             }
         }])
         ->where('manager_id', $request->user()->id)
+        // STRICT CHECK: Must match Manager's Business and Country
+        ->sameContext($managerProfile)
         ->get();
 
         return EmployeeResource::collection($employees);
@@ -30,9 +47,17 @@ class ManagerController extends Controller
 
     public function employeeDetails(Employee $employee, Request $request): JsonResponse
     {
-        // Check if employee is under this manager
-        if ($employee->manager_id !== $request->user()->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        $managerProfile = $this->getManagerProfile($request);
+
+        // Check 1: Is the employee assigned to this manager?
+        // Check 2: Do they belong to the same Business and Country?
+        if (
+            !$managerProfile ||
+            $employee->manager_id !== $request->user()->id || 
+            $employee->business_id !== $managerProfile->business_id ||
+            $employee->country_id !== $managerProfile->country_id
+        ) {
+            return response()->json(['message' => 'Unauthorized access to this employee'], 403);
         }
 
         $employee->load(['user', 'leaves', 'attendances', 'payslips.payroll']);
@@ -46,20 +71,32 @@ class ManagerController extends Controller
 
     public function attendanceReport(Request $request): JsonResponse
     {
+        $managerProfile = $this->getManagerProfile($request);
+
+        if (!$managerProfile) {
+             return response()->json([
+                'attendances' => [],
+                'summary' => $this->getEmptySummary(),
+            ]);
+        }
+
         $managerId = $request->user()->id;
         $month = $request->get('month', date('m'));
         $year = $request->get('year', date('Y'));
 
+        // Query Attendances where the related Employee is managed by current user
+        // AND belongs to the same Business/Country
         $attendances = Attendance::with(['employee.user'])
-            ->whereHas('employee', function ($query) use ($managerId) {
-                $query->where('manager_id', $managerId);
+            ->whereHas('employee', function ($query) use ($managerId, $managerProfile) {
+                $query->where('manager_id', $managerId)
+                      ->sameContext($managerProfile); // Apply strict context scope
             })
             ->whereYear('date', $year)
             ->whereMonth('date', $month)
             ->orderBy('date', 'desc')
             ->get();
 
-        $summary = $this->getTeamAttendanceSummary($managerId, $month, $year);
+        $summary = $this->getTeamAttendanceSummary($managerId, $managerProfile, $month, $year);
 
         return response()->json([
             'attendances' => AttendanceResource::collection($attendances),
@@ -96,19 +133,17 @@ class ManagerController extends Controller
         })->toArray();
     }
 
-    private function getTeamAttendanceSummary(int $managerId, int $month, int $year): array
+    private function getTeamAttendanceSummary(int $managerId, Employee $managerProfile, int $month, int $year): array
     {
-        $employees = Employee::where('manager_id', $managerId)->get();
+        // Fetch employees with strict context check
+        $employees = Employee::where('manager_id', $managerId)
+            ->sameContext($managerProfile)
+            ->get();
+            
         $totalEmployees = $employees->count();
 
         if ($totalEmployees === 0) {
-            return [
-                'total_employees' => 0,
-                'avg_attendance_rate' => 0,
-                'total_present_days' => 0,
-                'total_absent_days' => 0,
-                'total_late_days' => 0,
-            ];
+            return $this->getEmptySummary();
         }
 
         $totalPresent = 0;
@@ -136,6 +171,17 @@ class ManagerController extends Controller
             'total_present_days' => $totalPresent,
             'total_absent_days' => $totalAbsent,
             'total_late_days' => $totalLate,
+        ];
+    }
+
+    private function getEmptySummary(): array
+    {
+        return [
+            'total_employees' => 0,
+            'avg_attendance_rate' => 0,
+            'total_present_days' => 0,
+            'total_absent_days' => 0,
+            'total_late_days' => 0,
         ];
     }
 }

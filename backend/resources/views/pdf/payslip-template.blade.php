@@ -20,262 +20,255 @@
         .header {
             text-align: center;
             margin-bottom: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
         }
         .company-name {
             font-weight: bold;
-            font-size: 16px;
+            font-size: 18px;
             margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .company-address {
+            font-size: 11px;
+            color: #555;
+            margin-bottom: 10px;
         }
         .payslip-title {
             font-weight: bold;
             font-size: 16px;
-            margin-bottom: 15px;
+            margin-top: 10px;
         }
       
-        /* Proper table styling */
-        table {
+        /* Info Table */
+        table.info-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
         }
-      
-        table.info-table {
-            border: 1px solid #000;
-        }
-      
         table.info-table td {
-            padding: 8px 10px;
-            border: 1px solid #000;
+            padding: 5px;
             vertical-align: top;
         }
-      
         table.info-table td.label {
             font-weight: bold;
             width: 15%;
-            background-color: #f5f5f5;
+            color: #333;
         }
-      
         table.info-table td.value {
             width: 35%;
         }
       
         /* Earnings & Deductions Table */
         table.earnings-deductions {
-            border: 1px solid #000;
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 20px;
+            border: 1px solid #000;
         }
-      
         table.earnings-deductions th {
-            background-color: #e0e0e0;
+            background-color: #f0f0f0;
             font-weight: bold;
+            padding: 8px;
+            border: 1px solid #000;
+            text-align: left;
+            width: 50%;
+        }
+        table.earnings-deductions td {
+            padding: 0;
+            border: 1px solid #000;
+            vertical-align: top;
+        }
+        
+        /* Inner tables for alignment */
+        .inner-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: none;
+        }
+        .inner-table td {
+            border: none;
+            padding: 6px 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .inner-table tr:last-child td {
+            border-bottom: none;
+        }
+        .text-right { text-align: right; }
+        
+        /* Main Calculation Row */
+        .calc-row {
+            display: flex;
+            border-bottom: 1px solid #ccc;
+        }
+        .calc-col {
+            flex: 1;
+            padding: 0;
+        }
+        .row-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 10px;
+            border-right: 1px solid #000;
+        }
+        .row-item:last-child { border-right: none; }
+      
+        table.main-calc {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #000;
+        }
+        table.main-calc th {
+            background-color: #e0e0e0;
             padding: 10px;
             border: 1px solid #000;
             text-align: left;
         }
-      
-        table.earnings-deductions td {
-            padding: 8px 10px;
+        table.main-calc td {
             border: 1px solid #000;
+            padding: 0;
+            vertical-align: top;
         }
-      
-        table.earnings-deductions td.amount {
-            text-align: right;
-            font-family: 'Courier New', monospace;
+        
+        .item-row {
+            width: 100%;
+            padding: 5px 8px;
+            border-bottom: 1px solid #eee;
         }
-      
-        table.earnings-deductions tr.total-row {
-            background-color: #f0f0f0;
+        .item-name { display: inline-block; width: 60%; }
+        .item-amt { display: inline-block; width: 38%; text-align: right; font-family: 'Courier New', monospace; }
+
+        .total-row td {
+            background-color: #f9f9f9;
             font-weight: bold;
+            padding: 10px;
+            border-top: 2px solid #000;
         }
-      
-        /* Summary Tables */
-        table.summary-table {
-            border: 1px solid #000;
-            margin-top: 10px;
-        }
-      
-        table.summary-table th {
-            background-color: #e0e0e0;
-            font-weight: bold;
-            padding: 8px;
-            border: 1px solid #000;
-            text-align: center;
-        }
-      
-        table.summary-table td {
-            padding: 8px;
-            border: 1px solid #000;
-            text-align: center;
-        }
-      
+
         .net-pay {
             text-align: right;
             font-weight: bold;
-            font-size: 14px;
-            margin-top: 15px;
+            font-size: 16px;
+            margin-top: 20px;
             padding: 15px;
             border: 2px solid #000;
-            background-color: #f5f5f5;
-        }
-      
-        .section-title {
-            font-weight: bold;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            font-size: 13px;
-            text-decoration: underline;
+            background-color: #f0f0f0;
         }
       
         .footer {
-            margin-top: 30px;
+            margin-top: 40px;
             text-align: center;
             font-size: 10px;
             color: #666;
-            padding-top: 20px;
+            padding-top: 10px;
             border-top: 1px solid #ccc;
-        }
-      
-        .footer p {
-            margin: 5px 0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Company & Payslip Header -->
+        <!-- Header -->
         <div class="header">
-            <div class="company-name">Castle Holdings Ltd</div>
-            <div class="payslip-title">Payslip for the month of {{ $payroll->pay_period ?? 'N/A' }}</div>
+            <div class="company-name">{{ $company_name }}</div>
+            <div class="company-address">{{ $company_address }}</div>
+            <div class="payslip-title">Payslip: {{ $payroll->pay_period ?? 'N/A' }}</div>
         </div>
       
-        <!-- Employee Details Section -->
+        <!-- Employee Details -->
         <table class="info-table">
             <tr>
-                <td class="label">Code</td>
+                <td class="label">Employee ID:</td>
                 <td class="value">{{ $employee->employee_id ?? 'N/A' }}</td>
-                <td class="label">Employer</td>
-                <td class="value">Castle Holdings Ltd</td>
+                <td class="label">Pay Date:</td>
+                <td class="value">{{ $payslip->payment_date ? \Carbon\Carbon::parse($payslip->payment_date)->format('d M Y') : 'N/A' }}</td>
             </tr>
             <tr>
-                <td class="label">Name</td>
+                <td class="label">Name:</td>
                 <td class="value">{{ $employee->user->first_name ?? '' }} {{ $employee->user->last_name ?? '' }}</td>
-                <td class="label">Period</td>
-                <td class="value">{{ $payroll->payroll_period ?? 'N/A' }}</td>
+                <td class="label">Days Worked:</td>
+                <td class="value">{{ $payroll->working_days ?? '22' }}</td>
             </tr>
             <tr>
-                <td class="label">Department</td>
+                <td class="label">Department:</td>
                 <td class="value">{{ $employee->department ?? 'N/A' }}</td>
-                <td class="label">Position</td>
+                <td class="label">Position:</td>
                 <td class="value">{{ $employee->position ?? 'N/A' }}</td>
             </tr>
             <tr>
-                <td class="label">Email</td>
-                <td class="value">{{ $employee->user->email ?? 'N/A' }}</td>
-                <td class="label">Pay Date</td>
-                <td class="value">{{ $payslip->payment_date ? \Carbon\Carbon::parse($payslip->payment_date)->format('d/m/Y') : 'N/A' }}</td>
-            </tr>
-            <tr>
-                <td class="label">Pay Period Start</td>
-                <td class="value">{{ $payslip->pay_period_start ? \Carbon\Carbon::parse($payslip->pay_period_start)->format('d/m/Y') : 'N/A' }}</td>
-                <td class="label">Pay Period End</td>
-                <td class="value">{{ $payslip->pay_period_end ? \Carbon\Carbon::parse($payslip->pay_period_end)->format('d/m/Y') : 'N/A' }}</td>
-            </tr>
-            <tr>
-                <td class="label">Working Days</td>
-                <td class="value">{{ $payroll->working_days ?? '22' }}</td>
-                <td class="label">Base Salary</td>
-                <td class="value">K{{ number_format($employee->base_salary ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Employment Type</td>
+                <td class="label">Type:</td>
                 <td class="value">{{ ucfirst(str_replace('_', ' ', $employee->employment_type ?? 'N/A')) }}</td>
-                <td class="label"></td>
-                <td class="value"></td>
+                <td class="label">Period:</td>
+                <td class="value">
+                    {{ $payslip->pay_period_start ? \Carbon\Carbon::parse($payslip->pay_period_start)->format('d M') : '' }} - 
+                    {{ $payslip->pay_period_end ? \Carbon\Carbon::parse($payslip->pay_period_end)->format('d M Y') : '' }}
+                </td>
             </tr>
         </table>
       
-        <!-- Earnings & Deductions Table -->
-        <table class="earnings-deductions">
+        <!-- Dynamic Earnings & Deductions Table -->
+        <table class="main-calc">
             <thead>
                 <tr>
-                    <th>EARNINGS</th>
-                    <th style="text-align: right;">AMOUNT (K)</th>
-                    <th>DEDUCTIONS</th>
-                    <th style="text-align: right;">AMOUNT (K)</th>
+                    <th width="50%">EARNINGS</th>
+                    <th width="50%">DEDUCTIONS</th>
                 </tr>
             </thead>
             <tbody>
+                @foreach($table_rows as $row)
                 <tr>
-                    <td>Basic Salary</td>
-                    <td class="amount">{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
-                    <td>PAYE Tax</td>
-                    <td class="amount">{{ number_format($payslip->paye ?? 0, 2) }}</td>
+                    <!-- Earning Column -->
+                    <td>
+                        @if($row['earning'])
+                        <div class="item-row">
+                            <span class="item-name">{{ $row['earning']['name'] }}</span>
+                            <span class="item-amt">{{ number_format($row['earning']['amount'], 2) }}</span>
+                        </div>
+                        @else
+                        <div class="item-row">&nbsp;</div>
+                        @endif
+                    </td>
+                    
+                    <!-- Deduction Column -->
+                    <td>
+                        @if($row['deduction'])
+                        <div class="item-row">
+                            <span class="item-name">{{ $row['deduction']['name'] }}</span>
+                            <span class="item-amt">{{ number_format($row['deduction']['amount'], 2) }}</span>
+                        </div>
+                        @else
+                        <div class="item-row">&nbsp;</div>
+                        @endif
+                    </td>
                 </tr>
-              
-                <tr>
-                    <td>Housing Allowance </td>
-                    <td class="amount">{{ number_format($payslip->house_allowance ?? 0, 2) }}</td>
-                    <td>NAPSA </td>
-                    <td class="amount">{{ number_format($payslip->napsa ?? 0, 2) }}</td>
-                </tr>
-              
-                <tr>
-                    <td>Transport Allowance</td>
-                    <td class="amount">{{ number_format($payslip->transport_allowance ?? 0, 2) }}</td>
-                    <td>NHIMA</td>
-                    <td class="amount">{{ number_format($payslip->nhima ?? 0, 2) }}</td>
-                </tr>
-              
-                <tr>
-                    <td>Lunch Allowance</td>
-                    <td class="amount">{{ number_format($payslip->other_allowances ?? 0, 2) }}</td>
-                    <td>Pension </td>
-                    <td class="amount">{{ number_format($payslip->pension ?? 0, 2) }}</td>
-                </tr>
-              
-                @if($payslip->overtime_hours > 0)
-                <tr>
-                    <td>Overtime Pay ({{ $payslip->overtime_hours }} hrs @ K{{ number_format($payslip->overtime_rate ?? 0, 2) }})</td>
-                    <td class="amount">{{ number_format($payslip->overtime_pay ?? 0, 2) }}</td>
-                    <td>Other Deductions</td>
-                    <td class="amount">{{ number_format($payslip->other_deductions ?? 0, 2) }}</td>
-                </tr>
-                @else
-                <tr>
-                    <td></td>
-                    <td class="amount"></td>
-                    <td>Other Deductions</td>
-                    <td class="amount">{{ number_format($payslip->other_deductions ?? 0, 2) }}</td>
-                </tr>
-                @endif
-              
+                @endforeach
+
+                <!-- Totals -->
                 <tr class="total-row">
-                    <td>GROSS SALARY</td>
-                    <td class="amount">{{ number_format($payslip->gross_salary ?? 0, 2) }}</td>
-                    <td>TOTAL DEDUCTIONS</td>
-                    <td class="amount">{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>
+                    <td>
+                        <div class="item-row">
+                            <span class="item-name">GROSS PAY</span>
+                            <span class="item-amt">{{ number_format($payslip->gross_salary, 2) }}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="item-row">
+                            <span class="item-name">TOTAL DEDUCTIONS</span>
+                            <span class="item-amt">{{ number_format($payslip->total_deductions, 2) }}</span>
+                        </div>
+                    </td>
                 </tr>
             </tbody>
         </table>
       
         <!-- Net Pay -->
         <div class="net-pay">
-            NET PAY: K{{ number_format($payslip->net_pay ?? 0, 2) }}
+            NET PAY: K{{ number_format($payslip->net_pay, 2) }}
         </div>
-      
-        <!-- Deduction Notes (only show if pension is zero for full-time employees) -->
-        @if($employee->employment_type === 'full_time' && ($payslip->pension ?? 0) == 0)
-        <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; font-size: 11px;">
-            <strong>Note:</strong> Pension contribution (5% of basic salary) applies to full-time employees only.
-        </div>
-        @endif
       
         <!-- Footer -->
         <div class="footer">
-            <p><strong>Generated on:</strong> {{ now()->format('d/m/Y H:i:s') }}</p>
-            <p>This payslip is computer generated and does not require a signature.</p>
-            <p>Confidential - For Employee Use Only</p>
-            <p><em>Castlebet - 117/CL/1 Kabulonga, Lusaka, Zambia</em></p>
+            <p>Generated on {{ now()->format('d M Y H:i') }}</p>
+            <p>This is a computer-generated document and needs no signature.</p>
         </div>
     </div>
 </body>

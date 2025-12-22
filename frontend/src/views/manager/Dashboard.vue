@@ -138,9 +138,11 @@
     </div>
   </div>
 </template>
+
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+
 export default {
   name: 'ManagerDashboard',
   
@@ -159,14 +161,15 @@ export default {
       },
       attendanceSummary: null,
       pendingLeaves: [],
+      employees: [],
       loading: false,
       loadingAttendance: false,
       error: null,
       debugInfo: null,
       retryCount: 0,
-      today: new Date().toISOString().split('T')[0], // Today's date in YYYY-MM-DD format
+      today: new Date().toISOString().split('T')[0],
       pollInterval: null,
-      pollIntervalMs: 30000 // Poll every 30 seconds
+      pollIntervalMs: 30000
     }
   },
   
@@ -186,7 +189,6 @@ export default {
       console.log('User:', this.authStore.user)
       console.log('Token exists:', !!this.authStore.token)
       
-      // Check authentication and permissions
       if (!this.authStore.isAuthenticated) {
         this.error = 'Please log in to access the dashboard.'
         return
@@ -202,7 +204,7 @@ export default {
     },
 
     startPolling() {
-      if (this.pollInterval) return // Already polling
+      if (this.pollInterval) return
       this.pollInterval = setInterval(() => {
         this.refreshAttendance()
       }, this.pollIntervalMs)
@@ -230,11 +232,14 @@ export default {
         console.log('User ID:', this.authStore.user?.id)
         console.log('User role:', this.authStore.user?.role)
       
-        // Fetch dashboard data and attendance data in parallel
-        const [dashboardResponse, attendanceResponse] = await Promise.all([
+        // Fetch all data in parallel
+        const [dashboardResponse, attendanceResponse, employeesResponse] = await Promise.all([
           axios.get('/api/dashboard'),
           axios.get('/api/manager/attendance', {
             params: { date: this.today }
+          }),
+          axios.get('/api/manager/employees', {
+            params: { manager_id: this.authStore.user?.id }
           })
         ])
       
@@ -245,30 +250,39 @@ export default {
         console.log('=== Attendance Response ===')
         console.log('Status:', attendanceResponse.status)
         console.log('Attendance data:', attendanceResponse.data)
+
+        console.log('=== Employees Response ===')
+        console.log('Status:', employeesResponse.status)
+        console.log('Employees data:', employeesResponse.data)
       
         // Verify this is a manager response
         if (dashboardResponse.data.role !== 'manager') {
           throw new Error(`Expected manager role but got: ${dashboardResponse.data.role}`)
         }
       
+        // Store employees data
+        this.employees = employeesResponse.data.data || employeesResponse.data
+        
         // Map the backend response to component data
         const stats = dashboardResponse.data.stats || {}
         const productivity = stats.team_productivity || {}
       
-        // Process attendance data from the dedicated endpoint
+        // Process attendance data
         let attendanceData = attendanceResponse.data.attendances || []
-        // Filter to only today's date to avoid historical data and duplicates
         attendanceData = attendanceData.filter(a => a.date === this.today)
         const attSummary = attendanceResponse.data.summary || {}
-        const teamSize = attSummary.total_employees || 0
+        
+        // Use employees count from the fetched employees
+        const teamSize = this.employees.length || attSummary.total_employees || 0
       
         console.log('📊 Processing attendance data:', {
           teamSize,
+          employeesCount: this.employees.length,
           attendanceDataCount: attendanceData.length,
           rawAttendanceData: attendanceData
         })
       
-        // Calculate actual attendance metrics from attendance endpoint
+        // Calculate actual attendance metrics
         const attendanceMetrics = this.calculateAttendanceMetrics(attendanceData, teamSize)
       
         this.overview = {
@@ -278,18 +292,15 @@ export default {
           totalHours: Math.round(productivity.total_hours || 0)
         }
       
-        // Set attendance summary
         this.attendanceSummary = attendanceMetrics.summary
-      
-        // Set pending leaves
         this.pendingLeaves = dashboardResponse.data.pending_leaves || []
       
         console.log('=== Data Mapped Successfully ===')
         console.log('Overview:', this.overview)
         console.log('Attendance Summary:', this.attendanceSummary)
         console.log('Pending leaves count:', this.pendingLeaves.length)
+        console.log('Employees count:', this.employees.length)
       
-        // Reset retry count on success
         this.retryCount = 0
       
       } catch (err) {
@@ -301,7 +312,6 @@ export default {
         console.error('Response data:', err.response?.data)
         console.error('Full error:', err)
       
-        // Store debug info
         this.debugInfo = {
           errorType: err.name,
           errorMessage: err.message,
@@ -321,6 +331,32 @@ export default {
       }
     },
 
+    async fetchEmployees(retry = false) {
+      try {
+        console.log('=== Fetching Employees ===')
+        console.log('Manager ID:', this.authStore.user?.id)
+        
+        const response = await axios.get('/api/manager/employees', {
+          params: { manager_id: this.authStore.user?.id }
+        })
+       
+        this.employees = response.data.data || response.data
+        
+        console.log('Employees fetched:', this.employees.length)
+        
+        // Update team size in overview
+        if (this.employees.length > 0) {
+          this.overview.teamSize = this.employees.length
+        }
+        
+        return this.employees
+      } catch (err) {
+        console.error('Fetch employees error:', err)
+        this.handleApiError(err)
+        throw err
+      }
+    },
+
     async refreshAttendance() {
       if (this.loadingAttendance) return
       this.loadingAttendance = true
@@ -331,10 +367,11 @@ export default {
         })
       
         let attendanceData = attendanceResponse.data.attendances || []
-        // Filter to only today's date to avoid historical data and duplicates
         attendanceData = attendanceData.filter(a => a.date === this.today)
         const attSummary = attendanceResponse.data.summary || {}
-        const teamSize = attSummary.total_employees || 0
+        
+        // Use current employees count or summary total
+        const teamSize = this.employees.length || attSummary.total_employees || 0
       
         const attendanceMetrics = this.calculateAttendanceMetrics(attendanceData, teamSize)
       
@@ -350,7 +387,6 @@ export default {
         console.log('Updated Attendance Summary:', this.attendanceSummary)
       } catch (err) {
         console.error('Attendance refresh error:', err)
-        // Don't set global error for polling, just log
       } finally {
         this.loadingAttendance = false
       }
@@ -366,7 +402,7 @@ export default {
      
       if (!attendanceData || !Array.isArray(attendanceData)) {
         if (teamSize > 0) {
-          summary.absent = teamSize;
+          summary.absent = teamSize
         }
         return {
           summary,
@@ -374,8 +410,7 @@ export default {
         }
       }
      
-      let counted = 0;
-      // Process each attendance record
+      let counted = 0
       attendanceData.forEach(record => {
         const status = record.status?.toLowerCase() || 'absent'
      
@@ -394,18 +429,15 @@ export default {
             summary.absent++
             break
           default:
-            // Count unknown statuses as absent
             summary.absent++
         }
-        counted++;
+        counted++
       })
      
-      // Add unaccounted employees (no records) as absent
       if (counted < teamSize) {
-        summary.absent += (teamSize - counted);
+        summary.absent += (teamSize - counted)
       }
      
-      // Calculate attendance rate: (present + late) / teamSize
       const presentAndLateCount = summary.present + summary.late
       const attendanceRate = teamSize > 0
         ? Math.round((presentAndLateCount / teamSize) * 100)
@@ -449,10 +481,11 @@ export default {
       } else if (err.response?.status === 403) {
         errorMsg = 'Access denied. You do not have permission to view this dashboard.'
       } else if (err.response?.status === 404) {
-        // Check which endpoint failed
         const url = err.config?.url
         if (url?.includes('/api/manager/attendance')) {
           errorMsg = 'Attendance endpoint not found. Please verify the API route exists: /api/manager/attendance'
+        } else if (url?.includes('/api/manager/employees')) {
+          errorMsg = 'Employees endpoint not found. Please verify the API route exists: /api/manager/employees'
         } else {
           errorMsg = 'Dashboard endpoint not found. Please verify the API route exists: /api/dashboard'
         }
@@ -514,6 +547,7 @@ export default {
   }
 }
 </script>
+
 <style scoped>
 .manager-dashboard {
   padding: 2rem;

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Builder; // Import Builder
 
 class Employee extends Model
 {
@@ -107,97 +108,61 @@ class Employee extends Model
      * ========================================
      */
 
-    /**
-     * Get the business that the employee belongs to
-     */
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
     }
 
-    /**
-     * Get the country that the employee belongs to
-     */
     public function country(): BelongsTo
     {
         return $this->belongsTo(Country::class);
     }
 
-    /**
-     * Get the user associated with the employee
-     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Get the manager of the employee
-     */
     public function manager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'manager_id');
     }
 
-    /**
-     * Get all attendances for the employee
-     */
     public function attendances(): HasMany
     {
         return $this->hasMany(Attendance::class);
     }
 
-    /**
-     * Get all leaves for the employee
-     */
     public function leaves(): HasMany
     {
         return $this->hasMany(Leave::class);
     }
 
-    /**
-     * Get all leave balances for the employee
-     */
     public function leaveBalances(): HasMany
     {
         return $this->hasMany(LeaveBalance::class);
     }
 
-    /**
-     * Get all payslips for the employee
-     */
     public function payslips(): HasMany
     {
         return $this->hasMany(Payslip::class);
     }
 
-    /**
-     * Get all documents for the employee
-     */
     public function documents(): HasMany
     {
         return $this->hasMany(Document::class);
     }
 
-    /**
-     * Get all advances for the employee
-     */
     public function advances(): HasMany
     {
         return $this->hasMany(EmployeeAdvance::class);
     }
 
-    /**
-     * Get all loans for the employee
-     */
     public function loans(): HasMany
     {
         return $this->hasMany(EmployeeLoan::class);
     }
 
-    /**
-     * Get active advances (status = active and balance > 0)
-     */
     public function activeAdvances(): HasMany
     {
         return $this->advances()
@@ -205,9 +170,6 @@ class Employee extends Model
             ->where('balance', '>', 0);
     }
 
-    /**
-     * Get active loans (status = active and balance > 0)
-     */
     public function activeLoans(): HasMany
     {
         return $this->loans()
@@ -221,50 +183,42 @@ class Employee extends Model
      * ========================================
      */
 
-    /**
-     * Scope to filter employees by business
-     */
-    public function scopeInBusiness($query, $businessId)
+    public function scopeInBusiness(Builder $query, $businessId)
     {
         return $query->where('business_id', $businessId);
     }
 
-    /**
-     * Scope to filter employees by country
-     */
-    public function scopeInCountry($query, $countryId)
+    public function scopeInCountry(Builder $query, $countryId)
     {
         return $query->where('country_id', $countryId);
     }
 
     /**
-     * Scope to get only active employees
+     * Scope to filter employees within the same context (Business & Country) as the Manager
+     * This fixes the "Call to undefined method" error.
      */
-    public function scopeActive($query)
+    public function scopeSameContext(Builder $query, Employee $managerProfile)
+    {
+        return $query->where('business_id', $managerProfile->business_id)
+                     ->where('country_id', $managerProfile->country_id);
+    }
+
+    public function scopeActive(Builder $query)
     {
         return $query->where('is_active', true);
     }
 
-    /**
-     * Scope to filter by department
-     */
-    public function scopeInDepartment($query, $department)
+    public function scopeInDepartment(Builder $query, $department)
     {
         return $query->where('department', $department);
     }
 
-    /**
-     * Scope to filter by employment type
-     */
-    public function scopeByEmploymentType($query, $type)
+    public function scopeByEmploymentType(Builder $query, $type)
     {
         return $query->where('employment_type', $type);
     }
 
-    /**
-     * Scope to search employees by name, email, or employee_id
-     */
-    public function scopeSearch($query, $search)
+    public function scopeSearch(Builder $query, $search)
     {
         return $query->whereHas('user', function ($q) use ($search) {
             $q->where('first_name', 'like', "%{$search}%")
@@ -273,10 +227,7 @@ class Employee extends Model
         })->orWhere('employee_id', 'like', "%{$search}%");
     }
 
-    /**
-     * Scope to filter by business and country
-     */
-    public function scopeByBusinessAndCountry($query, $businessId = null, $countryId = null)
+    public function scopeByBusinessAndCountry(Builder $query, $businessId = null, $countryId = null)
     {
         if ($businessId) {
             $query->where('business_id', $businessId);
@@ -296,38 +247,31 @@ class Employee extends Model
      */
 
     public function getFullNameAttribute(): string
-{
-    // Check if user relationship is loaded
-    if ($this->relationLoaded('user') && $this->user) {
-        return trim($this->user->first_name . ' ' . $this->user->last_name);
+    {
+        if ($this->relationLoaded('user') && $this->user) {
+            return trim($this->user->first_name . ' ' . $this->user->last_name);
+        }
+        
+        if (isset($this->attributes['user_first_name']) && isset($this->attributes['user_last_name'])) {
+            return trim($this->attributes['user_first_name'] . ' ' . $this->attributes['user_last_name']);
+        }
+        
+        return 'N/A';
     }
-    
-    // If not loaded, check if we have the user data directly (for eager loading)
-    if (isset($this->attributes['user_first_name']) && isset($this->attributes['user_last_name'])) {
-        return trim($this->attributes['user_first_name'] . ' ' . $this->attributes['user_last_name']);
-    }
-    
-    return 'N/A';
-}
 
-public function getEmailAttribute(): string
-{
-    // Check if user relationship is loaded
-    if ($this->relationLoaded('user') && $this->user) {
-        return $this->user->email;
+    public function getEmailAttribute(): string
+    {
+        if ($this->relationLoaded('user') && $this->user) {
+            return $this->user->email;
+        }
+        
+        if (isset($this->attributes['user_email'])) {
+            return $this->attributes['user_email'];
+        }
+        
+        return 'N/A';
     }
-    
-    // If not loaded, check if we have the email directly
-    if (isset($this->attributes['user_email'])) {
-        return $this->attributes['user_email'];
-    }
-    
-    return 'N/A';
-}
 
-    /**
-     * Get formatted salary in country's currency
-     */
     public function getFormattedSalaryAttribute(): string
     {
         if (!$this->country) {
@@ -339,13 +283,10 @@ public function getEmailAttribute(): string
 
     /**
      * ========================================
-     * LEAVE METHODS
+     * METHODS
      * ========================================
      */
 
-    /**
-     * Get current leave balance for a specific type
-     */
     public function getCurrentLeaveBalance(string $type): float
     {
         $balance = $this->leaveBalances()
@@ -355,22 +296,14 @@ public function getEmailAttribute(): string
         return $balance ? $balance->balance : 0;
     }
 
-    /**
-     * Get all leave balances as an array
-     */
     public function getAllLeaveBalances(): array
     {
-        $balances = $this->leaveBalances()
+        return $this->leaveBalances()
             ->get()
             ->pluck('balance', 'type')
             ->toArray();
-
-        return $balances;
     }
 
-    /**
-     * Initialize leave balances based on country configuration
-     */
     public function initializeLeaveBalances(): void
     {
         if (!$this->country || !$this->country->configuration) {
@@ -401,23 +334,11 @@ public function getEmailAttribute(): string
         }
     }
 
-    /**
-     * ========================================
-     * DEDUCTION METHODS
-     * ========================================
-     */
-
-    /**
-     * Check if employee has any active deductions
-     */
     public function hasActiveDeductions(): bool
     {
         return $this->activeAdvances()->exists() || $this->activeLoans()->exists();
     }
 
-    /**
-     * Get total monthly deductions from advances and loans
-     */
     public function getTotalMonthlyDeductions(): float
     {
         $advanceDeductions = $this->activeAdvances()->sum('monthly_deduction');
@@ -426,9 +347,6 @@ public function getEmailAttribute(): string
         return round($advanceDeductions + $loanDeductions, 2);
     }
 
-    /**
-     * Get detailed breakdown of deductions
-     */
     public function getDeductionsBreakdown(): array
     {
         return [
@@ -446,65 +364,38 @@ public function getEmailAttribute(): string
         ];
     }
 
-    /**
-     * ========================================
-     * BUSINESS & COUNTRY-SPECIFIC METHODS
-     * ========================================
-     */
-
-    /**
-     * Check if employee belongs to a specific business
-     */
     public function belongsToBusiness(int $businessId): bool
     {
         return $this->business_id === $businessId;
     }
 
-    /**
-     * Check if employee belongs to a specific country
-     */
     public function belongsToCountry(int $countryId): bool
     {
         return $this->country_id === $countryId;
     }
 
-    /**
-     * Check if employee belongs to specific business and country
-     */
     public function belongsToBusinessAndCountry(int $businessId, int $countryId): bool
     {
         return $this->business_id === $businessId && $this->country_id === $countryId;
     }
 
-    /**
-     * Get country configuration
-     */
     public function getCountryConfiguration()
     {
         return $this->country ? $this->country->configuration : null;
     }
 
-    /**
-     * Get working hours per day for employee's country
-     */
     public function getWorkingHoursPerDay(): float
     {
         $config = $this->getCountryConfiguration();
         return $config ? $config->working_hours_per_day : 8.00;
     }
 
-    /**
-     * Get payroll frequency for employee's country
-     */
     public function getPayrollFrequency(): string
     {
         $config = $this->getCountryConfiguration();
         return $config ? $config->payroll_frequency : 'monthly';
     }
 
-    /**
-     * Calculate net salary based on country tax rules
-     */
     public function calculateNetSalary(array $additionalDeductions = []): array
     {
         $config = $this->getCountryConfiguration();
@@ -518,22 +409,16 @@ public function getEmailAttribute(): string
             ];
         }
 
-        // Calculate tax
         $tax = $config->calculateTax($this->base_salary);
-
-        // Calculate statutory deductions
         $statutoryDeductions = $config->calculateStatutoryDeductions($this->base_salary);
-
-        // Add monthly deductions from advances/loans
+        
         $monthlyDeductions = $this->getTotalMonthlyDeductions();
         $additionalDeductions['advances_loans'] = $monthlyDeductions;
 
-        // Total deductions
         $totalStatutory = array_sum($statutoryDeductions);
         $totalAdditional = array_sum($additionalDeductions);
         $totalDeductions = $tax + $totalStatutory + $totalAdditional;
 
-        // Net salary
         $netSalary = $this->base_salary - $totalDeductions;
 
         return [
@@ -546,61 +431,36 @@ public function getEmailAttribute(): string
         ];
     }
 
-    /**
-     * ========================================
-     * UTILITY METHODS
-     * ========================================
-     */
-
-    /**
-     * Get years of service
-     */
     public function getYearsOfService(): int
     {
         if (!$this->hire_date) {
             return 0;
         }
-
         return $this->hire_date->diffInYears(now());
     }
 
-    /**
-     * Get age of employee
-     */
     public function getAge(): ?int
     {
         if (!$this->date_of_birth) {
             return null;
         }
-
         return $this->date_of_birth->diffInYears(now());
     }
 
-    /**
-     * Check if employee is eligible for retirement (example: 60 years)
-     */
     public function isEligibleForRetirement(): bool
     {
         $age = $this->getAge();
         return $age !== null && $age >= 60;
     }
 
-    /**
-     * Get profile picture URL
-     */
     public function getProfilePictureUrl(): string
     {
         if ($this->profile_pic) {
             return asset('storage/' . $this->profile_pic);
         }
-
-        // Return default avatar
         return asset('images/default-avatar.png');
     }
 
-    /**
-     * Format bank details for display
-     */
     public function getFormattedBankDetails(): array
     {
         if (!is_array($this->bank_details)) {

@@ -7,6 +7,9 @@ use App\Http\Requests\Attendance\UpdateAttendanceRequest;
 use App\Http\Resources\AttendanceResource;
 use App\Models\Attendance;
 use App\Models\Employee;
+use App\Models\Country; // Add this import
+use App\Models\Business; // Add this import
+use App\Models\User; // Add this import
 use App\Services\AttendanceService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -168,113 +171,6 @@ class AttendanceController extends Controller
         }
     }
 
-    /**
- * Get attendance history with enhanced filtering and pagination
- */
-public function history(Request $request): JsonResponse
-{
-    try {
-        $employee = $request->user()->employee;
-
-        if (!$employee) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Employee profile not found. Please contact HR.'
-            ], 404);
-        }
-
-        // Get query parameters with defaults
-        $month = $request->get('month', date('m'));
-        $year = $request->get('year', date('Y'));
-        $perPage = $request->get('per_page', 31); // Default to month view
-        $status = $request->get('status'); // Optional status filter
-        $startDate = $request->get('start_date'); // Optional date range
-        $endDate = $request->get('end_date');
-
-        Log::info('Fetching attendance history', [
-            'employee_id' => $employee->id,
-            'month' => $month,
-            'year' => $year,
-            'status' => $status,
-            'date_range' => ['start' => $startDate, 'end' => $endDate]
-        ]);
-
-        // Build the query
-        $query = Attendance::where('employee_id', $employee->id);
-
-        // Apply filters based on what's provided
-        if ($startDate && $endDate) {
-            // Date range filter takes precedence
-            $query->whereBetween('date', [
-                Carbon::parse($startDate)->startOfDay(),
-                Carbon::parse($endDate)->endOfDay()
-            ]);
-        } else {
-            // Default to month/year filter
-            $query->whereYear('date', $year)
-                  ->whereMonth('date', $month);
-        }
-
-        // Optional status filter
-        if ($status) {
-            $query->where('status', $status);
-        }
-
-        // Order by date descending (most recent first)
-        $query->orderBy('date', 'desc')
-              ->orderBy('clock_in', 'desc');
-
-        // Get paginated results
-        $attendances = $query->paginate($perPage);
-
-        // Calculate summary statistics for the filtered period
-        $allRecords = $query->get();
-        $summary = [
-            'total_records' => $allRecords->count(),
-            'total_hours' => round($allRecords->sum('total_hours'), 2),
-            'present_days' => $allRecords->whereIn('status', ['present', 'completed'])->count(),
-            'absent_days' => $allRecords->where('status', 'absent')->count(),
-            'late_days' => $allRecords->where('status', 'late')->count(),
-            'average_hours_per_day' => $allRecords->count() > 0 
-                ? round($allRecords->avg('total_hours'), 2) 
-                : 0
-        ];
-
-        return response()->json([
-            'success' => true,
-            'data' => AttendanceResource::collection($attendances->items()),
-            'pagination' => [
-                'current_page' => $attendances->currentPage(),
-                'per_page' => $attendances->perPage(),
-                'total' => $attendances->total(),
-                'last_page' => $attendances->lastPage(),
-                'from' => $attendances->firstItem(),
-                'to' => $attendances->lastItem(),
-            ],
-            'summary' => $summary,
-            'filters' => [
-                'month' => (int) $month,
-                'year' => (int) $year,
-                'status' => $status,
-                'start_date' => $startDate,
-                'end_date' => $endDate
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Failed to fetch attendance history', [
-            'user_id' => $request->user()->id,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to fetch attendance history',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
 
 /**
  * Get attendance history for a specific date (alternative endpoint)
@@ -410,14 +306,10 @@ public function adminHistory(Request $request): JsonResponse
 }
 /**
  * Get attendance history for a specific employee (Manager access)
- * This allows managers to view their team members' attendance history
  */
 public function employeeHistory(Request $request, Employee $employee): JsonResponse
 {
     try {
-        // Optional: Add authorization to ensure manager can only view their team
-        // $this->authorize('viewEmployee', $employee);
-
         $month = $request->get('month', date('m'));
         $year = $request->get('year', date('Y'));
         $perPage = $request->get('per_page', 31);
@@ -456,10 +348,16 @@ public function employeeHistory(Request $request, Employee $employee): JsonRespo
         // Get paginated results
         $attendances = $query->paginate($perPage);
 
+        // Get employee with user relationship
+        $employee->load('user');
+        
+        // Get full name from user relationship or use the employee's full_name attribute
+        $fullName = $employee->full_name;
+
         // Calculate summary
         $allRecords = $query->get();
         $summary = [
-            'employee_name' => "{$employee->first_name} {$employee->last_name}",
+            'employee_name' => $fullName,
             'employee_id' => $employee->employee_id ?? 'EMP' . str_pad($employee->id, 4, '0', STR_PAD_LEFT),
             'department' => $employee->department ?? 'Unassigned',
             'position' => $employee->position ?? 'N/A',
@@ -741,142 +639,281 @@ public function managerTeamHistory(Request $request): JsonResponse
             ], 500);
         }
     }
+    
+    /**
+ * Get attendance status for all employees on a specific date with filters
+ */
+public function getAttendanceStatus(Request $request): JsonResponse
+{
+    try {
+        $date = $request->input('date', now()->toDateString());
+        $countryId = $request->input('country_id');
+        $businessId = $request->input('business_id');
+        $department = $request->input('department');
+        
+        $targetDate = Carbon::parse($date)->startOfDay();
 
-     /**
-     * Get attendance status for all employees on a specific date
-     * This is the main endpoint for the attendance monitor
-     */
-    public function getAttendanceStatus(Request $request): JsonResponse
-    {
-        try {
-          //  $this->authorize('viewAny', Attendance::class);
+        Log::info('Fetching attendance status', [
+            'date' => $targetDate->toDateString(),
+            'country_id' => $countryId,
+            'business_id' => $businessId,
+            'department' => $department,
+            'user_id' => $request->user()->id
+        ]);
 
-            $date = $request->input('date', now()->toDateString());
-            $targetDate = Carbon::parse($date)->startOfDay();
+        // Build employees query with filters - JOIN with users table
+        $employeesQuery = Employee::select(
+                'employees.id',
+                'employees.employee_id',
+                'employees.department',
+                'employees.position',
+                'employees.country_id',
+                'employees.business_id',
+                'users.first_name',
+                'users.last_name',
+                'users.email'
+            )
+            ->join('users', 'employees.user_id', '=', 'users.id')
+            ->orderBy('users.first_name');
 
-            Log::info('Fetching attendance status', [
-                'date' => $targetDate->toDateString(),
-                'user_id' => $request->user()->id
-            ]);
+        // Apply filters
+        if ($countryId) {
+            $employeesQuery->where('employees.country_id', $countryId);
+        }
 
-            // Get all employees with their basic info
-            $employees = Employee::select(
-                    'id',
-                    'employee_id',
-                    'first_name',
-                    'last_name',
-                    'department',
-                    'position'
-                )
-                ->orderBy('first_name')
-                ->get();
+        if ($businessId) {
+            $employeesQuery->where('employees.business_id', $businessId);
+        }
 
-            // Get attendance records for the specified date
-            $attendances = Attendance::where('date', $targetDate->toDateString())
-                ->get()
-                ->keyBy('employee_id');
+        if ($department) {
+            $employeesQuery->where('employees.department', $department);
+        }
 
-            // Build the response data
-            $data = [];
-            $presentCount = 0;
-            $absentCount = 0;
-            $lateCount = 0;
+        $employees = $employeesQuery->get();
 
-            foreach ($employees as $employee) {
-                $attendance = $attendances->get($employee->id);
+        // Get attendance records for the specified date with filters
+        $attendancesQuery = Attendance::where('date', $targetDate->toDateString());
+
+        if ($countryId) {
+            $attendancesQuery->where('country_id', $countryId);
+        }
+
+        if ($businessId) {
+            $attendancesQuery->where('business_id', $businessId);
+        }
+
+        if ($department) {
+            $attendancesQuery->whereHas('employee', function($q) use ($department) {
+                $q->where('department', $department);
+            });
+        }
+
+        $attendances = $attendancesQuery->get()->keyBy('employee_id');
+
+        // Get country and business names for display
+        $countries = Country::whereIn('id', $employees->pluck('country_id')->filter()->unique()->values())->get()->keyBy('id');
+        $businesses = Business::whereIn('id', $employees->pluck('business_id')->filter()->unique()->values())->get()->keyBy('id');
+
+        // Build response data
+        $data = [];
+        $presentCount = 0;
+        $absentCount = 0;
+        $lateCount = 0;
+
+        foreach ($employees as $employee) {
+            $attendance = $attendances->get($employee->id);
+            
+            $status = 'absent';
+            $clockIn = null;
+            $clockOut = null;
+            $totalHours = 0;
+            
+            if ($attendance) {
+                $status = $attendance->status ?? 'present';
+                $clockIn = $attendance->clock_in;
+                $clockOut = $attendance->clock_out;
+                $totalHours = $attendance->total_hours ?? 0;
                 
-                // Determine status
-                $status = 'absent';
-                $clockIn = null;
-                $clockOut = null;
-                $totalHours = 0;
-                
-                if ($attendance) {
-                    $status = $attendance->status ?? 'present';
-                    $clockIn = $attendance->clock_in;
-                    $clockOut = $attendance->clock_out;
-                    $totalHours = $attendance->total_hours ?? 0;
-                    
-                    // Count statuses
-                    if (in_array($status, ['present', 'completed'])) {
-                        $presentCount++;
-                    } elseif ($status === 'late') {
-                        $lateCount++;
-                    } else {
-                        $absentCount++;
-                    }
+                if (in_array($status, ['present', 'completed'])) {
+                    $presentCount++;
+                } elseif ($status === 'late') {
+                    $lateCount++;
                 } else {
                     $absentCount++;
                 }
-
-                $data[] = [
-                    'employee_id' => $employee->id,
-                    'first_name' => $employee->first_name,
-                    'last_name' => $employee->last_name,
-                    'employee_id_number' => $employee->employee_id ?? 'EMP' . str_pad($employee->id, 4, '0', STR_PAD_LEFT),
-                    'department' => $employee->department ?? 'Unassigned',
-                    'position' => $employee->position ?? 'N/A',
-                    'status' => $status,
-                    'clock_in' => $clockIn,
-                    'clock_out' => $clockOut,
-                    'total_hours' => round($totalHours, 2),
-                    'date' => $targetDate->toDateString(),
-                ];
+            } else {
+                $absentCount++;
             }
 
-            $totalEmployees = $employees->count();
-            $attendanceRate = $totalEmployees > 0 
-                ? round((($presentCount + $lateCount) / $totalEmployees) * 100, 2)
-                : 0;
+            $country = $countries->get($employee->country_id);
+            $business = $businesses->get($employee->business_id);
+
+            $data[] = [
+                'employee_id' => $employee->id,
+                'first_name' => $employee->first_name,
+                'last_name' => $employee->last_name,
+                'employee_id_number' => $employee->employee_id ?? 'EMP' . str_pad($employee->id, 4, '0', STR_PAD_LEFT),
+                'department' => $employee->department ?? 'Unassigned',
+                'position' => $employee->position ?? 'N/A',
+                'country_id' => $employee->country_id,
+                'business_id' => $employee->business_id,
+                'country_name' => $country ? $country->name : null,
+                'business_name' => $business ? $business->name : null,
+                'status' => $status,
+                'clock_in' => $clockIn,
+                'clock_out' => $clockOut,
+                'total_hours' => round($totalHours, 2),
+                'date' => $targetDate->toDateString(),
+            ];
+        }
+
+        $totalEmployees = $employees->count();
+        $attendanceRate = $totalEmployees > 0 
+            ? round((($presentCount + $lateCount) / $totalEmployees) * 100, 2)
+            : 0;
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+            'summary' => [
+                'total_employees' => $totalEmployees,
+                'present_count' => $presentCount,
+                'absent_count' => $absentCount,
+                'late_count' => $lateCount,
+                'attendance_rate' => $attendanceRate
+            ],
+            'filters' => [
+                'date' => $targetDate->toDateString(),
+                'country_id' => $countryId,
+                'business_id' => $businessId,
+                'department' => $department
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch attendance status', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch attendance status',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+    /**
+     * Get attendance history with enhanced filtering
+     */
+    public function history(Request $request): JsonResponse
+    {
+        try {
+            $employee = $request->user()->employee;
+
+            if (!$employee) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Employee profile not found.'
+                ], 404);
+            }
+
+            $month = $request->get('month', date('m'));
+            $year = $request->get('year', date('Y'));
+            $perPage = $request->get('per_page', 31);
+            $status = $request->get('status');
+            $startDate = $request->get('start_date');
+            $endDate = $request->get('end_date');
+            $countryId = $request->get('country_id');
+            $businessId = $request->get('business_id');
+
+            $query = Attendance::where('employee_id', $employee->id);
+
+            // Apply date filters
+            if ($startDate && $endDate) {
+                $query->whereBetween('date', [
+                    Carbon::parse($startDate)->startOfDay(),
+                    Carbon::parse($endDate)->endOfDay()
+                ]);
+            } else {
+                $query->whereYear('date', $year)
+                      ->whereMonth('date', $month);
+            }
+
+            // Apply location filters
+            if ($countryId) {
+                $query->where('country_id', $countryId);
+            }
+
+            if ($businessId) {
+                $query->where('business_id', $businessId);
+            }
+
+            // Apply status filter
+            if ($status) {
+                $query->where('status', $status);
+            }
+
+            $query->orderBy('date', 'desc')
+                  ->orderBy('clock_in', 'desc');
+
+            $attendances = $query->paginate($perPage);
+
+            // Calculate summary
+            $allRecords = $query->get();
+            $summary = [
+                'total_records' => $allRecords->count(),
+                'total_hours' => round($allRecords->sum('total_hours'), 2),
+                'present_days' => $allRecords->whereIn('status', ['present', 'completed'])->count(),
+                'absent_days' => $allRecords->where('status', 'absent')->count(),
+                'late_days' => $allRecords->where('status', 'late')->count(),
+                'average_hours_per_day' => $allRecords->count() > 0 
+                    ? round($allRecords->avg('total_hours'), 2) 
+                    : 0
+            ];
 
             return response()->json([
                 'success' => true,
-                'data' => $data,
-                'summary' => [
-                    'total_employees' => $totalEmployees,
-                    'present_count' => $presentCount,
-                    'absent_count' => $absentCount,
-                    'late_count' => $lateCount,
-                    'attendance_rate' => $attendanceRate
+                'data' => AttendanceResource::collection($attendances->items()),
+                'pagination' => [
+                    'current_page' => $attendances->currentPage(),
+                    'per_page' => $attendances->perPage(),
+                    'total' => $attendances->total(),
+                    'last_page' => $attendances->lastPage(),
                 ],
-                'date' => $targetDate->toDateString()
+                'summary' => $summary,
+                'filters' => [
+                    'month' => (int) $month,
+                    'year' => (int) $year,
+                    'status' => $status,
+                    'country_id' => $countryId,
+                    'business_id' => $businessId,
+                ]
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to fetch attendance status', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            Log::error('Failed to fetch attendance history', [
+                'error' => $e->getMessage()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch attendance status',
+                'message' => 'Failed to fetch attendance history',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Mark employee present (admin only)
-     * Enhanced version with better error handling
+     * Mark employee present with auto-populated country/business
      */
     public function markPresent(Request $request, Employee $employee): JsonResponse
     {
-        $startTime = microtime(true);
-
-        Log::info('MARK_PRESENT: Request received', [
-            'admin_user_id' => $request->user()->id ?? null,
-            'employee_id' => $employee->id ?? null,
-            'date' => $request->input('date'),
-            'timestamp' => now()->toDateTimeString()
-        ]);
-
         try {
-            // Authorization is handled by middleware/policy
             $date = $request->input('date');
 
             if (!$date) {
-                Log::warning('MARK_PRESENT: Missing date parameter');
                 return response()->json([
                     'success' => false,
                     'message' => 'Date is required.'
@@ -884,21 +921,8 @@ public function managerTeamHistory(Request $request): JsonResponse
             }
 
             $attendanceDate = Carbon::parse($date)->startOfDay();
-            
-            // Default times if not provided
             $clockIn = $request->input('clock_in', '08:00:00');
             $clockOut = $request->input('clock_out', '17:00:00');
-
-            // Validate time formats
-            try {
-                Carbon::createFromFormat('H:i:s', $clockIn);
-                Carbon::createFromFormat('H:i:s', $clockOut);
-            } catch (\Exception $e) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid time format. Use HH:MM:SS format.'
-                ], 422);
-            }
 
             $existingAttendance = Attendance::where('employee_id', $employee->id)
                 ->whereDate('date', $attendanceDate)
@@ -908,10 +932,6 @@ public function managerTeamHistory(Request $request): JsonResponse
             $adminNote = "Manually marked present by " . $request->user()->name . " on " . $now->toDateTimeString();
 
             if ($existingAttendance) {
-                Log::info('MARK_PRESENT: Updating existing attendance', [
-                    'attendance_id' => $existingAttendance->id
-                ]);
-
                 $existingAttendance->update([
                     'status' => 'present',
                     'clock_in' => $existingAttendance->clock_in ?? $clockIn,
@@ -923,12 +943,12 @@ public function managerTeamHistory(Request $request): JsonResponse
                 $existingAttendance->save();
 
                 $attendance = $existingAttendance;
-                $action = 'updated';
             } else {
-                Log::info('MARK_PRESENT: Creating new attendance record');
-
+                // Auto-populate country and business from employee
                 $attendance = Attendance::create([
                     'employee_id' => $employee->id,
+                    'country_id' => $employee->country_id,
+                    'business_id' => $employee->business_id,
                     'date' => $attendanceDate,
                     'clock_in' => $clockIn,
                     'clock_out' => $clockOut,
@@ -939,41 +959,150 @@ public function managerTeamHistory(Request $request): JsonResponse
 
                 $attendance->total_hours = $attendance->calculateTotalHours();
                 $attendance->save();
-
-                $action = 'created';
             }
-
-            Log::info('MARK_PRESENT: Success', [
-                'attendance_id' => $attendance->id,
-                'action' => $action,
-                'execution_time_ms' => round((microtime(true) - $startTime) * 1000, 2)
-            ]);
 
             return response()->json([
                 'success' => true,
                 'data' => new AttendanceResource($attendance),
-                'message' => "Employee {$employee->first_name} {$employee->last_name} marked as present for {$attendanceDate->toDateString()}.",
-                'details' => [
-                    'action' => $action,
-                    'clock_in' => $attendance->clock_in,
-                    'clock_out' => $attendance->clock_out,
-                    'total_hours' => round($attendance->total_hours, 2),
-                ]
+                'message' => "Employee marked as present for {$attendanceDate->toDateString()}."
             ]);
 
         } catch (\Exception $e) {
-            Log::error('MARK_PRESENT: Failed', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            Log::error('Mark present failed', [
+                'error' => $e->getMessage()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to mark employee as present: ' . $e->getMessage(),
+                'message' => 'Failed to mark employee as present',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
+   /**
+ * Get countries with employee counts (for filter dropdown)
+ */
+public function getCountries(Request $request): JsonResponse
+{
+    try {
+        $countries = Country::select(
+                'countries.id',
+                'countries.name',
+                'countries.code',
+                'countries.currency_code',
+                'countries.currency_symbol',
+                DB::raw('COUNT(DISTINCT employees.id) as employee_count')
+            )
+            ->leftJoin('employees', 'countries.id', '=', 'employees.country_id')
+            // Remove the is_active filter if column doesn't exist
+            // ->where('employees.is_active', true)
+            ->groupBy('countries.id', 'countries.name', 'countries.code', 
+                     'countries.currency_code', 'countries.currency_symbol')
+            ->orderBy('countries.name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $countries
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to fetch countries', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch countries: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+    /**
+ * Get businesses with employee counts (for filter dropdown)
+ */
+public function getBusinesses(Request $request): JsonResponse
+{
+    try {
+        $user = $request->user();
+        $countryId = $request->get('country_id');
+        $search = $request->get('search');
+
+        Log::info('ATTENDANCE_CONTROLLER: getBusinesses called', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'business_id' => $user->current_business_id,
+            'country_id' => $countryId
+        ]);
+
+        $query = Business::select(
+                'businesses.id',
+                'businesses.name',
+                'businesses.legal_name',
+                'businesses.country_id',
+                'countries.name as country_name',
+                DB::raw('COUNT(DISTINCT employees.id) as employee_count')
+            )
+            ->leftJoin('employees', function($join) use ($user) {
+                $join->on('businesses.id', '=', 'employees.business_id');
+                
+                // If admin has business, scope to that business
+                if ($user->role === 'admin' && $user->current_business_id) {
+                    $join->where('employees.business_id', $user->current_business_id);
+                }
+            })
+            ->leftJoin('countries', 'businesses.country_id', '=', 'countries.id')
+            ->where('businesses.status', 'active');
+
+        // Filter by country if provided
+        if ($countryId) {
+            $query->where('businesses.country_id', $countryId);
+        }
+
+        // If admin doesn't have a business, show only businesses in their country
+        if ($user->role === 'admin' && !$user->current_business_id && $user->current_country_code) {
+            $query->where('countries.code', $user->current_country_code);
+        }
+
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('businesses.name', 'like', "%{$search}%")
+                  ->orWhere('businesses.legal_name', 'like', "%{$search}%");
+            });
+        }
+
+        $businesses = $query->groupBy(
+                'businesses.id', 
+                'businesses.name', 
+                'businesses.legal_name', 
+                'businesses.country_id',
+                'countries.name'
+            )
+            ->orderBy('businesses.name')
+            ->get();
+
+        Log::info('ATTENDANCE_CONTROLLER: Businesses retrieved', [
+            'count' => $businesses->count(),
+            'business_scoped' => $user->role === 'admin' && $user->current_business_id ? 'yes' : 'no'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $businesses
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('ATTENDANCE_CONTROLLER: Failed to fetch businesses', [
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch businesses: ' . $e->getMessage()
+        ], 500);
+    }
+}
     /**
      * Bulk mark multiple employees as present
      */

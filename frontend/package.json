@@ -27,6 +27,7 @@
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/eslint-config-prettier": "^9.0.0",
     "autoprefixer": "^10.4.16",
+    "baseline-browser-mapping": "^2.9.11",
     "eslint": "^8.55.0",
     "eslint-plugin-vue": "^9.19.0",
     "postcss": "^8.4.32",

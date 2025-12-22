@@ -67,7 +67,7 @@
             <span class="nav-text">Employees</span>
           </router-link>
          
-          <!-- Add Employees - Only show for specific user -->
+          <!-- Add Employees - STILL RESTRICTED (As per existing logic) -->
           <router-link 
             v-if="canAccessAddEmployees"
             to="/admin/employ" 
@@ -113,15 +113,10 @@
             <span class="nav-text">Audit Logs</span>
           </router-link>
          
-          <!-- Country Management - Only show for specific user -->
-          <router-link 
-            v-if="canAccessCountryManagement"
-            to="/admin/countries" 
-            class="nav-item"
-          >
+          <!-- Country Management - NOW OPEN TO ALL -->
+          <router-link to="/admin/countries" class="nav-item">
             <span class="nav-icon">🌍</span>
             <span class="nav-text">Countries</span>
-            <span class="super-admin-badge">Super Admin</span>
           </router-link>
          
           <router-link to="/admin/settings" class="nav-item">
@@ -129,15 +124,10 @@
             <span class="nav-text">Settings</span>
           </router-link>
          
-          <!-- Business Management - Only show for specific user -->
-          <router-link 
-            v-if="canAccessBusinessManagement"
-            to="/admin/businesses" 
-            class="nav-item business-management-item"
-          >
+          <!-- Business Management - NOW OPEN TO ALL -->
+          <router-link to="/admin/businesses" class="nav-item">
             <span class="nav-icon">🏢</span>
             <span class="nav-text">Business Management</span>
-            <span class="super-admin-badge">Super Admin</span>
           </router-link>
         </nav>
       </aside>
@@ -195,16 +185,8 @@ export default {
         .toUpperCase()
         .substring(0, 2)
     },
-    // Check if current user can access business management
-    canAccessBusinessManagement() {
-      return this.user?.email === 'michaelchikoba0@gmail.com'
-    },
-    // Check if current user can access add employees
+    // Check if current user can access add employees (Still Restricted)
     canAccessAddEmployees() {
-      return this.user?.email === 'michaelchikoba0@gmail.com'
-    },
-    // Check if current user can access country management
-    canAccessCountryManagement() {
       return this.user?.email === 'michaelchikoba0@gmail.com'
     }
   },
@@ -223,10 +205,6 @@ export default {
     }
   },
   mounted() {
-    console.log('AdminLayout mounted - current user:', this.user?.email)
-    console.log('Business Management access:', this.canAccessBusinessManagement)
-    console.log('Add Employees access:', this.canAccessAddEmployees)
-    console.log('Country Management access:', this.canAccessCountryManagement)
     // Add click outside listener
     document.addEventListener('click', this.handleClickOutside)
   },

@@ -11,17 +11,18 @@ class Country extends Model
 {
     use HasFactory;
 
-    protected $fillable = [
-        'code',
-        'name',
-        'currency_code',
-        'currency_symbol',
-        'date_format',
-        'time_format',
-        'timezone',
-        'phone_code',
-        'is_active',
-    ];
+   protected $fillable = [
+    'code',
+    'name',
+    'flag', // Add this
+    'currency_code',
+    'currency_symbol',
+    'date_format',
+    'time_format',
+    'timezone',
+    'phone_code',
+    'is_active',
+];
 
     protected $casts = [
         'is_active' => 'boolean',

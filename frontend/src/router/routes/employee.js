@@ -1,7 +1,6 @@
 export default [
   {
     path: '/employee',
-    
     component: () => import('../../layouts/EmployeeLayout.vue'),
     meta: { requiresAuth: true, roles: ['employee', 'manager', 'admin'] },
     children: [
@@ -35,16 +34,37 @@ export default [
         name: 'EmployeeProfile',
         component: () => import('../../views/employee/Profile.vue')
       },
-          {
-        path: 'tasks',  // ✅ Simple relative path
-        name: 'TaskBoard',  // ✅ MUST match :to="{ name: 'TaskBoard' }" in your layout
-        component: () => import('../../views/employee/TaskAssigned.vue'),  // ✅ Fixed missing closing quote
+      {
+        path: 'tasks',
+        name: 'TaskBoard',
+        component: () => import('../../views/employee/TaskAssigned.vue'),
         meta: { 
           requiresAuth: true,
-          roles: ['employee', 'manager', 'admin'],  // Added manager & admin
+          roles: ['employee', 'manager', 'admin'],
           title: 'My Tasks'
+        }
+      },
+      {
+        path: 'schedules',
+        name: 'EmployeeSchedules',
+        component: () => import('../../views/employee/MySchedules.vue'),
+        meta: { 
+          requiresAuth: true,
+          roles: ['employee', 'manager', 'admin'],
+          title: 'My Schedules'
+        }
+      },
+       {
+        path: 'shifts',
+        name: 'myshifts',
+        component: () => import('../../views/employee/MyShift.vue'),
+        meta: { 
+          requiresAuth: true,
+          roles: ['employee', 'manager', 'admin'],
+          title: 'My Shift'
         }
       }
     ]
   }
 ]
+      

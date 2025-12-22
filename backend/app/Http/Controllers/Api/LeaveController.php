@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;  // Add this import for Log facade
+use Illuminate\Support\Facades\Log;  
 class LeaveController extends Controller
 {
      use AuthorizesRequests;
@@ -19,23 +19,34 @@ class LeaveController extends Controller
     {
     }
     public function index(Request $request): AnonymousResourceCollection
-    {
-        $user = $request->user();
-        $leaves = Leave::with(['employee.user', 'manager'])
-            ->when($user->isEmployee(), function ($query) use ($user) {
-                return $query->where('employee_id', $user->employee->id);
-            })
-            ->when($user->isManager(), function ($query) use ($user) {
-                return $query->where('manager_id', $user->id);
-            })
-            ->orderBy('created_at', 'desc')
-            ->get();
-           
-        return LeaveResource::collection($leaves);
-    }
+{
+    $user = $request->user();
+    
+    // Determine the context business ID
+    // If user is Employee, use their business_id. If Manager/Admin, use their assigned business context.
+    $contextBusinessId = $user->employee->business_id ?? $user->business_id;
+
+    $leaves = Leave::with(['employee.user', 'manager'])
+        // 1. CRITICAL: Enforce Business Tenancy
+        ->whereHas('employee', function ($query) use ($contextBusinessId) {
+            $query->where('business_id', $contextBusinessId);
+        })
+        // 2. Role specific filters
+        ->when($user->isEmployee(), function ($query) use ($user) {
+            return $query->where('employee_id', $user->employee->id);
+        })
+        ->when($user->isManager(), function ($query) use ($user) {
+            return $query->where('manager_id', $user->id);
+        })
+        ->orderBy('created_at', 'desc')
+        ->get();
+       
+    return LeaveResource::collection($leaves);
+}
  public function store(StoreLeaveRequest $request): JsonResponse
 {
-    $employee = $request->user()->employee;
+     // Ensure we load the employee AND their business relationship
+    $employee = $request->user()->employee()->with('business')->first();
     $type = strtolower($request->type); // Ensure lowercase
    
     // Check leave balance
@@ -48,8 +59,9 @@ class LeaveController extends Controller
         ], 422);
     }
     $leave = Leave::create([
-        'employee_id' => $employee->id,
+         'employee_id' => $employee->id,
         'manager_id' => $employee->manager_id,
+        'business_id' => $employee->business_id, // Store this for easier querying later
         'type' => $type,
         'start_date' => $request->start_date,
         'end_date' => $request->end_date,

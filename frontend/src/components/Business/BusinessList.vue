@@ -1,85 +1,107 @@
-<!-- BusinessList.vue - Updated with delete and manage admins buttons -->
 <template>
-  <div class="max-w-6xl mx-auto p-6">
-    <div class="flex justify-between items-center mb-6">
-      <h2 class="text-2xl font-bold text-gray-800">Your Businesses</h2>
+  <div class="max-w-6xl mx-auto p-0">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 bg-white p-6 rounded-xl shadow-lg">
+      <h2 class="text-3xl font-extrabold text-gray-900 tracking-tight mb-4 sm:mb-0">
+        Registered Businesses
+      </h2>
       <button
         @click="$emit('create-business')"
-        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        class="inline-flex items-center px-6 py-3 border border-transparent text-base font-semibold rounded-xl shadow-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 transition transform hover:scale-[1.01] duration-200"
       >
-        + Register New Business
+        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+        </svg>
+        Register New Business
       </button>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-8">
-      <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+    <div v-if="loading" class="flex justify-center py-20">
+      <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-500"></div>
     </div>
 
-    <div v-else-if="businesses.length === 0" class="text-center py-12">
-      <p class="text-gray-500 text-lg mb-4">No businesses registered yet.</p>
-      <button
-        @click="$emit('create-business')"
-        class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      >
-        Register Your First Business
-      </button>
+    <div v-else-if="businesses.length === 0" class="text-center py-20 bg-white rounded-xl shadow-xl border border-dashed border-gray-300">
+      <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+      </svg>
+      <h3 class="mt-2 text-xl font-medium text-gray-900">No businesses registered</h3>
+      <p class="mt-1 text-base text-gray-500">Get started by registering your first organization.</p>
+      <div class="mt-6">
+        <button
+          @click="$emit('create-business')"
+          class="inline-flex items-center px-6 py-3 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        >
+          <svg class="w-5 h-5 mr-2 -ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+          </svg>
+          Register Your First Business
+        </button>
+      </div>
     </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
       <div
         v-for="business in businesses"
         :key="business.id"
-        class="bg-white rounded-lg shadow-md border border-gray-200 hover:shadow-lg transition-shadow"
+        class="bg-white rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-0.5 border border-gray-100"
       >
         <div class="p-6">
           <div class="flex justify-between items-start mb-4">
-            <h3 class="text-xl font-semibold text-gray-800">{{ business.name }}</h3>
+            <h3 class="text-xl font-bold text-gray-900 truncate" :title="business.name">{{ business.name }}</h3>
             <span
               :class="[
-                'px-2 py-1 text-xs rounded-full',
-                business.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                'px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-full ml-4 whitespace-nowrap',
+                business.status === 'active' ? 'bg-green-100 text-green-700 ring-1 ring-green-600/20' : 'bg-gray-100 text-gray-600 ring-1 ring-gray-600/20'
               ]"
             >
               {{ business.status }}
             </span>
           </div>
 
-          <div class="space-y-2 text-sm text-gray-600 mb-4">
-            <p><strong>Legal Name:</strong> {{ business.legal_name }}</p>
-            <p><strong>Type:</strong> {{ formatBusinessType(business.business_type) }}</p>
-            <p><strong>Industry:</strong> {{ business.industry || 'N/A' }}</p>
-            <p><strong>Email:</strong> {{ business.email }}</p>
-            <p><strong>Currency:</strong> {{ business.currency_code }}</p>
-            
-            <!-- Display Admin Count -->
-            <div class="pt-2 border-t border-gray-200">
-              <p class="flex items-center justify-between">
-                <strong>Administrators:</strong>
-                <span class="text-blue-600">{{ business.admins?.length || 0 }}</span>
-              </p>
+          <dl class="space-y-3 text-sm text-gray-600 border-t border-gray-100 pt-4">
+            <div class="flex items-center justify-between">
+              <dt class="font-medium text-gray-500">Legal Name</dt>
+              <dd class="text-gray-800 font-semibold">{{ business.legal_name }}</dd>
             </div>
-          </div>
+            <div class="flex items-center justify-between">
+              <dt class="font-medium text-gray-500">Type</dt>
+              <dd>{{ formatBusinessType(business.business_type) }}</dd>
+            </div>
+            <div class="flex items-center justify-between">
+              <dt class="font-medium text-gray-500">Industry</dt>
+              <dd>{{ business.industry || 'N/A' }}</dd>
+            </div>
+            <div class="flex items-center justify-between">
+              <dt class="font-medium text-gray-500">Currency</dt>
+              <dd>{{ business.currency_code }}</dd>
+            </div>
+            <div class="flex items-center justify-between border-t border-dashed border-gray-200 pt-3 mt-3">
+              <dt class="font-bold text-indigo-600 flex items-center">
+                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m14-4a2 2 0 01-2 2H7a2 2 0 01-2-2m14-4H5m13 0a2 2 0 002-2V9a2 2 0 00-2-2h-3L8 3v10h4z"></path></svg>
+                 Admins
+              </dt>
+              <dd class="text-indigo-600 font-bold text-lg">{{ business.admins?.length || 0 }}</dd>
+            </div>
+          </dl>
 
-          <!-- Action Buttons -->
-          <div class="space-y-2">
+          <div class="mt-6 space-y-3">
             <button
               @click="switchBusiness(business)"
-              class="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              class="w-full inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-150 ease-in-out font-semibold"
             >
-              Switch to Business
+               Switch to {{ business.name }}
             </button>
             
-            <div class="grid grid-cols-2 gap-2">
+            <div class="grid grid-cols-2 gap-3">
               <button
                 @click="$emit('edit-business', business)"
-                class="px-3 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 text-sm"
+                class="w-full inline-flex justify-center px-3 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-sm transition duration-150"
               >
                 Edit
               </button>
               
               <button
                 @click="$emit('manage-admins', business)"
-                class="px-3 py-2 border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                class="w-full inline-flex justify-center px-3 py-2 border border-indigo-200 text-indigo-700 rounded-xl hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 text-sm transition duration-150"
               >
                 Admins
               </button>
@@ -87,7 +109,7 @@
             
             <button
               @click="$emit('delete-business', business)"
-              class="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 text-sm"
+              class="w-full inline-flex justify-center px-4 py-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 text-sm transition duration-150 font-medium"
             >
               Delete Business
             </button>
@@ -102,6 +124,7 @@
 import axios from 'axios';
 export default {
   name: 'BusinessList',
+  emits: ['create-business', 'edit-business', 'delete-business', 'manage-admins'],
   data() {
     return {
       businesses: [],
@@ -155,17 +178,10 @@ export default {
         corporation: 'Corporation',
         llc: 'LLC'
       }
-      return types[type] || type
+      // Capitalize the first letter if the type is not found in the map
+      return types[type] || (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '))
     },
-    formatPayPeriod(period) {
-      const periods = {
-        weekly: 'Weekly',
-        'bi-weekly': 'Bi-Weekly',
-        'semi-monthly': 'Semi-Monthly',
-        monthly: 'Monthly'
-      }
-      return periods[period] || period
-    }
+    // Removed unused formatPayPeriod method
   }
 }
 </script>

@@ -64,12 +64,13 @@
             class="country-select"
           >
             <option value="">All Countries</option>
-            <option value="ZM">Zambia</option>
-            <option value="KE">Kenya</option>
-            <option value="TZ">Tanzania</option>
-            <option value="UG">Uganda</option>
-            <option value="RW">Rwanda</option>
-            <!-- Add more countries as needed -->
+            <option
+              v-for="country in countries"
+              :key="country.code"
+              :value="country.code"
+            >
+              {{ country.flag_emoji }} {{ country.name }}
+            </option>
           </select>
           <span v-if="selectedCountry" class="active-filter-badge">
             {{ getCountryName(selectedCountry) }}
@@ -79,6 +80,20 @@
         <button @click="clearBusinessFilters" class="btn-clear-filters">
           Clear Filters
         </button>
+      </div>
+      
+      <div v-if="selectedBusinessId || selectedCountry" class="applied-filters-info">
+        <p><strong>Filters Applied:</strong></p>
+        <div class="applied-filters-tags">
+          <span v-if="selectedBusinessId" class="filter-tag">
+            Business: {{ getBusinessName(selectedBusinessId) }}
+            <span @click="removeBusinessFilter" class="tag-remove">×</span>
+          </span>
+          <span v-if="selectedCountry" class="filter-tag">
+            Country: {{ getCountryName(selectedCountry) }}
+            <span @click="removeCountryFilter" class="tag-remove">×</span>
+          </span>
+        </div>
       </div>
     </div>
 
@@ -109,16 +124,21 @@
       <!-- Admin Overview -->
       <div class="admin-info">
         <h2>🏢 Organization Overview</h2>
-        <p class="admin-subtitle">Company-wide performance metrics and reports</p>
-        <div v-if="selectedBusinessId || selectedCountry" class="active-filters-info">
-          <span v-if="selectedBusinessId" class="filter-tag">
-            Business: {{ getBusinessName(selectedBusinessId) }}
-          </span>
-          <span v-if="selectedCountry" class="filter-tag">
-            Country: {{ getCountryName(selectedCountry) }}
-          </span>
+        <div class="admin-subtitle-row">
+          <p class="admin-subtitle">Company-wide performance metrics and reports</p>
+          <div v-if="selectedBusinessId || selectedCountry" class="active-filters-display">
+            <span v-if="selectedBusinessId" class="filter-display-item">
+              <span class="filter-label">Business:</span>
+              <span class="filter-value">{{ getBusinessName(selectedBusinessId) }}</span>
+            </span>
+            <span v-if="selectedCountry" class="filter-display-item">
+              <span class="filter-label">Country:</span>
+              <span class="filter-value">{{ getCountryName(selectedCountry) }}</span>
+            </span>
+          </div>
         </div>
       </div>
+      
       <!-- Quick Stats -->
       <div class="stats-grid">
         <div class="stat-card">
@@ -126,7 +146,10 @@
           <div class="stat-content">
             <h3>Total Employees</h3>
             <p class="stat-value">{{ orgStats.total_employees || 0 }}</p>
-            <p class="stat-label">All Staff</p>
+            <p class="stat-label">
+              <span v-if="selectedBusinessId || selectedCountry">Filtered Staff</span>
+              <span v-else>All Staff</span>
+            </p>
           </div>
         </div>
        
@@ -144,7 +167,10 @@
           <div class="stat-content">
             <h3>Pending Leaves</h3>
             <p class="stat-value">{{ orgStats.pending_leaves || 0 }}</p>
-            <p class="stat-label">Company-Wide</p>
+            <p class="stat-label">
+              <span v-if="selectedBusinessId || selectedCountry">Filtered</span>
+              <span v-else>Company-Wide</span>
+            </p>
           </div>
         </div>
        
@@ -161,112 +187,182 @@
       <!-- Report Generation Section -->
       <div class="report-generation-section">
         <h2>Generate Reports</h2>
+        <p class="section-description">
+          Generate detailed reports with business and country filters applied.
+          <span v-if="selectedBusinessId || selectedCountry" class="filters-applied-note">
+            (Business and country filters will be applied to all generated reports)
+          </span>
+        </p>
+        
         <div class="generation-options">
           <!-- Attendance Report -->
           <div class="generation-option">
-            <h3>Attendance Report</h3>
-            <p>Generate comprehensive attendance report for selected period</p>
-            <div class="date-inputs">
-              <div class="input-group">
-                <label>Start Date:</label>
-                <input type="date" v-model="attendanceReportParams.start_date" class="date-input">
+            <div class="option-header">
+              <h3>Attendance Report</h3>
+              <span class="option-icon">📊</span>
+            </div>
+            <p class="option-description">Generate comprehensive attendance report for selected period</p>
+            
+            <div class="option-content">
+              <div class="date-inputs">
+                <div class="input-group">
+                  <label>Start Date:</label>
+                  <input type="date" v-model="attendanceReportParams.start_date" class="date-input">
+                </div>
+                <div class="input-group">
+                  <label>End Date:</label>
+                  <input type="date" v-model="attendanceReportParams.end_date" class="date-input">
+                </div>
               </div>
-              <div class="input-group">
-                <label>End Date:</label>
-                <input type="date" v-model="attendanceReportParams.end_date" class="date-input">
+              
+              <div class="filter-group">
+                <label>Department:</label>
+                <select v-model="attendanceReportParams.department" class="filter-select">
+                  <option value="">All Departments</option>
+                  <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
+                </select>
               </div>
+              
+              <div class="filter-group">
+                <label>Report Type:</label>
+                <select v-model="attendanceReportParams.report_type" class="filter-select">
+                  <option value="summary">Summary</option>
+                  <option value="detailed">Detailed</option>
+                  <option value="daily">Daily</option>
+                </select>
+              </div>
+              
+              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
+                <div class="info-label">Filters will be applied:</div>
+                <div class="info-tags">
+                  <span v-if="selectedBusinessId" class="info-tag business">
+                    Business: {{ getBusinessName(selectedBusinessId) }}
+                  </span>
+                  <span v-if="selectedCountry" class="info-tag country">
+                    Country: {{ getCountryName(selectedCountry) }}
+                  </span>
+                </div>
+              </div>
+              
+              <button @click="generateAttendanceReport" class="btn-primary generate-btn" :disabled="generatingReport">
+                {{ generatingReport ? 'Generating...' : 'Generate Report' }}
+              </button>
             </div>
-            <div class="filter-group">
-              <label>Department:</label>
-              <select v-model="attendanceReportParams.department" class="filter-select">
-                <option value="">All Departments</option>
-                <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
-              </select>
-            </div>
-            <div class="report-type">
-              <label>Report Type:</label>
-              <select v-model="attendanceReportParams.report_type" class="filter-select">
-                <option value="summary">Summary</option>
-                <option value="detailed">Detailed</option>
-                <option value="daily">Daily</option>
-              </select>
-            </div>
-            <button @click="generateAttendanceReport" class="btn-primary" :disabled="generatingReport">
-              {{ generatingReport ? 'Generating...' : 'Generate Report' }}
-            </button>
           </div>
 
           <!-- Leave Report -->
           <div class="generation-option">
-            <h3>Leave Report</h3>
-            <p>Generate leave utilization and approval reports</p>
-            <div class="date-inputs">
-              <div class="input-group">
-                <label>Start Date:</label>
-                <input type="date" v-model="leaveReportParams.start_date" class="date-input">
+            <div class="option-header">
+              <h3>Leave Report</h3>
+              <span class="option-icon">📋</span>
+            </div>
+            <p class="option-description">Generate leave utilization and approval reports</p>
+            
+            <div class="option-content">
+              <div class="date-inputs">
+                <div class="input-group">
+                  <label>Start Date:</label>
+                  <input type="date" v-model="leaveReportParams.start_date" class="date-input">
+                </div>
+                <div class="input-group">
+                  <label>End Date:</label>
+                  <input type="date" v-model="leaveReportParams.end_date" class="date-input">
+                </div>
               </div>
-              <div class="input-group">
-                <label>End Date:</label>
-                <input type="date" v-model="leaveReportParams.end_date" class="date-input">
+              
+              <div class="filter-group">
+                <label>Leave Type:</label>
+                <select v-model="leaveReportParams.leave_type" class="filter-select">
+                  <option value="">All Types</option>
+                  <option value="vacation">Vacation</option>
+                  <option value="sick">Sick Leave</option>
+                  <option value="personal">Personal</option>
+                  <option value="maternity">Maternity</option>
+                  <option value="paternity">Paternity</option>
+                </select>
               </div>
+              
+              <div class="filter-group">
+                <label>Status:</label>
+                <select v-model="leaveReportParams.status" class="filter-select">
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              
+              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
+                <div class="info-label">Filters will be applied:</div>
+                <div class="info-tags">
+                  <span v-if="selectedBusinessId" class="info-tag business">
+                    Business: {{ getBusinessName(selectedBusinessId) }}
+                  </span>
+                  <span v-if="selectedCountry" class="info-tag country">
+                    Country: {{ getCountryName(selectedCountry) }}
+                  </span>
+                </div>
+              </div>
+              
+              <button @click="generateLeaveReport" class="btn-secondary generate-btn" :disabled="generatingReport">
+                {{ generatingReport ? 'Generating...' : 'Generate Report' }}
+              </button>
             </div>
-            <div class="filter-group">
-              <label>Leave Type:</label>
-              <select v-model="leaveReportParams.leave_type" class="filter-select">
-                <option value="">All Types</option>
-                <option value="vacation">Vacation</option>
-                <option value="sick">Sick Leave</option>
-                <option value="personal">Personal</option>
-                <option value="maternity">Maternity</option>
-                <option value="paternity">Paternity</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <label>Status:</label>
-              <select v-model="leaveReportParams.status" class="filter-select">
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-            </div>
-            <button @click="generateLeaveReport" class="btn-secondary" :disabled="generatingReport">
-              {{ generatingReport ? 'Generating...' : 'Generate Report' }}
-            </button>
           </div>
 
           <!-- Payroll Report -->
           <div class="generation-option">
-            <h3>Payroll Report</h3>
-            <p>Generate payroll summary and tax reports</p>
-            <div class="date-inputs">
-              <div class="input-group">
-                <label>Start Date:</label>
-                <input type="date" v-model="payrollReportParams.start_date" class="date-input">
+            <div class="option-header">
+              <h3>Payroll Report</h3>
+              <span class="option-icon">💰</span>
+            </div>
+            <p class="option-description">Generate payroll summary and tax reports</p>
+            
+            <div class="option-content">
+              <div class="date-inputs">
+                <div class="input-group">
+                  <label>Start Date:</label>
+                  <input type="date" v-model="payrollReportParams.start_date" class="date-input">
+                </div>
+                <div class="input-group">
+                  <label>End Date:</label>
+                  <input type="date" v-model="payrollReportParams.end_date" class="date-input">
+                </div>
               </div>
-              <div class="input-group">
-                <label>End Date:</label>
-                <input type="date" v-model="payrollReportParams.end_date" class="date-input">
+              
+              <div class="filter-group">
+                <label>Department:</label>
+                <select v-model="payrollReportParams.department" class="filter-select">
+                  <option value="">All Departments</option>
+                  <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
+                </select>
               </div>
+              
+              <div class="filter-group">
+                <label>Status:</label>
+                <select v-model="payrollReportParams.status" class="filter-select">
+                  <option value="all">All Status</option>
+                  <option value="paid">Paid</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+              
+              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
+                <div class="info-label">Filters will be applied:</div>
+                <div class="info-tags">
+                  <span v-if="selectedBusinessId" class="info-tag business">
+                    Business: {{ getBusinessName(selectedBusinessId) }}
+                  </span>
+                  <span v-if="selectedCountry" class="info-tag country">
+                    Country: {{ getCountryName(selectedCountry) }}
+                  </span>
+                </div>
+              </div>
+              
+              <button @click="generatePayrollReport" class="btn-tertiary generate-btn" :disabled="generatingReport">
+                {{ generatingReport ? 'Generating...' : 'Generate Report' }}
+              </button>
             </div>
-            <div class="filter-group">
-              <label>Department:</label>
-              <select v-model="payrollReportParams.department" class="filter-select">
-                <option value="">All Departments</option>
-                <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <label>Status:</label>
-              <select v-model="payrollReportParams.status" class="filter-select">
-                <option value="all">All Status</option>
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-              </select>
-            </div>
-            <button @click="generatePayrollReport" class="btn-tertiary" :disabled="generatingReport">
-              {{ generatingReport ? 'Generating...' : 'Generate Report' }}
-            </button>
           </div>
         </div>
       </div>
@@ -306,24 +402,35 @@
       <!-- Report Preview Section -->
       <div class="report-preview-section" v-if="currentReport">
         <div class="preview-header">
-          <h2>Report Preview: {{ currentReport.title }}</h2>
-          <div v-if="currentReport.data.filters" class="preview-filters">
-            <span v-if="currentReport.data.filters.business" class="filter-tag">
-              Business: {{ currentReport.data.filters.business }}
-            </span>
-            <span v-if="currentReport.data.filters.country" class="filter-tag">
-              Country: {{ currentReport.data.filters.country }}
-            </span>
-            <span v-if="currentReport.data.filters.department" class="filter-tag">
-              Department: {{ currentReport.data.filters.department }}
-            </span>
+          <div>
+            <h2>Report Preview: {{ currentReport.title }}</h2>
+            <div v-if="currentReport.data.filters" class="preview-filters">
+              <span v-if="currentReport.data.filters.business" class="filter-tag">
+                Business: {{ currentReport.data.filters.business }}
+              </span>
+              <span v-if="currentReport.data.filters.country" class="filter-tag">
+                Country: {{ currentReport.data.filters.country }}
+              </span>
+              <span v-if="currentReport.data.filters.department" class="filter-tag">
+                Department: {{ currentReport.data.filters.department }}
+              </span>
+            </div>
           </div>
+          <button @click="currentReport = null" class="btn-close-preview">Close</button>
         </div>
+        
         <div class="preview-actions">
-          <button @click="downloadReport(currentReport)" class="btn-primary">Download PDF</button>
-          <button @click="exportToExcel(currentReport)" class="btn-secondary">Export to Excel</button>
-          <button @click="currentReport = null" class="btn-tertiary">Close Preview</button>
+          <button @click="downloadReport(currentReport)" class="btn-primary">
+            <span>📥</span> Download PDF
+          </button>
+          <button @click="exportToExcel(currentReport)" class="btn-secondary">
+            <span>📊</span> Export to Excel
+          </button>
+          <button @click="currentReport = null" class="btn-tertiary">
+            <span>✕</span> Close Preview
+          </button>
         </div>
+        
         <div class="preview-content">
           <!-- Dynamic report content based on type -->
           <div v-if="currentReport.type === 'attendance' && currentReport.data">
@@ -346,6 +453,26 @@
                 <span class="stat-value">{{ currentReport.data.working_days || 0 }}</span>
               </div>
             </div>
+            
+            <!-- Business & Country Info -->
+            <div v-if="selectedBusinessId || selectedCountry" class="filter-info-section">
+              <h4>Applied Filters</h4>
+              <div class="filter-info-grid">
+                <div v-if="selectedBusinessId" class="filter-info-item">
+                  <span class="filter-info-label">Business:</span>
+                  <span class="filter-info-value">{{ getBusinessName(selectedBusinessId) }}</span>
+                </div>
+                <div v-if="selectedCountry" class="filter-info-item">
+                  <span class="filter-info-label">Country:</span>
+                  <span class="filter-info-value">{{ getCountryName(selectedCountry) }}</span>
+                </div>
+                <div v-if="currentReport.data.department" class="filter-info-item">
+                  <span class="filter-info-label">Department:</span>
+                  <span class="filter-info-value">{{ currentReport.data.department }}</span>
+                </div>
+              </div>
+            </div>
+            
             <!-- Attendance Details Table -->
             <h4 style="margin-top: 2rem; color: var(--color-primary);">Attendance Details</h4>
             <div class="attendance-details-table" v-if="currentReport.data.attendance_details">
@@ -407,6 +534,26 @@
                 <span class="stat-value">{{ currentReport.data.approval_rate || 0 }}%</span>
               </div>
             </div>
+            
+            <!-- Business & Country Info -->
+            <div v-if="selectedBusinessId || selectedCountry" class="filter-info-section">
+              <h4>Applied Filters</h4>
+              <div class="filter-info-grid">
+                <div v-if="selectedBusinessId" class="filter-info-item">
+                  <span class="filter-info-label">Business:</span>
+                  <span class="filter-info-value">{{ getBusinessName(selectedBusinessId) }}</span>
+                </div>
+                <div v-if="selectedCountry" class="filter-info-item">
+                  <span class="filter-info-label">Country:</span>
+                  <span class="filter-info-value">{{ getCountryName(selectedCountry) }}</span>
+                </div>
+                <div v-if="currentReport.filters?.leave_type" class="filter-info-item">
+                  <span class="filter-info-label">Leave Type:</span>
+                  <span class="filter-info-value">{{ currentReport.filters.leave_type }}</span>
+                </div>
+              </div>
+            </div>
+            
             <!-- Leave Details Table -->
             <h4 style="margin-top: 2rem; color: var(--color-primary);">Leave Details</h4>
             <div class="leave-details-table" v-if="currentReport.data.leave_details">
@@ -468,6 +615,30 @@
                 <span class="stat-value">K{{ currentReport.data.total_tax_amount || 0 }}</span>
               </div>
             </div>
+            
+            <!-- Business & Country Info -->
+            <div v-if="selectedBusinessId || selectedCountry" class="filter-info-section">
+              <h4>Applied Filters</h4>
+              <div class="filter-info-grid">
+                <div v-if="selectedBusinessId" class="filter-info-item">
+                  <span class="filter-info-label">Business:</span>
+                  <span class="filter-info-value">{{ getBusinessName(selectedBusinessId) }}</span>
+                </div>
+                <div v-if="selectedCountry" class="filter-info-item">
+                  <span class="filter-info-label">Country:</span>
+                  <span class="filter-info-value">{{ getCountryName(selectedCountry) }}</span>
+                </div>
+                <div v-if="currentReport.data.department" class="filter-info-item">
+                  <span class="filter-info-label">Department:</span>
+                  <span class="filter-info-value">{{ currentReport.data.department }}</span>
+                </div>
+                <div v-if="currentReport.filters?.status" class="filter-info-item">
+                  <span class="filter-info-label">Status:</span>
+                  <span class="filter-info-value">{{ currentReport.filters.status }}</span>
+                </div>
+              </div>
+            </div>
+            
             <!-- Payroll Details Table -->
             <h4 style="margin-top: 2rem; color: var(--color-primary);">Payslip Details</h4>
             <div class="payroll-details-table">
@@ -527,6 +698,7 @@ export default {
       loading: false,
       generatingReport: false,
       error: null,
+      successMessage: null,
       allEmployees: [],
       orgStats: {},
       generatedReports: [],
@@ -537,6 +709,7 @@ export default {
       selectedBusinessId: '',
       selectedCountry: '',
       businesses: [],
+      countries: [], // Added countries array
      
       // Dashboard date filter
       dashboardStartDate: '',
@@ -579,6 +752,27 @@ export default {
     await this.initializeComponent()
   },
  
+  computed: {
+    // Check if any business or country filters are active
+    hasActiveFilters() {
+      return this.selectedBusinessId || this.selectedCountry
+    },
+    
+    // Get the active filters as an object
+    activeFilters() {
+      const filters = {}
+      if (this.selectedBusinessId) {
+        filters.business_id = this.selectedBusinessId
+        filters.business_name = this.getBusinessName(this.selectedBusinessId)
+      }
+      if (this.selectedCountry) {
+        filters.country = this.selectedCountry
+        filters.country_name = this.getCountryName(this.selectedCountry)
+      }
+      return filters
+    }
+  },
+ 
   methods: {
     async initializeComponent() {
       if (!this.authStore.isAuthenticated) {
@@ -596,8 +790,47 @@ export default {
         await this.fetchBusinesses()
       }
       
+      // Fetch countries for the filter dropdown
+      await this.fetchCountries()
+      
       await this.fetchAdminData()
       this.loadGeneratedReports()
+    },
+    
+    // Fetch countries method - UPDATED to fetch from backend
+    async fetchCountries() {
+      try {
+        const response = await axios.get('/api/admin/countries')
+        
+        // Handle different response structures
+        if (Array.isArray(response.data)) {
+          this.countries = response.data
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          this.countries = response.data.data
+        } else if (response.data.countries && Array.isArray(response.data.countries)) {
+          this.countries = response.data.countries
+        } else {
+          console.warn('Unexpected response structure for countries:', response.data)
+          this.countries = []
+        }
+        
+        console.log('Countries fetched:', this.countries)
+      } catch (error) {
+        console.error('Failed to fetch countries:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to load countries'
+        })
+        // Fallback to default countries if API fails
+        this.countries = [
+          { code: 'ZM', name: 'Zambia', flag_emoji: '🇿🇲' },
+          { code: 'KE', name: 'Kenya', flag_emoji: '🇰🇪' },
+          { code: 'TZ', name: 'Tanzania', flag_emoji: '🇹🇿' },
+          { code: 'UG', name: 'Uganda', flag_emoji: '🇺🇬' },
+          { code: 'RW', name: 'Rwanda', flag_emoji: '🇷🇼' }
+        ]
+      }
     },
     
     // Fetch businesses method
@@ -622,14 +855,8 @@ export default {
     },
     
     getCountryName(countryCode) {
-      const countries = {
-        'ZM': 'Zambia',
-        'KE': 'Kenya',
-        'TZ': 'Tanzania',
-        'UG': 'Uganda',
-        'RW': 'Rwanda'
-      }
-      return countries[countryCode] || countryCode
+      const country = this.countries.find(c => c.code === countryCode)
+      return country ? `${country.flag_emoji || ''} ${country.name}`.trim() : countryCode
     },
     
     onBusinessFilterChange() {
@@ -652,6 +879,16 @@ export default {
       this.fetchAdminData()
     },
     
+    removeBusinessFilter() {
+      this.selectedBusinessId = ''
+      this.onBusinessFilterChange()
+    },
+    
+    removeCountryFilter() {
+      this.selectedCountry = ''
+      this.onCountryFilterChange()
+    },
+    
     clearBusinessFilters() {
       this.selectedBusinessId = ''
       this.selectedCountry = ''
@@ -668,6 +905,8 @@ export default {
       
       // Refresh data without filters
       this.fetchAdminData()
+      
+      this.showSuccess('All filters cleared!')
     },
     
     async fetchAdminData() {
@@ -700,6 +939,8 @@ export default {
           params.country = this.selectedCountry
         }
 
+        console.log('Fetching admin data with params:', params)
+        
         const employeesRes = await axios.get('/api/admin/employees', { params })
         this.allEmployees = employeesRes.data.data || employeesRes.data || []
         
@@ -732,6 +973,8 @@ export default {
           ...params
         }
        
+        console.log('Fetching stats with params:', statsParams)
+        
         const statsRes = await axios.get('/api/admin/reports/stats', { params: statsParams })
         this.orgStats = statsRes.data || {}
        
@@ -776,22 +1019,6 @@ export default {
       }
     },
    
-    onDateChange() {
-      // Ensure end date is not before start date
-      if (this.dashboardEndDate < this.dashboardStartDate) {
-        this.dashboardEndDate = this.dashboardStartDate
-      }
-    },
-   
-    resetDateFilter() {
-      const today = new Date()
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
-      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0]
-      this.dashboardStartDate = firstDay
-      this.dashboardEndDate = lastDay
-      this.fetchFilteredStats()
-    },
-   
     async generateAttendanceReport() {
       this.generatingReport = true
       try {
@@ -809,13 +1036,13 @@ export default {
         }
         
         // Add business filter if selected
-        if (this.attendanceReportParams.business_id && this.attendanceReportParams.business_id.trim() !== '') {
-          params.business_id = this.attendanceReportParams.business_id
+        if (this.selectedBusinessId && this.selectedBusinessId.trim() !== '') {
+          params.business_id = this.selectedBusinessId
         }
         
         // Add country filter if selected
-        if (this.attendanceReportParams.country && this.attendanceReportParams.country.trim() !== '') {
-          params.country = this.attendanceReportParams.country
+        if (this.selectedCountry && this.selectedCountry.trim() !== '') {
+          params.country = this.selectedCountry
         }
 
         // Ensure dates are in proper format for backend
@@ -826,23 +1053,35 @@ export default {
           params.end_date = this.ensureDateFormat(params.end_date)
         }
 
+        console.log('Generating attendance report with params:', params)
+        
         const response = await axios.post('/api/admin/reports/generate/attendance', params)
         
         if (response.data.success) {
+          // Add business and country names to the response data
+          const reportData = {
+            ...response.data.data,
+            filters: {
+              business: this.selectedBusinessId ? this.getBusinessName(this.selectedBusinessId) : null,
+              country: this.selectedCountry ? this.getCountryName(this.selectedCountry) : null,
+              department: params.department || null,
+              report_type: params.report_type
+            }
+          }
+          
           this.currentReport = {
             type: 'attendance',
             title: 'Attendance Report',
-            data: response.data.data,
+            data: reportData,
             period: response.data.data.period,
             // Store the original parameters for download
             originalParams: { ...params }
           }
           
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Attendance report generated successfully!'
-          })
+          // Add to generated reports list
+          this.addToGeneratedReports('attendance', 'Attendance Report', response.data.data.period, params)
+          
+          this.showSuccess('Attendance report generated successfully!')
         } else {
           throw new Error(response.data.message || 'Failed to generate report')
         }
@@ -861,9 +1100,20 @@ export default {
        
         // Ensure parameters are properly set with business/country filters
         const params = {
-          ...this.leaveReportParams,
+          start_date: this.leaveReportParams.start_date,
+          end_date: this.leaveReportParams.end_date,
           leave_type: this.leaveReportParams.leave_type || '',
           status: this.leaveReportParams.status || 'all'
+        }
+       
+        // Add business filter if selected
+        if (this.selectedBusinessId && this.selectedBusinessId.trim() !== '') {
+          params.business_id = this.selectedBusinessId
+        }
+        
+        // Add country filter if selected
+        if (this.selectedCountry && this.selectedCountry.trim() !== '') {
+          params.country = this.selectedCountry
         }
        
         // Ensure dates are in proper format for backend
@@ -874,24 +1124,36 @@ export default {
           params.end_date = this.ensureDateFormat(params.end_date)
         }
        
+        console.log('Generating leave report with params:', params)
+        
         const response = await axios.post('/api/admin/reports/generate/leave', params)
         
        
         if (response.data.success) {
+          // Add business and country names to the response data
+          const reportData = {
+            ...response.data.data,
+            filters: {
+              business: this.selectedBusinessId ? this.getBusinessName(this.selectedBusinessId) : null,
+              country: this.selectedCountry ? this.getCountryName(this.selectedCountry) : null,
+              leave_type: params.leave_type || null,
+              status: params.status
+            }
+          }
+          
           this.currentReport = {
             type: 'leave',
             title: 'Leave Report',
-            data: response.data.data,
+            data: reportData,
             period: response.data.data.period,
             // Store the original parameters for download
             originalParams: { ...params }
           }
+          
+          // Add to generated reports list
+          this.addToGeneratedReports('leave', 'Leave Report', response.data.data.period, params)
          
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Leave report generated successfully!'
-          })
+          this.showSuccess('Leave report generated successfully!')
         } else {
           throw new Error(response.data.message || 'Failed to generate report')
         }
@@ -921,13 +1183,13 @@ export default {
         }
         
         // Add business filter if selected
-        if (this.payrollReportParams.business_id && this.payrollReportParams.business_id.trim() !== '') {
-          params.business_id = this.payrollReportParams.business_id
+        if (this.selectedBusinessId && this.selectedBusinessId.trim() !== '') {
+          params.business_id = this.selectedBusinessId
         }
         
         // Add country filter if selected
-        if (this.payrollReportParams.country && this.payrollReportParams.country.trim() !== '') {
-          params.country = this.payrollReportParams.country
+        if (this.selectedCountry && this.selectedCountry.trim() !== '') {
+          params.country = this.selectedCountry
         }
 
         // Ensure dates are in proper format for backend
@@ -938,23 +1200,35 @@ export default {
           params.end_date = this.ensureDateFormat(params.end_date)
         }
 
+        console.log('Generating payroll report with params:', params)
+        
         const response = await axios.post('/api/admin/reports/generate/payroll', params)
         
         if (response.data.success) {
+          // Add business and country names to the response data
+          const reportData = {
+            ...response.data.data,
+            filters: {
+              business: this.selectedBusinessId ? this.getBusinessName(this.selectedBusinessId) : null,
+              country: this.selectedCountry ? this.getCountryName(this.selectedCountry) : null,
+              department: params.department || null,
+              status: params.status
+            }
+          }
+          
           this.currentReport = {
             type: 'payroll',
             title: 'Payroll Report',
-            data: response.data.data,
+            data: reportData,
             period: response.data.data.period,
             // Store the properly formatted parameters for download
             originalParams: { ...params }
           }
           
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Payroll report generated successfully!'
-          })
+          // Add to generated reports list
+          this.addToGeneratedReports('payroll', 'Payroll Report', response.data.data.period, params)
+          
+          this.showSuccess('Payroll report generated successfully!')
         } else {
           throw new Error(response.data.message || 'Failed to generate report')
         }
@@ -964,6 +1238,42 @@ export default {
         this.handleApiError(err)
       } finally {
         this.generatingReport = false
+      }
+    },
+    
+    addToGeneratedReports(type, title, period, filters) {
+      const report = {
+        id: Date.now(),
+        type,
+        title,
+        period,
+        filters: {
+          business: filters.business_id ? this.getBusinessName(filters.business_id) : null,
+          country: filters.country ? this.getCountryName(filters.country) : null,
+          department: filters.department || null,
+          leave_type: filters.leave_type || null,
+          status: filters.status || null
+        },
+        generated_at: new Date().toISOString()
+      }
+      
+      // Add to beginning of list
+      this.generatedReports.unshift(report)
+      
+      // Keep only last 10 reports
+      if (this.generatedReports.length > 10) {
+        this.generatedReports = this.generatedReports.slice(0, 10)
+      }
+      
+      // Save to localStorage for persistence
+      this.saveGeneratedReports()
+    },
+    
+    saveGeneratedReports() {
+      try {
+        localStorage.setItem('admin_generated_reports', JSON.stringify(this.generatedReports))
+      } catch (error) {
+        console.error('Error saving generated reports:', error)
       }
     },
    
@@ -1009,7 +1319,7 @@ export default {
           ...this.getAdditionalDownloadParams(report)
         }
 
-       
+        console.log('Downloading report with params:', params)
 
         const response = await axios.post(`/api/admin/reports/download/${report.type}`, params, {
           responseType: 'blob',
@@ -1097,7 +1407,7 @@ export default {
           ...this.getAdditionalDownloadParams(report)
         }
 
-       
+        console.log('Exporting to Excel with params:', params)
 
         const response = await axios.post(`/api/admin/reports/download/${report.type}`, params, {
           responseType: 'blob',
@@ -1175,27 +1485,27 @@ export default {
           if (this.attendanceReportParams.department && this.attendanceReportParams.department.trim() !== '') {
             additionalParams.department = this.attendanceReportParams.department
           }
-          if (this.attendanceReportParams.business_id && this.attendanceReportParams.business_id.trim() !== '') {
-            additionalParams.business_id = this.attendanceReportParams.business_id
+          if (this.selectedBusinessId && this.selectedBusinessId.trim() !== '') {
+            additionalParams.business_id = this.selectedBusinessId
           }
-          if (this.attendanceReportParams.country && this.attendanceReportParams.country.trim() !== '') {
-            additionalParams.country = this.attendanceReportParams.country
+          if (this.selectedCountry && this.selectedCountry.trim() !== '') {
+            additionalParams.country = this.selectedCountry
           }
           additionalParams.report_type = this.attendanceReportParams.report_type || 'summary'
           break
           
         case 'leave':
-          if (this.leaveReportParams.leave_type) {
+          if (this.leaveReportParams.leave_type && this.leaveReportParams.leave_type.trim() !== '') {
             additionalParams.leave_type = this.leaveReportParams.leave_type
           }
           if (this.leaveReportParams.status && this.leaveReportParams.status !== 'all') {
             additionalParams.status = this.leaveReportParams.status
           }
-          if (this.leaveReportParams.business_id && this.leaveReportParams.business_id.trim() !== '') {
-            additionalParams.business_id = this.leaveReportParams.business_id
+          if (this.selectedBusinessId && this.selectedBusinessId.trim() !== '') {
+            additionalParams.business_id = this.selectedBusinessId
           }
-          if (this.leaveReportParams.country && this.leaveReportParams.country.trim() !== '') {
-            additionalParams.country = this.leaveReportParams.country
+          if (this.selectedCountry && this.selectedCountry.trim() !== '') {
+            additionalParams.country = this.selectedCountry
           }
           break
           
@@ -1206,11 +1516,11 @@ export default {
           if (this.payrollReportParams.status && this.payrollReportParams.status !== 'all') {
             additionalParams.status = this.payrollReportParams.status
           }
-          if (this.payrollReportParams.business_id && this.payrollReportParams.business_id.trim() !== '') {
-            additionalParams.business_id = this.payrollReportParams.business_id
+          if (this.selectedBusinessId && this.selectedBusinessId.trim() !== '') {
+            additionalParams.business_id = this.selectedBusinessId
           }
-          if (this.payrollReportParams.country && this.payrollReportParams.country.trim() !== '') {
-            additionalParams.country = this.payrollReportParams.country
+          if (this.selectedCountry && this.selectedCountry.trim() !== '') {
+            additionalParams.country = this.selectedCountry
           }
           break
       }
@@ -1221,13 +1531,40 @@ export default {
    
     viewReport(report) {
       this.currentReport = report
+      // Scroll to preview section
+      setTimeout(() => {
+        const previewSection = document.querySelector('.report-preview-section')
+        if (previewSection) {
+          previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }, 100)
     },
    
     async loadGeneratedReports() {
-      // Load generated reports from backend
       try {
+        // Try to load from localStorage first
+        const savedReports = localStorage.getItem('admin_generated_reports')
+        if (savedReports) {
+          this.generatedReports = JSON.parse(savedReports)
+        }
+        
+        // Also try to load from backend API (optional)
         const response = await axios.get('/api/admin/reports/generated-reports')
-        this.generatedReports = response.data || []
+        if (response.data && response.data.length > 0) {
+          // Merge with saved reports
+          const backendReports = response.data
+          const mergedReports = [...this.generatedReports, ...backendReports]
+          
+          // Remove duplicates based on id and timestamp
+          const uniqueReports = mergedReports.filter((report, index, self) =>
+            index === self.findIndex(r => r.id === report.id)
+          )
+          
+          // Sort by most recent
+          this.generatedReports = uniqueReports.sort((a, b) => 
+            new Date(b.generated_at) - new Date(a.generated_at)
+          ).slice(0, 10)
+        }
       } catch (err) {
         console.error('Error loading generated reports:', err)
         // Don't show error for this, it's not critical
@@ -1252,6 +1589,19 @@ export default {
         hour: '2-digit',
         minute: '2-digit'
       })
+    },
+    
+    showSuccess(message) {
+      this.successMessage = message
+      this.$notify({
+        type: 'success',
+        title: 'Success',
+        text: message,
+        duration: 3000
+      })
+      setTimeout(() => {
+        this.successMessage = null
+      }, 3000)
     },
    
     retryFetch() {
@@ -1376,12 +1726,14 @@ export default {
   gap: 1.5rem;
   align-items: flex-end;
   flex-wrap: wrap;
+  margin-bottom: 1rem;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
   min-width: 200px;
+  flex: 1;
 }
 
 .filter-label {
@@ -1398,6 +1750,7 @@ export default {
   font-size: 0.95rem;
   transition: border-color 0.3s;
   background: white;
+  width: 100%;
 }
 
 .business-select:focus, .country-select:focus {
@@ -1427,33 +1780,112 @@ export default {
   cursor: pointer;
   transition: all 0.3s;
   height: fit-content;
+  white-space: nowrap;
 }
 
 .btn-clear-filters:hover {
   background: #e5e7eb;
 }
 
-.active-filters-info {
+.applied-filters-info {
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  margin-top: 1rem;
+}
+
+.applied-filters-info p {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.applied-filters-tags {
   display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
 .filter-tag {
-  padding: 0.25rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
   background: #eef2ff;
   color: #667eea;
-  border-radius: 12px;
+  border-radius: 20px;
   font-size: 0.85rem;
   font-weight: 500;
 }
 
+.tag-remove {
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #667eea;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  margin-left: 0.25rem;
+}
+
+.tag-remove:hover {
+  opacity: 1;
+}
+
+/* Admin Info Section */
+.admin-info h2 {
+  color: var(--color-heading);
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.admin-subtitle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.admin-subtitle {
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.active-filters-display {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.filter-display-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f0f4ff;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.filter-display-item .filter-label {
+  font-weight: 600;
+  color: #4b5563;
+  margin: 0;
+}
+
+.filter-display-item .filter-value {
+  font-weight: 500;
+  color: #3b82f6;
+}
+
 /* --- Buttons --- */
-.btn-primary, .btn-secondary, .btn-tertiary, .btn-download, .btn-view {
+.btn-primary, .btn-secondary, .btn-tertiary, .btn-download, .btn-view, .btn-close-preview {
   padding: 0.75rem 1.25rem;
   border: none;
-  border-radius: 8px; /* Slightly larger radius */
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -1478,7 +1910,7 @@ export default {
   color: var(--color-card-bg);
 }
 
-.btn-primary:hover, .btn-secondary:hover, .btn-tertiary:hover {
+.btn-primary:hover, .btn-secondary:hover, .btn-tertiary:hover, .btn-download:hover, .btn-view:hover {
   opacity: 0.9;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
@@ -1494,17 +1926,26 @@ export default {
 
 /* Specific button styles for reports list */
 .btn-download {
-  background: var(--color-secondary); /* Green/Teal */
+  background: var(--color-secondary);
   color: white;
   padding: 0.6rem 1rem;
   font-size: 0.9rem;
 }
 
 .btn-view {
-  background: var(--color-primary); /* Blue */
+  background: var(--color-primary);
   color: white;
   padding: 0.6rem 1rem;
   font-size: 0.9rem;
+}
+
+.btn-close-preview {
+  background: #6b7280;
+  color: white;
+}
+
+.btn-close-preview:hover {
+  background: #4b5563;
 }
 
 /* --- Status/Error Messages --- */
@@ -1518,37 +1959,187 @@ export default {
 }
 
 .error-message {
-  background-color: #fef2f2; /* Light red */
-  color: #ef4444; /* Red text */
+  background-color: #fef2f2;
+  color: #ef4444;
   border: 1px solid #fca5a5;
 }
 
 .loading {
-  background-color: #eff6ff; /* Light blue */
+  background-color: #eff6ff;
   color: var(--color-primary);
   border: 1px solid #93c5fd;
 }
 
 /* --- Main Dashboard Sections --- */
 .reports-dashboard > div:not(.admin-info) {
-  /* Apply the primary card style to all main sections */
   background: var(--color-card-bg);
-  border-radius: 16px; /* Modern, large radius */
+  border-radius: 16px;
   box-shadow: var(--shadow-card);
   padding: 2rem;
   margin-bottom: 2.5rem;
 }
 
-.admin-info h2 {
+/* Report Generation Section */
+.report-generation-section h2 {
   color: var(--color-heading);
-  font-size: 1.75rem;
-  margin-bottom: 0.25rem;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
 }
 
-.admin-subtitle {
+.section-description {
   color: var(--color-text);
-  font-size: 1rem;
+  font-size: 0.95rem;
   margin-bottom: 1.5rem;
+}
+
+.filters-applied-note {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.generation-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.generation-option {
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  background-color: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.option-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.option-header h3 {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 1.25rem;
+}
+
+.option-icon {
+  font-size: 1.5rem;
+}
+
+.option-description {
+  margin: 0 0 1.5rem 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.option-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.date-inputs {
+  display: flex;
+  gap: 1rem;
+}
+
+.input-group {
+  flex: 1;
+}
+
+.input-group label {
+  color: var(--color-heading);
+  font-size: 0.9rem;
+  display: block;
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+}
+
+.date-input {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.filter-group {
+  margin-bottom: 0;
+}
+
+.filter-group label {
+  display: block;
+  color: var(--color-heading);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.filter-select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: white;
+  box-sizing: border-box;
+}
+
+.filter-select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.business-country-info {
+  padding: 0.75rem;
+  background: #f0f4ff;
+  border-radius: 8px;
+  border: 1px solid #dbeafe;
+  margin-top: 0.5rem;
+}
+
+.info-label {
+  font-size: 0.85rem;
+  color: #3b82f6;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.info-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.info-tag {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.info-tag.business {
+  background: #e0e7ff;
+  color: #4f46e5;
+}
+
+.info-tag.country {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.generate-btn {
+  margin-top: auto;
+  width: 100%;
+  justify-content: center;
 }
 
 /* --- Quick Stats Grid --- */
@@ -1560,7 +2151,6 @@ export default {
 }
 
 .stat-card {
-  /* This is a nested card, keep it simpler */
   background: var(--color-card-bg);
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -1568,7 +2158,7 @@ export default {
   display: flex;
   align-items: center;
   transition: transform 0.2s;
-  border-left: 5px solid var(--color-primary); /* Feature line */
+  border-left: 5px solid var(--color-primary);
 }
 
 .stat-card:hover {
@@ -1579,7 +2169,6 @@ export default {
 .stat-icon {
   font-size: 2.5rem;
   margin-right: 1rem;
-  /* Use a subtle background for the icon area */
   background-color: #eff6ff;
   padding: 0.5rem;
   border-radius: 8px;
@@ -1605,96 +2194,6 @@ export default {
   font-size: 0.8rem;
   color: #9ca3af;
   margin: 0;
-}
-
-/* --- Report Generation Section --- */
-.report-generation-section h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.generation-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
-
-.generation-option {
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 1.5rem;
-  text-align: left;
-  background-color: #f9fafb; /* Slightly different background */
-}
-
-.generation-option h3 {
-  margin: 0 0 0.25rem 0;
-  color: var(--color-primary);
-  font-size: 1.25rem;
-}
-
-.generation-option p {
-  margin: 0 0 1.5rem 0;
-  color: var(--color-text);
-  font-size: 0.9rem;
-}
-
-.date-inputs {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.input-group {
-  flex: 1;
-}
-
-.input-group label {
-  color: var(--color-heading);
-  font-size: 0.9rem;
-  display: block;
-  margin-bottom: 0.25rem;
-}
-
-.date-input {
-  padding: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 1rem;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.date-input option {
-  padding: 0.5rem;
-}
-
-.filter-group, .report-type {
-  margin-bottom: 1rem;
-}
-
-.filter-group label, .report-type label {
-  display: block;
-  color: var(--color-heading);
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-}
-
-.filter-select {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 1rem;
-  background-color: white;
-  box-sizing: border-box;
-}
-
-.filter-select:focus {
-  outline: none;
-  border-color: var(--color-primary);
 }
 
 /* --- Generated Reports Section --- */
@@ -1750,7 +2249,7 @@ export default {
 }
 
 .report-date {
-  margin: 0;
+  margin: 0 0 0.5rem 0;
   color: var(--color-text);
   font-size: 0.85rem;
 }
@@ -1758,7 +2257,6 @@ export default {
 .report-filters {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.5rem;
   flex-wrap: wrap;
 }
 
@@ -1777,24 +2275,32 @@ export default {
 }
 
 /* --- Report Preview Section --- */
-.report-preview-section h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
+.report-preview-section {
+  background: var(--color-card-bg);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+  padding: 2rem;
+  margin-bottom: 2.5rem;
 }
 
 .preview-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.preview-header h2 {
+  color: var(--color-heading);
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
 }
 
 .preview-filters {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
@@ -1812,12 +2318,6 @@ export default {
   padding-bottom: 0.5rem;
 }
 
-.preview-content h4 {
-  color: var(--color-heading);
-  font-size: 1.1rem;
-  margin-bottom: 1rem;
-}
-
 .report-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1827,21 +2327,62 @@ export default {
 
 .report-stat {
   padding: 1.25rem;
-  background: #f0f4ff; /* Lighter blue/gray for stats */
+  background: #f0f4ff;
   border-radius: 10px;
   border-left: 4px solid var(--color-primary);
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 .report-stat .stat-label {
   color: var(--color-text);
   font-weight: 500;
+  font-size: 0.9rem;
 }
 
 .report-stat .stat-value {
   color: var(--color-heading);
   font-size: 1.2rem;
+  font-weight: 600;
+}
+
+/* Filter Info Section in Preview */
+.filter-info-section {
+  background: #f9fafb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  border: 1px solid #e5e7eb;
+}
+
+.filter-info-section h4 {
+  color: var(--color-heading);
+  font-size: 1.1rem;
+  margin: 0 0 1rem 0;
+}
+
+.filter-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.filter-info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filter-info-label {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.filter-info-value {
+  font-size: 1rem;
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -1852,6 +2393,8 @@ export default {
   overflow-x: auto;
   margin-top: 1rem;
   margin-bottom: 2rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
 }
 
 .attendance-details-table table,
@@ -1860,9 +2403,6 @@ export default {
   width: 100%;
   border-collapse: collapse;
   background: var(--color-card-bg);
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .attendance-details-table th,
@@ -1885,6 +2425,7 @@ export default {
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
 .attendance-details-table tr:hover,
@@ -1905,36 +2446,22 @@ export default {
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
+  white-space: nowrap;
 }
 
-.status-badge.present {
+.status-badge.present, .status-badge.approved {
   background: #d1fae5;
   color: #065f46;
 }
 
-.status-badge.absent {
+.status-badge.absent, .status-badge.rejected {
   background: #fee2e2;
   color: #991b1b;
 }
 
-.status-badge.late {
+.status-badge.late, .status-badge.pending {
   background: #fef3c7;
   color: #92400e;
-}
-
-.status-badge.approved {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.status-badge.pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-badge.rejected {
-  background: #fee2e2;
-  color: #991b1b;
 }
 
 .more-records {
@@ -1943,6 +2470,8 @@ export default {
   color: var(--color-text);
   font-style: italic;
   font-size: 0.9rem;
+  background: #f9fafb;
+  border-top: 1px solid var(--color-border);
 }
 
 .spinner {
@@ -1965,11 +2494,17 @@ export default {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 1rem;
   }
  
   .header-actions {
-    margin-top: 1rem;
+    width: 100%;
+    justify-content: flex-start;
     flex-wrap: wrap;
+  }
+  
+  .generation-options {
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   }
 }
 
@@ -2002,84 +2537,58 @@ export default {
     display: inline-block;
   }
   
+  .admin-subtitle-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .active-filters-display {
+    width: 100%;
+  }
+  
   .generation-options {
     grid-template-columns: 1fr;
+  }
+  
+  .date-inputs {
+    flex-direction: column;
   }
  
   .report-item {
     flex-direction: column;
     align-items: flex-start;
-    text-align: left;
+    gap: 1rem;
     padding: 1.5rem;
   }
  
   .report-info {
     width: 100%;
-    margin-bottom: 0.5rem;
   }
  
   .report-actions {
-    justify-content: flex-start;
     width: 100%;
+    justify-content: flex-start;
   }
  
-  .preview-actions {
-    flex-direction: column;
-  }
-  
   .preview-header {
     flex-direction: column;
-    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .preview-actions {
+    flex-direction: column;
   }
   
   .report-stats {
     grid-template-columns: 1fr;
   }
   
-  .date-inputs {
-    flex-direction: column;
-  }
-  
-  .attendance-details-table,
-  .leave-details-table,
-  .payroll-details-table {
-    font-size: 0.9rem;
-  }
-  
-  .attendance-details-table th,
-  .attendance-details-table td,
-  .leave-details-table th,
-  .leave-details-table td,
-  .payroll-details-table th,
-  .payroll-details-table td {
-    padding: 0.5rem;
-  }
-  
-  .filter-group, .report-type {
-    margin-bottom: 1rem;
-  }
-  
-  .date-inputs {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .date-inputs .input-group {
-    width: 100%;
-  }
-}
-
-@media (max-width: 480px) {
-  .page-header h1 {
-    font-size: 1.75rem;
+  .filter-info-grid {
+    grid-template-columns: 1fr;
   }
   
   .stats-grid {
     grid-template-columns: 1fr;
-  }
-  
-  .generation-option {
-    padding: 1rem;
   }
   
   .header-actions {
@@ -2089,6 +2598,39 @@ export default {
   .header-actions button {
     width: 100%;
     justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-header h1 {
+    font-size: 1.75rem;
+  }
+  
+  .business-filter-header h2 {
+    font-size: 1.25rem;
+  }
+  
+  .admin-info h2 {
+    font-size: 1.5rem;
+  }
+  
+  .preview-header h2 {
+    font-size: 1.25rem;
+  }
+  
+  .attendance-details-table,
+  .leave-details-table,
+  .payroll-details-table {
+    font-size: 0.8rem;
+  }
+  
+  .attendance-details-table th,
+  .attendance-details-table td,
+  .leave-details-table th,
+  .leave-details-table td,
+  .payroll-details-table th,
+  .payroll-details-table td {
+    padding: 0.5rem;
   }
 }
 </style>

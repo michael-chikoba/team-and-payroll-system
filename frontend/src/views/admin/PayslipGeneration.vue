@@ -1,806 +1,48 @@
-<script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
-import axios from 'axios';
-import jsPDF from 'jspdf';
-
-// --- State Management ---
-const loading = ref(false);
-const error = ref(null);
-const payslips = ref([]);
-const employees = ref([]);
-const selectedPayslip = ref(null);
-const showGenerateModal = ref(false);
-const showBulkGenerate = ref(false);
-const submitting = ref(false);
-const formError = ref(null);
-const filters = reactive({
-  pay_period: 'current',
-  department: '',
-  status: '',
-  custom_month: ''
-});
-const generateForm = reactive({
-  employee_id: '',
-  pay_period_start: '',
-  pay_period_end: '',
-  payment_date: '',
-  basic_salary: 0,
-  transport_allowance: 0,
-  lunch_allowance: 0,
-  overtime_hours: 0,
-  overtime_rate: 0,
-  generate_pdf: true
-});
-const bulkForm = reactive({
-  pay_period_start: '',
-  pay_period_end: '',
-  payment_date: '',
-  department: '',
-  employee_ids: [],
-});
-
-// --- Computed Properties ---
-const availableEmployees = computed(() => {
-  return employees.value.filter(emp =>
-    !bulkForm.department || emp.department === bulkForm.department
-  );
-});
-
-const selectedBulkEmployees = computed(() => {
-  return employees.value.filter(emp =>
-    bulkForm.employee_ids.includes(emp.id)
-  );
-});
-
-// FIXED: Date utilities - ensure we get correct current month
-const getCurrentMonthDates = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  
-  console.log('Current month dates:', {
-    firstDay: formatDateForInput(firstDay),
-    lastDay: formatDateForInput(lastDay),
-    currentMonth: now.getMonth() + 1,
-    currentYear: now.getFullYear()
-  });
-  
-  return {
-    start: formatDateForInput(firstDay),
-    end: formatDateForInput(lastDay)
-  };
-};
-
-const getLastMonthDates = () => {
-  const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-  
-  console.log('Last month dates:', {
-    firstDay: formatDateForInput(firstDay),
-    lastDay: formatDateForInput(lastDay),
-    lastMonth: now.getMonth(), // Note: 0-based, so this is correct
-    year: now.getFullYear()
-  });
-  
-  return {
-    start: formatDateForInput(firstDay),
-    end: formatDateForInput(lastDay)
-  };
-};
-
-const getMonthDates = (yearMonth) => {
-  if (!yearMonth) return getCurrentMonthDates();
- 
-  const [year, month] = yearMonth.split('-').map(Number);
-  const firstDay = new Date(year, month - 1, 1);
-  const lastDay = new Date(year, month, 0);
-  return {
-    start: formatDateForInput(firstDay),
-    end: formatDateForInput(lastDay)
-  };
-};
-
-// Watch for filter changes
-watch(() => filters.pay_period, (newValue) => {
-  if (newValue === 'custom' && !filters.custom_month) {
-    // Set default to current month when switching to custom
-    const now = new Date();
-    filters.custom_month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }
-  fetchPayslips();
-});
-
-watch(() => filters.custom_month, () => {
-  if (filters.pay_period === 'custom') {
-    fetchPayslips();
-  }
-});
-
-// --- Core Calculation Functions ---
-const calculatePreviewEarnings = (basicSalary, transportAllowance = 0, lunchAllowance = 0, overtimeHours = 0, overtimeRate = 0) => {
-  const housingAllowance = basicSalary * 0.25;
-  const overtimePay = overtimeHours * overtimeRate;
-  return {
-    basic_salary: basicSalary,
-    housing_allowance: housingAllowance,
-    transport_allowance: transportAllowance,
-    lunch_allowance: lunchAllowance,
-    overtime_pay: overtimePay,
-    total_earnings: basicSalary + housingAllowance + transportAllowance + lunchAllowance + overtimePay
-  };
-};
-
-// --- Helper Methods for Employee Data ---
-const getEmployeeName = (employee) => {
-  if (employee.first_name && employee.last_name) {
-    return `${employee.first_name} ${employee.last_name}`.trim()
-  } else if (employee.user && employee.user.first_name) {
-    return `${employee.user.first_name} ${employee.user.last_name || ''}`.trim()
-  } else if (employee.name) {
-    return employee.name
-  } else if (employee.full_name) {
-    return employee.full_name
-  }
-  return 'N/A'
-};
-
-// --- Lifecycle and Initial Data Fetch ---
-onMounted(() => {
-  initializeDates();
-  fetchPayslips();
-  fetchEmployees();
-});
-
-// --- Helper Methods ---
-const initializeDates = () => {
-  const today = new Date();
-  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-  console.log('Initializing dates for current month:', {
-    today: today.toISOString().split('T')[0],
-    firstDay: formatDateForInput(firstDay),
-    lastDay: formatDateForInput(lastDay),
-    currentMonth: today.getMonth() + 1
-  });
-
-  generateForm.pay_period_start = formatDateForInput(firstDay);
-  generateForm.pay_period_end = formatDateForInput(lastDay);
-  generateForm.payment_date = formatDateForInput(today);
-
-  bulkForm.pay_period_start = formatDateForInput(firstDay);
-  bulkForm.pay_period_end = formatDateForInput(lastDay);
-  bulkForm.payment_date = formatDateForInput(today);
-};
-
-const fetchPayslips = async () => {
-  loading.value = true;
-  error.value = null;
-
-  try {
-    const params = new URLSearchParams();
-   
-    // Handle different period types
-    let periodInfo = {};
-    if (filters.pay_period === 'custom' && filters.custom_month) {
-      periodInfo = getMonthDates(filters.custom_month);
-      params.append('start', periodInfo.start);
-      params.append('end', periodInfo.end);
-    } else if (filters.pay_period === 'last') {
-      periodInfo = getLastMonthDates();
-      params.append('start', periodInfo.start);
-      params.append('end', periodInfo.end);
-    } else {
-      // Default to current month
-      periodInfo = getCurrentMonthDates();
-      params.append('start', periodInfo.start);
-      params.append('end', periodInfo.end);
-    }
-   
-    console.log('Fetching payslips with params:', {
-      period: filters.pay_period,
-      start: periodInfo.start,
-      end: periodInfo.end,
-      department: filters.department,
-      status: filters.status
-    });
-
-    if (filters.department) params.append('department', filters.department);
-    if (filters.status) params.append('status', filters.status);
-    
-    const response = await axios.get('/api/admin/payslips', { params });
-    payslips.value = response.data.data || response.data;
-    
-    console.log(`Found ${payslips.value.length} payslips for current filters`);
-    
-    // Log PDF availability for debugging
-    payslips.value.forEach(payslip => {
-      console.log(`Payslip ${payslip.id}: PDF available: ${payslip.pdf_available}, PDF path: ${payslip.pdf_path}`);
-    });
-  } catch (err) {
-    error.value = 'Failed to fetch payslips';
-    console.error('Fetch payslips error:', err);
-    
-    // Retry once after 2 seconds with simpler request
-    setTimeout(async () => {
-      try {
-        console.log('Retrying payslip fetch...');
-        const retryResponse = await axios.get('/api/admin/payslips');
-        payslips.value = retryResponse.data.data || retryResponse.data;
-        error.value = null;
-        console.log('Retry successful, found:', payslips.value.length, 'payslips');
-      } catch (retryErr) {
-        console.error('Retry failed:', retryErr);
-      }
-    }, 2000);
-  } finally {
-    loading.value = false;
-  }
-};
-
-const fetchEmployees = async () => {
-  try {
-    console.log('Fetching employees...');
-    const response = await axios.get('/api/admin/employees');
-    console.log('Employees response:', response.data);
-    
-    let employeesData = [];
-    if (response.data && response.data.employees) {
-      employeesData = response.data.employees;
-    } else if (response.data && response.data.data) {
-      employeesData = response.data.data;
-    } else {
-      employeesData = response.data || [];
-    }
-    employees.value = employeesData;
-    console.log('Processed employees:', employees.value.length);
-  } catch (err) {
-    console.error('Failed to fetch employees:', err);
-  }
-};
-
-// Watch for employee selection and auto-populate basic salary and allowances
-const onEmployeeSelected = (employeeId) => {
-  const employee = employees.value.find(emp => emp.id === parseInt(employeeId));
-  if (employee) {
-    generateForm.basic_salary = parseFloat(employee.base_salary) || 0;
-    generateForm.transport_allowance = parseFloat(employee.transport_allowance) || 0;
-    generateForm.lunch_allowance = parseFloat(employee.lunch_allowance) || 0;
-  }
-};
-
-// Generate PDF function
-const generatePdf = async (payslipId) => {
-  try {
-    const response = await axios.post(`/api/admin/payslips/${payslipId}/generate-pdf`);
-    return response.data;
-  } catch (err) {
-    console.error('Failed to generate PDF:', err);
-    throw err;
-  }
-};
-
-// Client-side PDF generation fallback
-const generateClientPdf = (payslip) => {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-
-  // Header
-  doc.setFontSize(20);
-  doc.text('PAYSLIP', pageWidth / 2, 20, { align: 'center' });
-
-  // Company info (left side)
-  doc.setFontSize(10);
-  doc.text('Castle Holdings Ltd', 20, 40);
-  doc.text('54 Seble Road, Lusaka, Zambia', 20, 48);
-  doc.text('Phone: +260 211 123456 | Email: payroll@castleholdings.co.zm', 20, 56);
-
-  // Period (right side)
-  doc.text(`Period: ${formatDate(payslip.pay_period_start)} to ${formatDate(payslip.pay_period_end)}`, pageWidth / 2, 40, { align: 'center' });
-
-  // Employee details
-  let y = 80;
-  doc.setFontSize(12);
-  doc.text('Employee Details', 20, y);
-  y += 10;
-  doc.setFontSize(10);
-  doc.text(`Name: ${payslip.employee_name || 'N/A'}`, 20, y); y += 8;
-  doc.text(`Employee ID: ${payslip.employee_id || 'N/A'}`, 20, y); y += 8;
-  doc.text(`Department: ${payslip.department || 'N/A'}`, 20, y); y += 8;
-  doc.text(`Employment Type: ${payslip.employment_type || 'N/A'}`, 20, y); y += 8;
-  doc.text(`Payment Date: ${formatDate(payslip.payment_date)}`, 20, y); y += 10;
-
-  // Earnings section
-  doc.setFontSize(12);
-  doc.text('Earnings', 20, y);
-  y += 10;
-  doc.setFontSize(10);
-  doc.text(`Basic Salary: K${formatNumber(payslip.basic_salary || 0)}`, 20, y); y += 8;
-  doc.text(`House Allowance (25%): K${formatNumber(payslip.house_allowance || 0)}`, 20, y); y += 8;
-  doc.text(`Transport Allowance: K${formatNumber(payslip.transport_allowance || 0)}`, 20, y); y += 8;
-  doc.text(`Lunch Allowance: K${formatNumber(payslip.lunch_allowance || 0)}`, 20, y); y += 8;
-  doc.text(`Overtime Pay (${payslip.overtime_hours || 0} hrs): K${formatNumber(payslip.overtime_pay || 0)}`, 20, y); y += 8;
-  doc.setFontSize(12);
-  doc.text(`Gross Earnings: K${formatNumber(payslip.gross_salary || 0)}`, 20, y);
-  y += 15;
-
-  // Deductions section (right column)
-  const deductY = 118;
-  doc.setFontSize(12);
-  doc.text('Deductions', 105, deductY);
-  let deductYPos = deductY + 10;
-  doc.setFontSize(10);
-  doc.text(`PAYE Tax: K${formatNumber(payslip.paye || 0)}`, 105, deductYPos); deductYPos += 8;
-  doc.text(`NAPSA (5% of gross): K${formatNumber(payslip.napsa || 0)}`, 105, deductYPos); deductYPos += 8;
-  doc.text(`NHIMA (1% of basic): K${formatNumber(payslip.nhima || 0)}`, 105, deductYPos); deductYPos += 8;
-  doc.text(`Pension (5% of basic): K${formatNumber(payslip.pension || 0)}`, 105, deductYPos); deductYPos += 8;
-
-  // Add note if pension is 0 for non-full-time
-  if ((payslip.pension || 0) === 0 && payslip.employment_type !== 'full_time') {
-    doc.setFontSize(8);
-    doc.text('(Full-time employees only)', 105, deductYPos);
-    deductYPos += 6;
-    doc.setFontSize(10);
-  }
-
-  doc.setFontSize(12);
-  doc.text(`Total Deductions: K${formatNumber(payslip.total_deductions || 0)}`, 105, deductYPos);
-
-  // Net Pay (centered below)
-  y = Math.max(y, deductYPos + 15);
-  doc.setFontSize(16);
-  doc.text('NET PAYABLE', pageWidth / 2, y, { align: 'center' });
-  y += 15;
-  doc.setFontSize(24);
-  doc.text(`K${formatNumber(payslip.net_pay || 0)}`, pageWidth / 2, y, { align: 'center' });
-  y += 20;
-  doc.setFontSize(10);
-  doc.text(`(${convertToWords(payslip.net_pay || 0)})`, pageWidth / 2, y, { align: 'center' });
-  y += 20;
-
-  // Footer
-  doc.setLineWidth(0.5);
-  doc.line(20, y, pageWidth - 20, y);
-  y += 10;
-  doc.text('Authorized Signature', pageWidth / 2, y, { align: 'center' });
-  y += 10;
-  doc.setFontSize(8);
-  doc.text('Notes: This is a computer-generated payslip. Please contact HR for any discrepancies.', 20, y, { maxWidth: pageWidth - 40 });
-
-  // Generate filename
-  const period = payslip.pay_period_start
-    ? new Date(payslip.pay_period_start).toISOString().slice(0, 7)
-    : new Date().toISOString().slice(0, 7);
-  const filename = `payslip-${payslip.employee_id || payslip.employee_name || 'unknown'}-${period}-client.pdf`;
-
-  // Save the PDF
-  doc.save(filename);
-};
-
-// Generate single payslip
-const generatePayslip = async () => {
-  submitting.value = true;
-  formError.value = null;
-
-  // Validate required fields
-  if (!generateForm.employee_id || !generateForm.pay_period_start ||
-      !generateForm.pay_period_end || !generateForm.payment_date ||
-      generateForm.basic_salary <= 0) {
-    formError.value = 'Please fill in all required fields correctly.';
-    submitting.value = false;
-    return;
-  }
-
-  try {
-    const formData = {
-      employee_id: generateForm.employee_id.toString(),
-      pay_period_start: generateForm.pay_period_start,
-      pay_period_end: generateForm.pay_period_end,
-      payment_date: generateForm.payment_date,
-      basic_salary: generateForm.basic_salary,
-      overtime_hours: generateForm.overtime_hours || 0,
-      overtime_rate: generateForm.overtime_rate || 0,
-      generate_pdf: true
-    };
-   
-    console.log('Generating payslip with data:', formData);
-    const response = await axios.post('/api/admin/payslips', formData);
-    payslips.value.unshift(response.data.data || response.data);
-    closeModals();
-  } catch (err) {
-    formError.value = err.response?.data?.message || 'Failed to generate payslip';
-    console.error(err);
-  } finally {
-    submitting.value = false;
-  }
-};
-
-// Bulk generate payslips
-const bulkGeneratePayslips = async () => {
-  submitting.value = true;
-  formError.value = null;
-
-  if (bulkForm.employee_ids.length === 0) {
-    formError.value = 'Please select at least one employee.';
-    submitting.value = false;
-    return;
-  }
-
-  try {
-    const promises = bulkForm.employee_ids.map(async (id) => {
-      const emp = employees.value.find(e => e.id === id);
-      if (!emp) return null;
-   
-      const formData = {
-        employee_id: id.toString(),
-        pay_period_start: bulkForm.pay_period_start,
-        pay_period_end: bulkForm.pay_period_end,
-        payment_date: bulkForm.payment_date,
-        basic_salary: parseFloat(emp.base_salary) || 0,
-        overtime_hours: 0,
-        overtime_rate: 0,
-        generate_pdf: true
-      };
-     
-      const response = await axios.post('/api/admin/payslips', formData);
-      return response.data.data || response.data;
-    });
-   
-    const results = await Promise.all(promises);
-    const newPayslips = results.filter(Boolean);
-    payslips.value.unshift(...newPayslips);
-    closeModals();
-  } catch (err) {
-    formError.value = 'Failed to generate payslips';
-    console.error(err);
-  } finally {
-    submitting.value = false;
-  }
-};
-
-const viewPayslip = async (payslip) => {
-  if (!payslip.pdf_available && !payslip.pdf_path) {
-    try {
-      alert('Generating PDF for this payslip...');
-      await generatePdf(payslip.id);
-   
-      // Refresh the payslip data
-      const response = await axios.get(`/api/admin/payslips/${payslip.id}`);
-      const updatedPayslip = response.data.data || response.data;
-   
-      selectedPayslip.value = updatedPayslip;
-    } catch (err) {
-      console.error('Failed to generate PDF:', err);
-      selectedPayslip.value = payslip;
-    }
-  } else {
-    selectedPayslip.value = payslip;
-  }
-};
-
-const downloadPayslip = async (payslip) => {
-  try {
-    console.log('Attempting to download payslip:', payslip.id);
-    
-    if (!payslip.pdf_available && !payslip.pdf_path) {
-      try {
-        console.log('PDF not available, generating PDF first...');
-        await generatePdf(payslip.id);
-     
-        await new Promise(resolve => setTimeout(resolve, 1000));
-     
-        const refreshedResponse = await axios.get(`/api/admin/payslips/${payslip.id}`);
-        const refreshedPayslip = refreshedResponse.data.data || refreshedResponse.data;
-     
-        if (!refreshedPayslip.pdf_available && !refreshedPayslip.pdf_path) {
-          throw new Error('PDF generation failed');
-        }
-     
-        const index = payslips.value.findIndex(p => p.id === payslip.id);
-        if (index !== -1) {
-          payslips.value[index] = { ...payslips.value[index], ...refreshedPayslip };
-        }
-        payslip = refreshedPayslip;
-      } catch (genError) {
-        console.error('PDF generation failed:', genError);
-        alert('PDF is not available for this payslip. Please try generating it first.');
-        return;
-      }
-    }
-   
-    let downloadUrl = '';
-    let response;
-    
-    try {
-      downloadUrl = `/api/admin/payslips/${payslip.id}/download`;
-      console.log('Trying admin endpoint:', downloadUrl);
-      response = await axios.get(downloadUrl, {
-        responseType: 'blob',
-        timeout: 30000
-      });
-    } catch (adminError) {
-      console.log('Admin endpoint failed, trying regular endpoint...');
-   
-      try {
-        downloadUrl = `/api/payslips/${payslip.id}/download`;
-        console.log('Trying regular endpoint:', downloadUrl);
-        response = await axios.get(downloadUrl, {
-          responseType: 'blob',
-          timeout: 30000
-        });
-      } catch (regularError) {
-        console.log('Regular endpoint failed, trying alternative endpoint...');
-     
-        try {
-          downloadUrl = `/api/payslips/${payslip.id}/pdf`;
-          console.log('Trying alternative endpoint:', downloadUrl);
-          response = await axios.get(downloadUrl, {
-            responseType: 'blob',
-            timeout: 30000
-          });
-        } catch (altError) {
-          console.error('All download endpoints failed:', {
-            adminError: adminError.response?.status,
-            regularError: regularError.response?.status,
-            altError: altError.response?.status
-          });
-       
-          if (adminError.response?.status === 401 || regularError.response?.status === 401) {
-            alert('Authentication required. Please log in again.');
-            return;
-          }
-       
-          if (adminError.response?.status === 500 || regularError.response?.status === 500) {
-            alert('Server error occurred while generating PDF. Please try again later.');
-            return;
-          }
-       
-          console.log('All endpoints failed, generating PDF client-side...');
-          generateClientPdf(payslip);
-          return;
-        }
-      }
-    }
-   
-    console.log('Download successful, creating blob...');
-    const blob = new Blob([response.data], { type: 'application/pdf' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    
-    const period = payslip.pay_period_start
-      ? new Date(payslip.pay_period_start).toISOString().slice(0, 7)
-      : new Date().toISOString().slice(0, 7);
-    const filename = `payslip-${payslip.employee_id || payslip.employee_name}-${period}.pdf`;
-    
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    
-    setTimeout(() => window.URL.revokeObjectURL(url), 100);
-    console.log('Download completed successfully');
-  } catch (err) {
-    console.error('Failed to download payslip:', err);
-    
-    if (err.response) {
-      switch (err.response.status) {
-        case 401:
-          alert('Authentication required. Please log in again.');
-          break;
-        case 403:
-          alert('You do not have permission to download this payslip.');
-          break;
-        case 404:
-          console.log('404 detected, generating client-side PDF...');
-          generateClientPdf(payslip);
-          break;
-        case 500:
-          alert('Server error occurred. Please try again later.');
-          break;
-        default:
-          alert(`Failed to download payslip: ${err.response.status} ${err.response.statusText}`);
-      }
-    } else if (err.request) {
-      alert('Network error. Please check your connection and try again.');
-    } else {
-      alert('Failed to download payslip. Please try again.');
-    }
-  }
-};
-
-const sendPayslip = async (payslip) => {
-  try {
-    await axios.post(`/api/admin/payslips/${payslip.id}/send`);
-    const index = payslips.value.findIndex(p => p.id === payslip.id);
-    if (index !== -1) {
-      payslips.value[index].status = 'paid';
-      payslips.value[index].is_sent = true;
-    }
-    alert(`Payslip sent to ${payslip.employee_name} successfully!`);
-  } catch (err) {
-    console.error('Failed to send payslip:', err);
-    alert('Failed to send payslip');
-  }
-};
-
-const removeEmployee = (employeeId) => {
-  bulkForm.employee_ids = bulkForm.employee_ids.filter(id => id !== employeeId);
-};
-
-const closeModals = () => {
-  showGenerateModal.value = false;
-  showBulkGenerate.value = false;
-  formError.value = null;
-  Object.assign(generateForm, {
-    employee_id: '',
-    basic_salary: 0,
-    transport_allowance: 0,
-    lunch_allowance: 0,
-    overtime_hours: 0,
-    overtime_rate: 0
-  });
-  bulkForm.employee_ids = [];
-};
-
-// --- Formatting & Utility Functions ---
-const formatNumber = (num) => {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(num || 0);
-};
-
-const formatDate = (date) => {
-  if (!date) return 'N/A';
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  });
-};
-
-const formatDateForInput = (date) => {
-  return date.toISOString().split('T')[0];
-};
-
-const formatStatus = (status) => {
-  const statusMap = {
-    draft: 'Draft',
-    generated: 'Generated',
-    paid: 'Paid'
-  };
-  return statusMap[status] || status;
-};
-
-const convertToWords = (amount) => {
-  if (amount === 0) return 'Zero Kwacha Only';
-  const wholeAmount = Math.floor(amount);
-  const cents = Math.round((amount - wholeAmount) * 100);
-  let words = `${formatNumber(wholeAmount)} Kwacha`;
-  if (cents > 0) {
-    words += ` and ${cents} Ngwee`;
-  }
-  return words + ' Only';
-};
-
-// FIXED: Get display text for current filter with proper month detection
-const getFilterDisplayText = computed(() => {
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  
-  if (filters.pay_period === 'current') {
-    const monthName = new Date(currentYear, currentMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    return `Current Month (${monthName})`;
-  } else if (filters.pay_period === 'last') {
-    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
-    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
-    const monthName = new Date(lastMonthYear, lastMonth - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    return `Last Month (${monthName})`;
-  } else if (filters.pay_period === 'custom' && filters.custom_month) {
-    const [year, month] = filters.custom_month.split('-');
-    const date = new Date(year, month - 1);
-    const monthName = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    return `Selected Month (${monthName})`;
-  }
-  return 'All Periods';
-});
-
-// Utility function to check backend endpoints (for debugging)
-const checkEndpoints = async () => {
-  const endpoints = [
-    '/api/admin/payslips/1/download',
-    '/api/payslips/1/download',
-    '/api/payslips/1/pdf',
-    '/api/admin/payslips/1/generate-pdf'
-  ];
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await axios.head(endpoint);
-      console.log(`Endpoint ${endpoint}: ${response.status}`);
-    } catch (err) {
-      console.log(`Endpoint ${endpoint}: ${err.response?.status || 'Failed'}`);
-    }
-  }
-};
-
-// Debug function to check current dates
-const debugCurrentDates = () => {
-  const now = new Date();
-  const currentDates = getCurrentMonthDates();
-  const lastMonthDates = getLastMonthDates();
-  
-  console.log('=== DATE DEBUG INFO ===');
-  console.log('Current date:', now.toISOString().split('T')[0]);
-  console.log('Current month (number):', now.getMonth() + 1);
-  console.log('Current year:', now.getFullYear());
-  console.log('Current month dates:', currentDates);
-  console.log('Last month dates:', lastMonthDates);
-  console.log('Filter display text:', getFilterDisplayText.value);
-  console.log('========================');
-};
-
-// Call debug on mount to verify dates
-onMounted(() => {
-  setTimeout(debugCurrentDates, 1000);
-});
-
-defineExpose({
-  fetchPayslips,
-  generatePayslip,
-  bulkGeneratePayslips,
-  viewPayslip,
-  downloadPayslip,
-  sendPayslip,
-  removeEmployee,
-  closeModals,
-  formatNumber,
-  formatDate,
-  formatStatus,
-  convertToWords,
-  getEmployeeName,
-  debugCurrentDates // Expose for manual debugging
-});
-</script>
 <template>
   <div class="payslip-generation">
+    <!-- Header -->
     <header class="app-header">
       <div class="header-content">
-        <h1 class="header-title">Castle Holding Zambia</h1>
-        <p class="header-subtitle">Generate and manage employee payslips for Castle Holdings</p>
+        <h1 class="header-title">Payslip Management</h1>
+        <p class="header-subtitle">Generate, view, and distribute employee payslips.</p>
         <div class="filter-indicator" v-if="getFilterDisplayText">
-          <span class="filter-label">Showing:</span>
+          <span class="filter-label">Current View:</span>
           <span class="filter-value">{{ getFilterDisplayText }}</span>
         </div>
       </div>
       <div class="header-actions">
         <button @click="showBulkGenerate = true" class="btn-secondary-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 11.586V3a1 1 0 112 0v8.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
-          </svg>
+          <span class="icon">📑</span>
           <span>Bulk Generate</span>
         </button>
         <button @click="showGenerateModal = true" class="btn-primary-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-          </svg>
-          <span>Generate Payslip</span>
+          <span class="icon">➕</span>
+          <span>Generate Single</span>
         </button>
       </div>
     </header>
 
+    <!-- Filters -->
     <div class="filter-controls-card">
       <div class="filter-group-container">
+        
+        <!-- Business Filter -->
+        <div class="filter-group">
+          <label class="filter-label">Business</label>
+          <select v-model="filters.business_id" class="select-input" @change="handleBusinessChange">
+            <option value="">All Businesses</option>
+            <option v-for="business in businesses" :key="business.id" :value="business.id">
+              {{ business.name }}
+            </option>
+          </select>
+        </div>
+
         <div class="filter-group">
           <label class="filter-label">Pay Period</label>
           <select v-model="filters.pay_period" class="select-input">
             <option value="current">Current Month</option>
             <option value="last">Last Month</option>
-            <option value="custom">Choose Month</option>
+            <option value="custom">Select Specific Month</option>
           </select>
         </div>
         
@@ -817,13 +59,14 @@ defineExpose({
             <option value="HR">HR</option>
             <option value="Finance">Finance</option>
             <option value="Sales">Sales</option>
+            <option value="Operations">Operations</option>
           </select>
         </div>
         
         <div class="filter-group">
           <label class="filter-label">Status</label>
           <select v-model="filters.status" class="select-input">
-            <option value="">All Status</option>
+            <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="generated">Generated</option>
             <option value="paid">Paid</option>
@@ -832,197 +75,229 @@ defineExpose({
       </div>
     </div>
 
+    <!-- Content -->
     <div v-if="loading" class="state-indicator loading-state">
       <div class="spinner"></div>
-      <p>Fetching the latest payslip records...</p>
+      <p>Loading payslip records...</p>
     </div>
     
     <div v-else-if="error" class="state-indicator error-state">
-      {{ error }}
+      <span class="error-icon">⚠️</span>
+      <p>{{ error }}</p>
+      <button @click="fetchPayslips" class="btn-text">Try Again</button>
     </div>
     
     <div v-else class="payslips-dashboard-grid">
       <div class="payslip-grid-container" v-if="payslips.length > 0">
+        <!-- Payslip Card -->
         <div v-for="payslip in payslips" :key="payslip.id" class="payslip-item-card">
           <div class="card-header-status">
-            <h3 class="employee-name">{{ payslip.employee_name }}</h3>
+            <div>
+              <h3 class="employee-name">{{ getEmployeeName(payslip) }}</h3>
+              <p class="employee-meta">{{ payslip.employee_id || '#' }} • {{ payslip.department || 'General' }}</p>
+              <!-- Show Business Name if All Businesses selected -->
+              <span v-if="!filters.business_id && payslip.business_name" class="business-tag">
+                🏢 {{ payslip.business_name }}
+              </span>
+            </div>
             <span :class="['status-badge', `status-${payslip.status}`]">
               {{ formatStatus(payslip.status) }}
             </span>
           </div>
-          <p class="employee-meta">{{ payslip.employee_id }} | {{ payslip.department }}</p>
+          
           <div class="payslip-summary-details">
             <div class="detail-pair">
-              <span class="detail-label">Period:</span>
+              <span class="detail-label">Period</span>
               <span class="detail-value">{{ formatDate(payslip.pay_period_start) }} - {{ formatDate(payslip.pay_period_end) }}</span>
             </div>
             <div class="detail-pair">
-              <span class="detail-label">Basic Salary:</span>
-              <span class="detail-value">K{{ formatNumber(payslip.basic_salary) }}</span>
+              <span class="detail-label">Gross Pay</span>
+              <span class="detail-value">K{{ formatNumber(payslip.gross_salary) }}</span>
             </div>
             <div class="detail-pair net-pay-row">
-              <span class="detail-label">Net Pay:</span>
+              <span class="detail-label">Net Pay</span>
               <span class="detail-net-pay">K{{ formatNumber(payslip.net_pay) }}</span>
             </div>
-            <div class="detail-pair">
-              <span class="detail-label">Payment Date:</span>
-              <span class="detail-value">{{ formatDate(payslip.payment_date) }}</span>
-            </div>
           </div>
+
           <div class="card-actions-footer">
-            <button @click="viewPayslip(payslip)" class="btn-link-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>
-              <span>View</span>
+            <button @click="viewPayslip(payslip)" class="btn-action view" title="View Details">
+              👁️ View
             </button>
-            <button @click="downloadPayslip(payslip)" class="btn-link-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 11.586V3a1 1 0 112 0v8.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-              <span>Download</span>
+            <button @click="downloadPayslip(payslip)" class="btn-action download" title="Download PDF">
+              ⬇️ PDF
             </button>
-            <button v-if="payslip.status === 'draft' || payslip.status === 'generated'" @click="sendPayslip(payslip)" class="btn-link-icon btn-send">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" /><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" /></svg>
-              <span>Send</span>
+            <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="btn-action send" title="Email to Employee">
+              📧 Send
             </button>
           </div>
         </div>
       </div>
       
       <div v-else class="state-indicator empty-state">
-        <p class="empty-message">No payslips found for the current filters. Try adjusting your criteria or generating a new one.</p>
-        <button @click="showGenerateModal = true" class="btn-primary-icon">Generate First Payslip</button>
+        <div class="empty-icon">📂</div>
+        <h3>No Payslips Found</h3>
+        <p>No records match your current filters.</p>
+        <button @click="showGenerateModal = true" class="btn-primary-icon mt-3">Generate New Payslip</button>
       </div>
     </div>
 
-    <!-- Generate Single Payslip Modal -->
+    <!-- ============================================== -->
+    <!-- MODAL: View Payslip Detail (Dynamic)           -->
+    <!-- ============================================== -->
+    <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
+      <div class="modal-card large-modal">
+        <div class="modal-header">
+          <h2 class="modal-title">Payslip Details</h2>
+          <button @click="selectedPayslip = null" class="close-btn">×</button>
+        </div>
+     
+        <div class="modal-body payslip-detail-view">
+          <!-- Header -->
+          <div class="payslip-branding">
+            <div class="company-details">
+              <h2>{{ selectedPayslip.business_name || 'Castle Holdings Ltd' }}</h2>
+              <p>54 Seble Road, Lusaka, Zambia</p>
+            </div>
+            <div class="payslip-period-badge">
+              <span>{{ formatDate(selectedPayslip.pay_period_end, 'month') }}</span>
+            </div>
+          </div>
+
+          <!-- Employee Info -->
+          <div class="info-grid-box">
+            <div class="info-cell">
+              <label>Employee Name</label>
+              <span>{{ getEmployeeName(selectedPayslip) }}</span>
+            </div>
+            <div class="info-cell">
+              <label>Employee ID</label>
+              <span>{{ selectedPayslip.employee_id || 'N/A' }}</span>
+            </div>
+            <div class="info-cell">
+              <label>Department</label>
+              <span>{{ selectedPayslip.department || 'N/A' }}</span>
+            </div>
+            <div class="info-cell">
+              <label>Pay Date</label>
+              <span>{{ formatDate(selectedPayslip.payment_date) }}</span>
+            </div>
+          </div>
+       
+          <div class="earnings-deductions-grid">
+            <!-- Dynamic Earnings -->
+            <section class="detail-section">
+              <h3 class="section-title earnings">Earnings</h3>
+              <div class="amount-list">
+                <div class="amount-item">
+                  <label>Basic Salary</label>
+                  <span>K{{ formatNumber(selectedPayslip.basic_salary) }}</span>
+                </div>
+                <div class="amount-item" v-if="selectedPayslip.house_allowance > 0">
+                  <label>Housing Allowance</label>
+                  <span>K{{ formatNumber(selectedPayslip.house_allowance) }}</span>
+                </div>
+                <div class="amount-item" v-if="selectedPayslip.transport_allowance > 0">
+                  <label>Transport Allowance</label>
+                  <span>K{{ formatNumber(selectedPayslip.transport_allowance) }}</span>
+                </div>
+                <div class="amount-item" v-if="selectedPayslip.lunch_allowance > 0">
+                  <label>Lunch/Other Allowance</label>
+                  <span>K{{ formatNumber(selectedPayslip.lunch_allowance) }}</span>
+                </div>
+                <div class="amount-item" v-if="selectedPayslip.overtime_pay > 0">
+                  <label>Overtime Pay</label>
+                  <span>K{{ formatNumber(selectedPayslip.overtime_pay) }}</span>
+                </div>
+                <div class="amount-item" v-if="selectedPayslip.bonuses > 0">
+                  <label>Bonuses</label>
+                  <span>K{{ formatNumber(selectedPayslip.bonuses) }}</span>
+                </div>
+                <div class="amount-item total">
+                  <label>Gross Earnings</label>
+                  <span>K{{ formatNumber(selectedPayslip.gross_salary) }}</span>
+                </div>
+              </div>
+            </section>
+         
+            <!-- Dynamic Deductions -->
+            <section class="detail-section">
+              <h3 class="section-title deductions">Deductions</h3>
+              <div class="amount-list">
+                <!-- Iterate through dynamically computed deductions list -->
+                <div v-for="(item, idx) in getDynamicDeductions(selectedPayslip)" :key="idx" class="amount-item">
+                  <label>{{ item.name }}</label>
+                  <span>K{{ formatNumber(item.amount) }}</span>
+                </div>
+                
+                <div class="amount-item total">
+                  <label>Total Deductions</label>
+                  <span>K{{ formatNumber(selectedPayslip.total_deductions) }}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+       
+          <!-- Net Pay -->
+          <div class="net-pay-banner">
+            <div class="label">NET PAYABLE</div>
+            <div class="amount">K{{ formatNumber(selectedPayslip.net_pay) }}</div>
+            <div class="words">{{ convertToWords(selectedPayslip.net_pay) }}</div>
+          </div>
+        </div>
+     
+        <div class="modal-footer">
+          <button @click="downloadPayslip(selectedPayslip)" class="btn-primary-icon">
+            Download PDF
+          </button>
+          <button @click="selectedPayslip = null" class="btn-secondary">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generate Single Modal -->
     <div v-if="showGenerateModal" class="modal-overlay" @click.self="closeModals">
       <div class="modal-card">
         <div class="modal-header">
           <h2 class="modal-title">Generate Single Payslip</h2>
-          <button @click="closeModals" class="close-btn" aria-label="Close modal">✕</button>
+          <button @click="closeModals" class="close-btn">×</button>
         </div>
         <form @submit.prevent="generatePayslip" class="modal-body-content">
-          <div class="form-group required">
+          <!-- Only show employees for the selected business -->
+          <div class="form-group">
             <label class="form-label">Employee</label>
             <select v-model="generateForm.employee_id" @change="onEmployeeSelected($event.target.value)" required class="select-input">
               <option value="" disabled>Select Employee</option>
-              <option v-for="employee in employees" :key="employee.id" :value="employee.id">
-                {{ getEmployeeName(employee) }} (ID: {{ employee.id }})
+              <option v-for="emp in employees" :key="emp.id" :value="emp.id">
+                <!-- UPDATED: Use helper directly instead of constructing object -->
+                {{ getEmployeeName(emp) }}
               </option>
             </select>
+            <small v-if="employees.length === 0" class="text-muted">No employees found for selected business.</small>
           </div>
-       
+          
           <div class="form-row-grid">
-            <div class="form-group required">
-              <label class="form-label">Pay Period Start</label>
+            <div class="form-group">
+              <label class="form-label">Start Date</label>
               <input type="date" v-model="generateForm.pay_period_start" required class="text-input">
             </div>
-            <div class="form-group required">
-              <label class="form-label">Pay Period End</label>
+            <div class="form-group">
+              <label class="form-label">End Date</label>
               <input type="date" v-model="generateForm.pay_period_end" required class="text-input">
             </div>
-            <div class="form-group required">
-              <label class="form-label">Payment Date</label>
-              <input type="date" v-model="generateForm.payment_date" required class="text-input">
-            </div>
           </div>
-          
-          <div class="form-section-group">
-            <h3 class="section-title">Earnings</h3>
-            <div class="form-row-grid grid-col-2">
-              <div class="form-group required">
-                <label class="form-label">Basic Salary (K)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.basic_salary" required class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Overtime Hours</label>
-                <input type="number" step="0.1" v-model.number="generateForm.overtime_hours" class="text-input">
-              </div>
-              <div class="form-group">
-                <label class="form-label">Overtime Rate (K/hour)</label>
-                <input type="number" step="0.01" v-model.number="generateForm.overtime_rate" class="text-input">
-              </div>
-            </div>
-         
-            <!-- Preview of calculated allowances -->
-            <div class="allowance-preview" v-if="generateForm.basic_salary > 0">
-              <h4 class="preview-title">Allowances (Automatically Calculated)</h4>
-              <div class="preview-grid">
-                <div class="preview-item">
-                  <span class="preview-label">Housing Allowance (25%):</span>
-                  <span class="preview-value">K{{ formatNumber(generateForm.basic_salary * 0.25) }}</span>
-                </div>
-                <div class="preview-item">
-                  <span class="preview-label">Transport Allowance:</span>
-                  <span class="preview-value">K{{ formatNumber(generateForm.transport_allowance) }}</span>
-                </div>
-                <div class="preview-item">
-                  <span class="preview-label">Lunch Allowance:</span>
-                  <span class="preview-value">K{{ formatNumber(generateForm.lunch_allowance) }}</span>
-                </div>
-              </div>
-            </div>
+
+          <div class="form-group">
+            <label class="form-label">Basic Salary</label>
+            <input type="number" v-model.number="generateForm.basic_salary" class="text-input" step="0.01">
           </div>
-          
-          <!-- Replace the Deductions Preview section in the Generate Payslip Modal -->
-<div class="form-section-group">
-  <h3 class="section-title">Deductions Preview</h3>
-  <div class="deductions-preview">
-    <p class="preview-note">
-      <strong>Note:</strong> Deductions are automatically calculated by the system based on Zambian tax regulations:
-    </p>
-    <ul class="preview-list">
-      <li>PAYE Tax</li>
-      <li>NAPSA</li>
-      <li>NHIMA</li>
-      <li>Pension</li>
-    </ul>
-    
-    <!-- Show employment type indicator -->
-    <div v-if="generateForm.employee_id" class="employment-type-indicator">
-      <template v-if="employees.find(e => e.id === parseInt(generateForm.employee_id))">
-        <span class="indicator-label">Employment Type:</span>
-        <span class="indicator-value" :class="{
-          'full-time': employees.find(e => e.id === parseInt(generateForm.employee_id))?.employment_type === 'full_time'
-        }">
-          {{ employees.find(e => e.id === parseInt(generateForm.employee_id))?.employment_type || 'N/A' }}
-        </span>
-        <span v-if="employees.find(e => e.id === parseInt(generateForm.employee_id))?.employment_type === 'full_time'" 
-              class="pension-applies">
-          ✓ Pension applies
-        </span>
-        <span v-else class="pension-not-applies">
-          ✗ Pension does not apply
-        </span>
-      </template>
-    </div>
-  </div>
-</div>
-          
-          <div class="summary-preview-card">
-            <h4 class="summary-title">Estimated Calculation Summary</h4>
-            <div class="summary-row">
-              <span class="summary-label">Total Earnings:</span>
-              <span class="summary-amount positive">K{{ formatNumber(calculatePreviewEarnings(generateForm.basic_salary, generateForm.transport_allowance, generateForm.lunch_allowance, generateForm.overtime_hours, generateForm.overtime_rate).total_earnings) }}</span>
-            </div>
-            <div class="summary-row">
-              <span class="summary-label">Deductions:</span>
-              <span class="summary-amount negative">Calculated by system</span>
-            </div>
-            <div class="summary-row total-row">
-              <span class="summary-label">Net Pay:</span>
-              <span class="summary-amount net-pay-final">Calculated by system</span>
-            </div>
-          </div>
-          
-          <div v-if="formError" class="form-alert-error">
-            {{ formError }}
-          </div>
-       
+
           <div class="modal-footer">
-            <button type="button" @click="closeModals" class="btn-secondary">
-              Cancel
-            </button>
+            <button type="button" @click="closeModals" class="btn-secondary">Cancel</button>
             <button type="submit" class="btn-primary" :disabled="submitting">
-              {{ submitting ? 'Generating...' : 'Generate Payslip' }}
+              {{ submitting ? 'Generating...' : 'Generate' }}
             </button>
           </div>
         </form>
@@ -1033,1101 +308,479 @@ defineExpose({
     <div v-if="showBulkGenerate" class="modal-overlay" @click.self="closeModals">
       <div class="modal-card">
         <div class="modal-header">
-          <h2 class="modal-title">Bulk Generate Payslips</h2>
-          <button @click="closeModals" class="close-btn" aria-label="Close modal">✕</button>
+          <h2 class="modal-title">Bulk Generate</h2>
+          <button @click="closeModals" class="close-btn">×</button>
         </div>
         <form @submit.prevent="bulkGeneratePayslips" class="modal-body-content">
-          <div class="form-row-grid grid-col-2">
-            <div class="form-group required">
-              <label class="form-label">Pay Period Start</label>
+          <div class="form-row-grid">
+            <div class="form-group">
+              <label class="form-label">Period Start</label>
               <input type="date" v-model="bulkForm.pay_period_start" required class="text-input">
             </div>
-            <div class="form-group required">
-              <label class="form-label">Pay Period End</label>
+            <div class="form-group">
+              <label class="form-label">Period End</label>
               <input type="date" v-model="bulkForm.pay_period_end" required class="text-input">
             </div>
           </div>
-          <div class="form-group required">
-            <label class="form-label">Payment Date</label>
-            <input type="date" v-model="bulkForm.payment_date" required class="text-input">
-          </div>
           <div class="form-group">
-            <label class="form-label">Filter by Department</label>
+            <label class="form-label">Department</label>
             <select v-model="bulkForm.department" class="select-input">
               <option value="">All Departments</option>
               <option value="IT">IT</option>
               <option value="HR">HR</option>
               <option value="Finance">Finance</option>
-              <option value="Sales">Sales</option>
-              <option value="Administration">Administration</option>
             </select>
           </div>
-       
-          <div class="form-section-group employee-selection-area">
-            <h4 class="selection-title">Selected Employees ({{ selectedBulkEmployees.length }})</h4>
-            <div class="employee-tag-list">
-              <span v-for="employee in selectedBulkEmployees" :key="employee.id" class="employee-tag-pill">
-                {{ getEmployeeName(employee) }} - K{{ formatNumber(employee.base_salary || 0) }}
-                <button type="button" @click="removeEmployee(employee.id)" class="remove-tag-btn" aria-label="Remove employee">✕</button>
-              </span>
-              <p v-if="selectedBulkEmployees.length === 0" class="selection-hint">Select employees below to include them.</p>
-            </div>
-            <h4 class="selection-title">Available Employees</h4>
-            <div class="employees-checkbox-list">
-              <label v-for="employee in availableEmployees" :key="employee.id" class="checkbox-label-card">
-                <input type="checkbox" :value="employee.id" v-model="bulkForm.employee_ids" class="checkbox-input">
-                <div class="employee-details">
-                  <span class="employee-name-label">{{ getEmployeeName(employee) }}</span>
-                  <span class="employee-dept-label">({{ employee.department }}) - K{{ formatNumber(employee.base_salary || 0) }}</span>
-                </div>
-              </label>
-            </div>
+          
+          <div class="selection-summary">
+            <p>
+              Will generate payslips for <strong>{{ availableEmployees.length }}</strong> employees 
+              <span v-if="filters.business_id">in selected business</span>.
+            </p>
           </div>
+
           <div class="modal-footer">
-            <button type="button" @click="closeModals" class="btn-secondary">
-              Cancel
-            </button>
-            <button type="submit" class="btn-primary" :disabled="submitting || bulkForm.employee_ids.length === 0">
-              {{ submitting ? 'Generating...' : `Generate ${bulkForm.employee_ids.length} Payslips` }}
+            <button type="button" @click="closeModals" class="btn-secondary">Cancel</button>
+            <button type="submit" class="btn-primary" :disabled="submitting || availableEmployees.length === 0">
+              {{ submitting ? 'Processing...' : 'Generate All' }}
             </button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- Payslip Detail View Modal -->
-    <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
-      <div class="modal-card large-modal">
-        <div class="modal-header">
-          <h2 class="modal-title">Payslip for {{ selectedPayslip.employee_name }}</h2>
-          <button @click="selectedPayslip = null" class="close-btn" aria-label="Close payslip view">✕</button>
-        </div>
-     
-        <div class="payslip-detail-view">
-          <header class="payslip-detail__header">
-            <div class="company-info">
-              <h2>Castle Holdings Ltd</h2>
-              <p>54 Seble Road, Lusaka, Zambia</p>
-              <p>Phone: +260 211 123456 | Email: payroll@castleholdings.co.zm</p>
-            </div>
-            <div class="payslip-title">
-              <h1>PAYSLIP</h1>
-              <p>Period: {{ formatDate(selectedPayslip.pay_period_start) }} to {{ formatDate(selectedPayslip.pay_period_end) }}</p>
-            </div>
-          </header>
-       
-          <div class="payslip-detail__employee-info">
-            <h3 class="info-section__title">Employee Details</h3>
-            <div class="info-grid">
-              <div class="info-item">
-                <label>Name:</label>
-                <span>{{ selectedPayslip.employee_name }}</span>
-              </div>
-              <div class="info-item">
-                <label>Employee ID:</label>
-                <span>{{ selectedPayslip.employee_id }}</span>
-              </div>
-              <div class="info-item">
-                <label>Department:</label>
-                <span>{{ selectedPayslip.department }}</span>
-              </div>
-              <div class="info-item">
-                <label>Payment Date:</label>
-                <span>{{ formatDate(selectedPayslip.payment_date) }}</span>
-              </div>
-            </div>
-          </div>
-       
-          <div class="payslip-detail__earnings-deductions">
-            <section class="earnings-section">
-              <h3 class="section-title">Earnings</h3>
-              <div class="amount-list">
-                <div class="amount-item">
-                  <label>Basic Salary:</label>
-                  <span>K{{ formatNumber(selectedPayslip.basic_salary || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>House Allowance (25%):</label>
-                  <span>K{{ formatNumber(selectedPayslip.house_allowance || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>Transport Allowance:</label>
-                  <span>K{{ formatNumber(selectedPayslip.transport_allowance || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>Lunch Allowance:</label>
-                  <span>K{{ formatNumber(selectedPayslip.lunch_allowance || 0) }}</span>
-                </div>
-                <div class="amount-item">
-                  <label>Overtime Pay ({{ selectedPayslip.overtime_hours || 0 }} hrs):</label>
-                  <span>K{{ formatNumber(selectedPayslip.overtime_pay || 0) }}</span>
-                </div>
-                <div class="amount-item total">
-                  <label>Gross Earnings:</label>
-                  <span>K{{ formatNumber(selectedPayslip.gross_salary || 0) }}</span>
-                </div>
-              </div>
-            </section>
-         
-            <!-- Update the deductions section in the payslip detail view modal -->
-<section class="deductions-section">
-  <h3 class="section-title">Deductions</h3>
-  <div class="amount-list">
-    <div class="amount-item">
-      <label>PAYE Tax:</label>
-      <span>K{{ formatNumber(selectedPayslip.paye || 0) }}</span>
-    </div>
-    <div class="amount-item">
-      <label>NAPSA :</label>
-      <span>K{{ formatNumber(selectedPayslip.napsa || 0) }}</span>
-    </div>
-    <div class="amount-item">
-      <label>NHIMA :</label>
-      <span>K{{ formatNumber(selectedPayslip.nhima || 0) }}</span>
-    </div>
-    <!-- ADDED PENSION DEDUCTION -->
-    <div class="amount-item">
-      <label>Pension :</label>
-      <span>K{{ formatNumber(selectedPayslip.pension || 0) }}</span>
-    </div>
-    <div class="amount-item" v-if="selectedPayslip.other_deductions > 0">
-      <label>Other Deductions:</label>
-      <span>K{{ formatNumber(selectedPayslip.other_deductions || 0) }}</span>
-    </div>
-    <div class="amount-item total">
-      <label>Total Deductions:</label>
-      <span>K{{ formatNumber(selectedPayslip.total_deductions || 0) }}</span>
-    </div>
-  </div>
-  
-  <!-- ADDED: Show pension note for full-time employees -->
-  <div v-if="selectedPayslip.employment_type === 'full_time' && (selectedPayslip.pension || 0) === 0" 
-       class="deduction-note">
-    <small>Note: Pension deduction applies to full-time employees only.</small>
-  </div>
-</section>
-          </div>
-       
-          <div class="payslip-detail__net-pay-summary">
-            <div class="net-pay-visual-card">
-              <h2>NET PAYABLE</h2>
-              <div class="net-pay-amount">K{{ formatNumber(selectedPayslip.net_pay) }}</div>
-              <p class="net-pay-words">({{ convertToWords(selectedPayslip.net_pay) }})</p>
-            </div>
-          </div>
-       
-          <footer class="payslip-detail__footer">
-            <div class="signature-block">
-              <div class="signature-line"></div>
-              <p>Authorized Signature</p>
-            </div>
-            <div class="notes-block">
-              <p><strong>Notes:</strong> This is a computer-generated payslip. Please contact HR for any discrepancies.</p>
-            </div>
-          </footer>
-        </div>
-     
-        <div class="modal-footer print-actions">
-          <button @click="downloadPayslip(selectedPayslip)" class="btn-secondary-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 11.586V3a1 1 0 112 0v8.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-            Download PDF
-          </button>
-          <button onclick="window.print()" class="btn-primary-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5 4v3H3v5h14V7h-2V4h-7V3H5zm0 14h10a1 1 0 001-1V9H4v8a1 1 0 001 1z" clip-rule="evenodd" /></svg>
-            Print
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
+<script setup>
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import axios from 'axios';
+import jsPDF from 'jspdf';
+
+// --- State ---
+const loading = ref(false);
+const error = ref(null);
+const payslips = ref([]);
+const employees = ref([]);
+const businesses = ref([]); // Store list of businesses
+const selectedPayslip = ref(null);
+const showGenerateModal = ref(false);
+const showBulkGenerate = ref(false);
+const submitting = ref(false);
+
+const filters = reactive({
+  pay_period: 'current',
+  department: '',
+  status: '',
+  custom_month: '',
+  business_id: '' // Filter for business
+});
+
+const generateForm = reactive({
+  employee_id: '',
+  pay_period_start: '',
+  pay_period_end: '',
+  payment_date: '',
+  basic_salary: 0,
+  overtime_hours: 0,
+  overtime_rate: 0
+});
+
+const bulkForm = reactive({
+  pay_period_start: '',
+  pay_period_end: '',
+  payment_date: '',
+  department: '',
+  employee_ids: []
+});
+
+// --- Lifecycle ---
+onMounted(() => {
+  initializeDates();
+  fetchBusinesses(); // Load businesses on mount
+  fetchEmployees();
+  fetchPayslips();
+});
+
+// --- Computed ---
+const getFilterDisplayText = computed(() => {
+  let text = [];
+  
+  if (filters.business_id) {
+    const b = businesses.value.find(b => b.id === filters.business_id);
+    if(b) text.push(b.name);
+  }
+
+  if (filters.pay_period === 'current') text.push('Current Month');
+  else if (filters.pay_period === 'last') text.push('Last Month');
+  else if (filters.custom_month) text.push(`Month: ${filters.custom_month}`);
+  
+  return text.length ? text.join(' • ') : 'All Records';
+});
+
+// Available employees logic now respects the Business Filter
+const availableEmployees = computed(() => {
+  return employees.value.filter(emp => 
+    !bulkForm.department || emp.department === bulkForm.department
+  );
+});
+
+// --- Methods: Data Fetching ---
+const initializeDates = () => {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const today = now.toISOString().split('T')[0];
+
+  generateForm.pay_period_start = firstDay;
+  generateForm.pay_period_end = lastDay;
+  generateForm.payment_date = today;
+
+  bulkForm.pay_period_start = firstDay;
+  bulkForm.pay_period_end = lastDay;
+  bulkForm.payment_date = today;
+};
+
+// 1. Fetch Businesses List
+const fetchBusinesses = async () => {
+  try {
+    const res = await axios.get('/api/admin/businesses');
+    businesses.value = res.data.data || res.data.businesses || res.data || [];
+  } catch (err) {
+    console.error('Failed to load businesses', err);
+  }
+};
+
+// 2. Fetch Employees (Filtered by Business)
+const fetchEmployees = async () => {
+  try {
+    const params = {};
+    if (filters.business_id) {
+      params.business_id = filters.business_id;
+    }
+    
+    const res = await axios.get('/api/admin/employees', { params });
+    employees.value = res.data.data || res.data.employees || [];
+  } catch (err) {
+    console.error('Failed to load employees', err);
+  }
+};
+
+// 3. Fetch Payslips (Filtered by Business)
+const fetchPayslips = async () => {
+  loading.value = true;
+  error.value = null;
+  try {
+    const params = {
+      department: filters.department || undefined,
+      status: filters.status || undefined,
+      business_id: filters.business_id || undefined 
+    };
+
+    if (filters.pay_period === 'current') {
+      params.pay_period = 'current';
+    } else if (filters.pay_period === 'last') {
+      params.pay_period = 'last';
+    } else if (filters.pay_period === 'custom' && filters.custom_month) {
+      const [y, m] = filters.custom_month.split('-');
+      params.start = `${y}-${m}-01`;
+      params.end = `${y}-${m}-31`; 
+    }
+
+    const res = await axios.get('/api/admin/payslips', { params });
+    payslips.value = res.data.data || res.data;
+  } catch (err) {
+    error.value = "Failed to load payslips.";
+    console.error(err);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const handleBusinessChange = () => {
+  // When business filter changes, reload everything
+  fetchEmployees();
+  fetchPayslips();
+};
+
+// --- Methods: Logic ---
+
+// UPDATED: Robust Employee Name Getter
+const getEmployeeName = (emp) => {
+  if (!emp) return 'Unknown Employee';
+  
+  // 1. Check for nested User relationship (Standard Employee model)
+  if (emp.user && emp.user.first_name) {
+    return `${emp.user.first_name} ${emp.user.last_name || ''}`.trim();
+  }
+  
+  // 2. Check for flat properties (Payslip or summary object)
+  if (emp.employee_name) return emp.employee_name;
+  if (emp.first_name) {
+    return `${emp.first_name} ${emp.last_name || ''}`.trim();
+  }
+  if (emp.name) return emp.name; // Fallback to 'name' field if it exists directly
+
+  return 'Unknown';
+};
+
+const getDynamicDeductions = (payslip) => {
+  let list = [];
+  
+  // 1. Always add PAYE if exists
+  if (payslip.paye > 0) list.push({ name: 'PAYE Tax', amount: payslip.paye });
+
+  // 2. Try to get dynamic breakdown from JSON
+  if (payslip.breakdown?.deductions_breakdown?.statutory_breakdown) {
+    payslip.breakdown.deductions_breakdown.statutory_breakdown.forEach(d => {
+      list.push({ name: d.name, amount: d.amount });
+    });
+  } 
+  // 3. Fallback to legacy fields if breakdown is missing
+  else {
+    if (payslip.napsa > 0) list.push({ name: 'NAPSA', amount: payslip.napsa });
+    if (payslip.nhima > 0) list.push({ name: 'NHIMA', amount: payslip.nhima });
+    if (payslip.pension > 0) list.push({ name: 'Pension', amount: payslip.pension });
+  }
+
+  // 4. Other deductions
+  if (payslip.other_deductions > 0) list.push({ name: 'Other Deductions', amount: payslip.other_deductions });
+
+  return list;
+};
+
+const onEmployeeSelected = (id) => {
+  const emp = employees.value.find(e => e.id == id);
+  if (emp) {
+    generateForm.basic_salary = emp.base_salary;
+  }
+};
+
+const viewPayslip = (payslip) => {
+  selectedPayslip.value = payslip;
+};
+
+const generatePayslip = async () => {
+  submitting.value = true;
+  try {
+    const payload = { ...generateForm, generate_pdf: true };
+    await axios.post('/api/admin/payslips', payload);
+    await fetchPayslips();
+    closeModals();
+    alert('Payslip Generated!');
+  } catch (err) {
+    alert(err.response?.data?.message || 'Generation failed');
+  } finally {
+    submitting.value = false;
+  }
+};
+
+const bulkGeneratePayslips = async () => {
+  submitting.value = true;
+  try {
+    const ids = availableEmployees.value.map(e => e.id);
+    
+    if (ids.length === 0) {
+      alert('No employees found to generate payslips for.');
+      submitting.value = false;
+      return;
+    }
+
+    for (const id of ids) {
+      const emp = employees.value.find(e => e.id == id);
+      await axios.post('/api/admin/payslips', {
+        employee_id: id,
+        pay_period_start: bulkForm.pay_period_start,
+        pay_period_end: bulkForm.pay_period_end,
+        payment_date: bulkForm.payment_date,
+        basic_salary: emp.base_salary,
+        generate_pdf: true
+      });
+    }
+    await fetchPayslips();
+    closeModals();
+    alert('Bulk Generation Complete');
+  } catch (err) {
+    console.error(err);
+    alert('Some payslips might have failed.');
+  } finally {
+    submitting.value = false;
+  }
+};
+
+const downloadPayslip = async (payslip) => {
+  try {
+    if (!payslip.pdf_available && !payslip.pdf_path) {
+      generateClientPdf(payslip);
+      return;
+    }
+    
+    const response = await axios.get(`/api/admin/payslips/${payslip.id}/download`, { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `payslip_${payslip.employee_id}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+  } catch (err) {
+    console.error('Download failed, trying client generation', err);
+    generateClientPdf(payslip);
+  }
+};
+
+const generateClientPdf = (payslip) => {
+  const doc = new jsPDF();
+  const companyName = payslip.business_name || 'Castle Holdings Ltd';
+  
+  doc.setFontSize(18);
+  doc.text('PAYSLIP', 105, 20, { align: 'center' });
+  
+  doc.setFontSize(12);
+  doc.text(companyName, 20, 40);
+  doc.setFontSize(10);
+  doc.text(`Period: ${formatDate(payslip.pay_period_start)} to ${formatDate(payslip.pay_period_end)}`, 20, 50);
+  doc.text(`Employee: ${getEmployeeName(payslip)}`, 20, 60);
+  
+  let y = 80;
+  doc.text('Earnings:', 20, y);
+  doc.text(`Basic: K${formatNumber(payslip.basic_salary)}`, 120, y, { align: 'right' });
+  
+  y += 10;
+  doc.text('Deductions:', 20, y);
+  
+  const deductions = getDynamicDeductions(payslip);
+  deductions.forEach(d => {
+    y += 7;
+    doc.text(`${d.name}`, 30, y);
+    doc.text(`K${formatNumber(d.amount)}`, 120, y, { align: 'right' });
+  });
+  
+  y += 15;
+  doc.setFontSize(14);
+  doc.text(`Net Pay: K${formatNumber(payslip.net_pay)}`, 120, y, { align: 'right' });
+  
+  doc.save(`payslip_client_${payslip.id}.pdf`);
+};
+
+const sendPayslip = async (payslip) => {
+  if(!confirm('Send email notification?')) return;
+  try {
+    await axios.post(`/api/admin/payslips/${payslip.id}/send`);
+    alert('Email sent.');
+  } catch (e) { alert('Failed to send email'); }
+};
+
+// --- Helpers ---
+const closeModals = () => { showGenerateModal.value = false; showBulkGenerate.value = false; };
+const formatNumber = (n) => new Intl.NumberFormat('en-ZM', { minimumFractionDigits: 2 }).format(n || 0);
+const formatDate = (d, type='full') => {
+  if(!d) return '-';
+  const date = new Date(d);
+  if(type === 'month') return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString('en-GB'); 
+};
+const formatStatus = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown';
+const convertToWords = (amount) => {
+  return `${formatNumber(amount)} Kwacha`; 
+};
+
+// Watch filters
+watch(() => filters.pay_period, fetchPayslips);
+watch(() => filters.department, fetchPayslips);
+watch(() => filters.status, fetchPayslips);
+</script>
+
 <style scoped>
-.payslip-generation {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 2rem;
-  padding: 1.5rem;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.header-content h1 {
-  margin: 0 0 0.5rem 0;
-  color: #2d3748;
-}
-
-.header-subtitle {
-  color: #718096;
-  margin: 0 0 0.5rem 0;
-}
-
-.filter-indicator {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #f0f9ff;
-  border-radius: 6px;
-  border-left: 4px solid #0ea5e9;
-}
-
-.filter-label {
-  font-weight: 600;
-  color: #0369a1;
-  font-size: 0.875rem;
-}
-
-.filter-value {
-  color: #0c4a6e;
-  font-weight: 500;
-}
-
-.header-actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.filter-controls-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.filter-group-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.filter-label {
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #4a5568;
-}
-
-.select-input,
-.date-input,
-.text-input {
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 1rem;
-}
-
-.date-input {
-  cursor: pointer;
-}
-
-.payslips-dashboard-grid {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.payslip-grid-container {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.5rem;
-}
-
-.payslip-item-card {
-  background: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid #4c51bf;
-}
-
-.card-header-status {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-}
-
-.employee-name {
-  margin: 0 0 0.5rem 0;
-  color: #2d3748;
-}
-
-.employee-meta {
-  color: #718096;
-  margin: 0 0 1rem 0;
-  font-size: 0.9rem;
-}
-
-.payslip-summary-details {
-  margin-bottom: 1.5rem;
-}
-
-.detail-pair {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.detail-label {
-  color: #4a5568;
-}
-
-.detail-value {
-  font-weight: 600;
-  color: #2d3748;
-}
-
-.net-pay-row .detail-net-pay {
-  color: #065f46;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.card-actions-footer {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-}
-
-.state-indicator {
-  text-align: center;
-  padding: 3rem;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.loading-state .spinner {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #4c51bf;
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.error-state {
-  color: #dc2626;
-}
-
-.empty-state .empty-message {
-  color: #718096;
-  margin-bottom: 1rem;
-}
-
-.status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.status-draft {
-  background-color: #fef3c7;
-  color: #92400e;
-}
-
-.status-generated {
-  background-color: #dbeafe;
-  color: #1e40af;
-}
-
-.status-paid {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-.btn-primary-icon,
-.btn-secondary-icon {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-
-.btn-primary-icon {
-  background-color: #4c51bf;
-  color: white;
-}
-
-.btn-primary-icon:hover {
-  background-color: #3e44a8;
-}
-
-.btn-secondary-icon {
-  background-color: white;
-  color: #4c51bf;
-  border: 1px solid #c3dafe;
-}
-
-.btn-secondary-icon:hover {
-  background-color: #f7fafc;
-}
-
-.btn-link-icon {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: #4c51bf;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 6px;
-  transition: background 0.2s;
-  text-decoration: none;
-}
-
-.btn-link-icon:hover {
-  background: #f7fafc;
-}
-
-.btn-send {
-  color: #059669;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-card {
-  background: white;
-  border-radius: 12px;
-  max-width: 90vw;
-  max-height: 90vh;
-  overflow-y: auto;
-  min-width: 500px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-}
-
-.large-modal {
-  min-width: 800px;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.modal-title {
-  margin: 0;
-  color: #2d3748;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: #718096;
-}
-
-.modal-body-content {
-  padding: 1.5rem;
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-group.required .form-label::after {
-  content: ' *';
-  color: #ef4444;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #4a5568;
-}
-
-.form-row-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.grid-col-2 {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.form-section-group {
-  margin: 2rem 0;
-  padding: 1.5rem;
-  background: #f7fafc;
-  border-radius: 8px;
-}
-
-.section-title {
-  margin: 0 0 1rem 0;
-  color: #2d3748;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 0.5rem;
-}
-
-.allowance-preview {
-  margin-top: 1rem;
-  padding: 1rem;
-  background: #f0f9ff;
-  border-radius: 6px;
-  border-left: 4px solid #0ea5e9;
-}
-
-.preview-title {
-  margin: 0 0 0.75rem 0;
-  color: #0369a1;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.preview-grid {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.preview-item {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.875rem;
-}
-
-.preview-label {
-  color: #4a5568;
-}
-
-.preview-value {
-  font-weight: 600;
-  color: #059669;
-}
-
-.deductions-preview {
-  padding: 1rem;
-  background: #fff7ed;
-  border-radius: 6px;
-  border-left: 4px solid #ea580c;
-}
-
-.preview-note {
-  margin: 0 0 0.75rem 0;
-  color: #9a3412;
-  font-size: 0.875rem;
-}
-
-.preview-list {
-  margin: 0;
-  padding-left: 1.25rem;
-  color: #7c2d12;
-  font-size: 0.875rem;
-}
-
-.preview-list li {
-  margin-bottom: 0.25rem;
-}
-
-.summary-preview-card {
-  background: #f0f9ff;
-  padding: 1.5rem;
-  border-radius: 8px;
-  margin: 1.5rem 0;
-  border-left: 4px solid #0ea5e9;
-}
-
-.summary-title {
-  margin: 0 0 1rem 0;
-  color: #0369a1;
-}
-
-.summary-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-}
-
-.summary-amount {
-  font-weight: 600;
-}
-
-.positive {
-  color: #059669;
-}
-
-.negative {
-  color: #dc2626;
-}
-
-.total-row .net-pay-final {
-  color: #065f46;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.form-alert-error {
-  background: #fef2f2;
-  color: #dc2626;
-  padding: 1rem;
-  border-radius: 6px;
-  margin: 1rem 0;
-  border-left: 4px solid #ef4444;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  padding: 1.5rem;
-  border-top: 1px solid #e2e8f0;
-}
-
-.btn-primary,
-.btn-secondary {
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: #4c51bf;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #3e44a8;
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #f7fafc;
-  color: #4c51bf;
-  border: 1px solid #cbd5e0;
-}
-
-.btn-secondary:hover {
-  background: #edf2f7;
-}
-
-.employee-selection-area {
-  margin-top: 1rem;
-}
-
-.selection-title {
-  margin: 1rem 0 0.5rem 0;
-  color: #2d3748;
-}
-
-.employee-tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.employee-tag-pill {
-  background: #dbeafe;
-  color: #1e40af;
-  padding: 0.5rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.remove-tag-btn {
-  background: none;
-  border: none;
-  color: inherit;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-.selection-hint {
-  color: #9ca3af;
-  font-style: italic;
-  margin: 0;
-}
-
-.employees-checkbox-list {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 0.5rem;
-}
-
-.checkbox-label-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background 0.2s;
-}
-
-.checkbox-label-card:hover {
-  background: #f7fafc;
-}
-
-.checkbox-input {
-  margin: 0;
-}
-
-.employee-details {
-  flex: 1;
-}
-
-.employee-name-label {
-  font-weight: 600;
-  color: #2d3748;
-}
-
-.employee-dept-label {
-  color: #718096;
-  font-size: 0.875rem;
-}
-
-.payslip-detail-view {
-  padding: 2rem;
-}
-
-.payslip-detail__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid #333;
-}
-
-.company-info {
-  flex: 1;
-}
-
-.company-info h2 {
-  margin: 0 0 0.5rem 0;
-  color: #2d3748;
-}
-
-.company-info p {
-  margin: 0.25rem 0;
-  color: #718096;
-  font-size: 0.9rem;
-}
-
-.payslip-title {
-  text-align: right;
-}
-
-.payslip-title h1 {
-  margin: 0 0 0.5rem 0;
-  color: #2d3748;
-  font-size: 2rem;
-}
-
-.payslip-title p {
-  margin: 0;
-  color: #718096;
-}
-
-.payslip-detail__employee-info {
-  margin-bottom: 2rem;
-}
-
-.info-section__title {
-  margin: 0 0 1rem 0;
-  color: #2d3748;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 0.5rem;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.info-item {
-  display: flex;
-  justify-content: space-between;
-}
-
-.info-item label {
-  font-weight: 600;
-  color: #4a5568;
-}
-
-.payslip-detail__earnings-deductions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  margin-bottom: 2rem;
-}
-
-.earnings-section,
-.deductions-section {
-  background: #f7fafc;
-  padding: 1.5rem;
-  border-radius: 8px;
-}
-
-.amount-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.amount-item {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.amount-item.total {
-  border-top: 2px solid #e2e8f0;
-  font-weight: 700;
-  font-size: 1.1rem;
-  margin-top: 0.5rem;
-  padding-top: 0.75rem;
-}
-
-.filler-item {
-  visibility: hidden;
-}
-
-.payslip-detail__net-pay-summary {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.net-pay-visual-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 2rem;
-  border-radius: 12px;
-  max-width: 400px;
-  margin: 0 auto;
-  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
-}
-
-.net-pay-visual-card h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.5rem;
-}
-
-.net-pay-amount {
-  font-size: 3rem;
-  font-weight: 700;
-  margin: 0 0 0.5rem 0;
-}
-
-.net-pay-words {
-  font-size: 1rem;
-  margin: 0;
-  font-style: italic;
-  opacity: 0.9;
-}
-
-.payslip-detail__footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-top: 3rem;
-  padding-top: 2rem;
-  border-top: 2px solid #e2e8f0;
-}
-
-.signature-block {
-  text-align: center;
-}
-
-.signature-line {
-  width: 200px;
-  height: 1px;
-  background: #333;
-  margin: 0 auto 0.5rem;
-}
-
-.notes-block {
-  max-width: 300px;
-  text-align: right;
-}
-
-.notes-block p {
-  margin: 0;
-  color: #718096;
-  font-size: 0.9rem;
-}
-
-.print-actions {
-  justify-content: center;
-  gap: 2rem;
-}
-
+/* Core Layout */
+.payslip-generation { max-width: 1200px; margin: 0 auto; padding: 2rem; font-family: 'Inter', sans-serif; color: #1e293b; }
+
+/* Header */
+.app-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.header-title { font-size: 1.5rem; font-weight: 700; color: #0f172a; margin: 0; }
+.header-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
+.filter-indicator { margin-top: 0.5rem; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; background: #f1f5f9; padding: 0.25rem 0.75rem; border-radius: 20px; color: #475569; }
+.header-actions { display: flex; gap: 0.75rem; }
+
+/* Controls */
+.filter-controls-card { background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+.filter-group-container { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.filter-group { flex: 1; min-width: 200px; }
+.filter-label { display: block; font-size: 0.75rem; font-weight: 600; color: #64748b; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.select-input, .date-input { width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; transition: border 0.2s; }
+.select-input:focus, .date-input:focus { border-color: #6366f1; }
+
+/* Grid */
+.payslip-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.5rem; }
+.payslip-item-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; transition: transform 0.2s, box-shadow 0.2s; }
+.payslip-item-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
+/* Card Content */
+.card-header-status { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+.employee-name { font-weight: 600; color: #0f172a; margin: 0; font-size: 1rem; }
+.employee-meta { font-size: 0.8rem; color: #64748b; margin: 0.1rem 0 0; }
+.business-tag { font-size: 0.75rem; background: #f0f9ff; color: #0284c7; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+.status-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; text-transform: uppercase; }
+.status-paid { background: #dcfce7; color: #166534; }
+.status-generated { background: #e0f2fe; color: #0369a1; }
+.status-draft { background: #fef9c3; color: #854d0e; }
+
+.payslip-summary-details { margin: 1rem 0; padding: 0.75rem; background: #f8fafc; border-radius: 8px; }
+.detail-pair { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.35rem; }
+.detail-label { color: #64748b; }
+.detail-value { font-weight: 500; color: #334155; }
+.net-pay-row { border-top: 1px dashed #cbd5e1; margin-top: 0.5rem; padding-top: 0.5rem; font-weight: 700; font-size: 0.95rem; }
+.detail-net-pay { color: #059669; }
+
+.card-actions-footer { display: flex; gap: 0.5rem; justify-content: flex-end; }
+.btn-action { padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #e2e8f0; background: white; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+.btn-action:hover { background: #f1f5f9; border-color: #cbd5e1; }
+.btn-action.download { color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
+.btn-action.view { color: #475569; }
+
+/* Buttons */
+.btn-primary-icon { background: #4f46e5; color: white; padding: 0.6rem 1.2rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+.btn-primary-icon:hover { background: #4338ca; }
+.btn-secondary-icon { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 0.6rem 1.2rem; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+.btn-secondary-icon:hover { background: #f8fafc; }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal-card { background: white; border-radius: 16px; width: 100%; max-width: 500px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
+.large-modal { max-width: 800px; }
+.modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+.modal-title { margin: 0; font-size: 1.1rem; color: #0f172a; }
+.close-btn { background: none; border: none; font-size: 1.5rem; color: #94a3b8; cursor: pointer; }
+.modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
+.modal-footer { padding: 1.25rem 1.5rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 0.75rem; background: #f8fafc; }
+
+/* Payslip View Styling */
+.payslip-branding { text-align: center; margin-bottom: 2rem; border-bottom: 2px solid #0f172a; padding-bottom: 1rem; }
+.company-details h2 { margin: 0; color: #0f172a; }
+.payslip-period-badge { margin-top: 0.5rem; display: inline-block; background: #f1f5f9; padding: 0.25rem 1rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem; }
+
+.info-grid-box { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; background: #f8fafc; padding: 1rem; border-radius: 8px; }
+.info-cell label { display: block; font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 600; margin-bottom: 0.25rem; }
+.info-cell span { font-weight: 600; color: #0f172a; font-size: 1rem; }
+
+.earnings-deductions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+.section-title { font-size: 0.9rem; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; margin-bottom: 1rem; }
+.section-title.earnings { color: #0369a1; border-color: #bae6fd; }
+.section-title.deductions { color: #be123c; border-color: #fecdd3; }
+
+.amount-item { display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.35rem 0; border-bottom: 1px dashed #f1f5f9; }
+.amount-item label { color: #475569; }
+.amount-item span { font-family: monospace; font-weight: 600; font-size: 0.95rem; }
+.amount-item.total { border-top: 2px solid #e2e8f0; margin-top: 0.5rem; padding-top: 0.5rem; font-weight: 700; font-size: 1rem; color: #0f172a; border-bottom: none; }
+
+.net-pay-banner { background: #0f172a; color: white; padding: 1.5rem; text-align: center; border-radius: 12px; }
+.net-pay-banner .label { font-size: 0.8rem; letter-spacing: 0.1em; opacity: 0.8; }
+.net-pay-banner .amount { font-size: 2.5rem; font-weight: 700; margin: 0.25rem 0; }
+.net-pay-banner .words { font-style: italic; opacity: 0.7; font-size: 0.9rem; }
+
+/* Responsive */
 @media (max-width: 768px) {
-  .payslip-generation {
-    padding: 0.5rem;
-  }
-  
-  .app-header {
-    flex-direction: column;
-    gap: 1rem;
-    text-align: center;
-  }
-  
-  .header-actions {
-    justify-content: center;
-  }
-  
-  .filter-group-container {
-    grid-template-columns: 1fr;
-  }
-  
-  .payslip-grid-container {
-    grid-template-columns: 1fr;
-  }
-  
-  .form-row-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .payslip-detail__earnings-deductions {
-    grid-template-columns: 1fr;
-  }
-  
-  .payslip-detail__header {
-    flex-direction: column;
-    text-align: center;
-  }
-  
-  .payslip-title {
-    text-align: center;
-    margin-top: 1rem;
-  }
-  
-  .payslip-detail__footer {
-    flex-direction: column;
-    gap: 2rem;
-    text-align: center;
-  }
-  
-  .notes-block {
-    text-align: center;
-  }
-  
-  .modal-card {
-    min-width: auto;
-    margin: 1rem;
-  }
-  
-  .large-modal {
-    min-width: auto;
-  }
-}
-/* Add this to your existing CSS in the <style scoped> section */
-
-.deduction-note {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background-color: #fef3c7;
-  border-left: 4px solid #f59e0b;
-  border-radius: 4px;
-}
-
-.deduction-note small {
-  color: #92400e;
-  font-size: 0.875rem;
-  font-style: italic;
-}
-/* Add this to your existing CSS in the <style scoped> section */
-
-.employment-type-indicator {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: #f0f9ff;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.indicator-label {
-  font-weight: 600;
-  color: #0369a1;
-  font-size: 0.875rem;
-}
-
-.indicator-value {
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: capitalize;
-  background-color: #e0e7ff;
-  color: #3730a3;
-}
-
-.indicator-value.full-time {
-  background-color: #d1fae5;
-  color: #065f46;
-}
-
-.pension-applies {
-  color: #059669;
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.pension-not-applies {
-  color: #dc2626;
-  font-weight: 600;
-  font-size: 0.875rem;
+  .earnings-deductions-grid { grid-template-columns: 1fr; }
+  .header-actions { flex-direction: column; }
+  .filter-group-container { flex-direction: column; }
 }
 </style>

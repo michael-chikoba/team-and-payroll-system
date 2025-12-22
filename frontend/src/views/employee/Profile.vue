@@ -1,260 +1,263 @@
 <template>
   <div class="profile-view">
-    <header class="header">
-      <h1 class="title">{{ pageName }}</h1>
-      <p class="subtitle">Manage your personal information and documents</p>
-    </header>
-   
-    <div class="content">
-      <!-- Profile Picture -->
-      <div class="profile-pic-section">
-        <div class="pic-container">
-          <img
-            :src="profilePicUrl || '/default-avatar.png'"
-            alt="Profile Picture"
-            class="profile-pic"
-            @error="handleImageError"
-          />
-          <label for="profile-pic-upload" class="pic-upload-btn">
-            📷 Change Photo
-            <input
-              id="profile-pic-upload"
-              type="file"
-              accept="image/*"
-              @change="handleProfilePicUpload"
-              ref="profilePicInput"
-            />
-          </label>
-        </div>
-        <p class="pic-info">Upload a professional photo (Max 2MB)</p>
-      </div>
-      <!-- Profile Information Form -->
-      <form @submit.prevent="updateProfile" class="profile-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label>First Name *</label>
-            <input
-              v-model="form.first_name"
-              type="text"
-              required
-              placeholder="Enter first name"
-            />
-          </div>
-          <div class="form-group">
-            <label>Last Name *</label>
-            <input
-              v-model="form.last_name"
-              type="text"
-              required
-              placeholder="Enter last name"
-            />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Email *</label>
-            <input
-              v-model="form.email"
-              type="email"
-              required
-              placeholder="employee@castleholding.co.zm"
-            />
-          </div>
-          <div class="form-group">
-            <label>Phone Number</label>
-            <input
-              v-model="form.phone"
-              type="tel"
-              placeholder="+260 97 123 4567"
-            />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Date of Birth</label>
-            <input
-              v-model="form.date_of_birth"
-              type="date"
-              :max="today"
-            />
-          </div>
-          <div class="form-group">
-            <label>National ID / Passport</label>
-            <input
-              v-model="form.national_id"
-              type="text"
-              placeholder="e.g., 234567/89/1"
-            />
-          </div>
-        </div>
-        <div class="form-group full-width">
-          <label>Address</label>
-          <textarea
-            v-model="form.address"
-            rows="3"
-            placeholder="Enter your full address in Lusaka, Zambia..."
-          ></textarea>
-        </div>
-        <div class="form-group full-width">
-          <label>Emergency Contact</label>
-          <input
-            v-model="form.emergency_contact"
-            type="text"
-            placeholder="Name and phone number"
-          />
-        </div>
-        <!-- Employee Information (Read-only) -->
-        <div v-if="employeeInfo" class="employee-info-section">
-          <h3 class="section-title">Employment Information</h3>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Employee ID</label>
-              <input :value="employeeInfo.employee_id" type="text" readonly />
-            </div>
-            <div class="form-group">
-              <label>Position</label>
-              <input :value="employeeInfo.position" type="text" readonly />
+    <div class="profile-container">
+      
+      <!-- LEFT COLUMN: Identity Card -->
+      <aside class="profile-sidebar">
+        <div class="identity-card">
+          <div class="profile-header-bg"></div>
+          
+          <div class="avatar-wrapper">
+            <div class="avatar-container">
+              <img
+                :src="profilePicUrl || '/default-avatar.png'"
+                alt="Profile"
+                class="profile-pic"
+                @error="handleImageError"
+              />
+              <!-- Upload Overlay -->
+              <label for="profile-pic-upload" class="avatar-overlay">
+                <span class="camera-icon">📷</span>
+                <span class="upload-text">Change</span>
+                <input
+                  id="profile-pic-upload"
+                  type="file"
+                  accept="image/*"
+                  @change="handleProfilePicUpload"
+                  ref="profilePicInput"
+                />
+              </label>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Department</label>
-              <input :value="employeeInfo.department" type="text" readonly />
-            </div>
-            <div class="form-group">
-              <label>Employment Type</label>
-              <input :value="formatEmploymentType(employeeInfo.employment_type)" type="text" readonly />
+
+          <div class="identity-info">
+            <h2 class="user-fullname">{{ form.first_name }} {{ form.last_name }}</h2>
+            <p class="user-email">{{ form.email }}</p>
+            <div class="user-role-badge" v-if="employeeInfo">
+              {{ employeeInfo.position }}
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Hire Date</label>
-              <input :value="formatDate(employeeInfo.hire_date)" type="text" readonly />
+
+          <div class="identity-stats" v-if="employeeInfo">
+            <div class="stat-item">
+              <span class="stat-label">ID</span>
+              <span class="stat-value">{{ employeeInfo.employee_id }}</span>
             </div>
-            <div class="form-group" v-if="employeeInfo.manager">
-              <label>Manager</label>
-              <input :value="getManagerName(employeeInfo.manager)" type="text" readonly />
+            <div class="stat-item">
+              <span class="stat-label">Dept</span>
+              <span class="stat-value">{{ employeeInfo.department }}</span>
             </div>
           </div>
         </div>
-        <div v-if="formError" class="form-error">
-          {{ formError }}
-        </div>
-        <div v-if="successMessage" class="success-message">
-          {{ successMessage }}
-        </div>
-        <div class="form-actions">
-          <button type="button" @click="resetForm" class="btn-secondary">Cancel</button>
-          <button type="submit" class="btn-primary" :disabled="updatingProfile">
-            {{ updatingProfile ? 'Updating...' : 'Update Profile' }}
+      </aside>
+
+      <!-- RIGHT COLUMN: Tabbed Content -->
+      <main class="profile-content">
+        <!-- Tab Navigation -->
+        <nav class="profile-tabs">
+          <button 
+            v-for="tab in tabs" 
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            :class="['tab-btn', { active: activeTab === tab.id }]"
+          >
+            <span class="tab-icon">{{ tab.icon }}</span>
+            {{ tab.name }}
           </button>
-        </div>
-      </form>
+        </nav>
 
-      <!-- Password Update Section -->
-      <div class="password-section">
-        <h3 class="section-title">Change Password</h3>
-        <p class="section-subtitle">Update your account password for security</p>
-        <form @submit.prevent="updatePassword" class="password-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Current Password *</label>
-              <input
-                v-model="passwordForm.current_password"
-                type="password"
-                required
-                placeholder="Enter your current password"
-              />
+        <div class="tab-panel">
+          
+          <!-- TAB 1: Edit Profile Form -->
+          <div v-if="activeTab === 'personal'" class="fade-in">
+            <div class="panel-header">
+              <h3>Personal Details</h3>
+              <p>Update your personal contact information.</p>
             </div>
-            <div class="form-group">
-              <label>New Password *</label>
-              <input
-                v-model="passwordForm.password"
-                type="password"
-                required
-                placeholder="Enter new password (min 8 chars)"
-                minlength="8"
-              />
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Confirm New Password *</label>
-            <input
-              v-model="passwordForm.password_confirmation"
-              type="password"
-              required
-              placeholder="Confirm new password"
-              :class="{ 'mismatch': passwordForm.password !== passwordForm.password_confirmation }"
-            />
-            <small v-if="passwordForm.password && passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation" class="error-small">Passwords do not match</small>
-          </div>
-          <div v-if="passwordError" class="form-error">
-            {{ passwordError }}
-          </div>
-          <div v-if="passwordSuccess" class="success-message">
-            {{ passwordSuccess }}
-          </div>
-          <div class="form-actions">
-            <button type="button" @click="resetPasswordForm" class="btn-secondary">Cancel</button>
-            <button type="submit" class="btn-primary" :disabled="updatingPassword || passwordForm.password !== passwordForm.password_confirmation">
-              {{ updatingPassword ? 'Updating...' : 'Update Password' }}
-            </button>
-          </div>
-        </form>
-      </div>
+            
+            <form @submit.prevent="updateProfile" class="modern-form">
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>First Name</label>
+                  <input v-model="form.first_name" type="text" required />
+                </div>
+                <div class="form-group">
+                  <label>Last Name</label>
+                  <input v-model="form.last_name" type="text" required />
+                </div>
+                <div class="form-group">
+                  <label>Email Address</label>
+                  <input v-model="form.email" type="email" required />
+                </div>
+                <div class="form-group">
+                  <label>Phone Number</label>
+                  <input v-model="form.phone" type="tel" />
+                </div>
+                <div class="form-group">
+                  <label>Date of Birth</label>
+                  <input v-model="form.date_of_birth" type="date" :max="today" />
+                </div>
+                <div class="form-group">
+                  <label>National ID / Passport</label>
+                  <input v-model="form.national_id" type="text" />
+                </div>
+                <div class="form-group full-width">
+                  <label>Residential Address</label>
+                  <textarea v-model="form.address" rows="2"></textarea>
+                </div>
+                <div class="form-group full-width">
+                  <label>Emergency Contact</label>
+                  <input v-model="form.emergency_contact" type="text" placeholder="Name and Phone Number" />
+                </div>
+              </div>
 
-      <!-- Documents Section -->
-      <div class="documents-section">
-        <h3 class="section-title">Official Documents</h3>
-        <p class="section-subtitle">Upload and manage your employment documents</p>
-        
-        <div class="upload-area">
-          <label for="document-upload" class="upload-btn">
-            + Upload Document
-            <input
-              id="document-upload"
-              type="file"
-              accept=".pdf,.doc,.docx,.jpg,.png"
-              multiple
-              @change="handleDocumentUpload"
-              ref="documentInput"
-            />
-          </label>
-          <p class="upload-info">Supported: PDF, DOC, Images (Max 5MB each)</p>
-        </div>
-        <div v-if="documents.length === 0" class="empty-state">
-          <p>No documents uploaded yet.</p>
-          <button @click="$refs.documentInput.click()" class="btn-primary">Upload First Document</button>
-        </div>
-        <div v-else class="documents-grid">
-          <div v-for="doc in documents" :key="doc.id" class="document-card">
-            <div class="doc-icon">{{ getFileIcon(doc.fileName) }}</div>
-            <h4 class="doc-name">{{ doc.fileName }}</h4>
-            <p class="doc-type">{{ doc.type || 'General Document' }}</p>
-            <p class="doc-date">{{ formatDate(doc.uploadDate) }}</p>
-            <div class="doc-actions">
-              <button @click="downloadDocument(doc.id)" class="action-btn download">Download</button>
-              <button @click="deleteDocument(doc.id)" class="action-btn delete">Delete</button>
+              <!-- Form Alerts -->
+              <div v-if="formError" class="alert alert-error">{{ formError }}</div>
+              <div v-if="successMessage" class="alert alert-success">{{ successMessage }}</div>
+
+              <div class="form-actions">
+                <button type="button" @click="resetForm" class="btn-ghost">Reset Changes</button>
+                <button type="submit" class="btn-primary" :disabled="updatingProfile">
+                  {{ updatingProfile ? 'Saving...' : 'Save Changes' }}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- TAB 2: Job Details (Read Only) -->
+          <div v-if="activeTab === 'job'" class="fade-in">
+            <div class="panel-header">
+              <h3>Employment Information</h3>
+              <p>Your official employment records (Read-only).</p>
+            </div>
+
+            <div v-if="employeeInfo" class="info-grid">
+              <div class="info-card">
+                <span class="info-label">Employee ID</span>
+                <span class="info-value">{{ employeeInfo.employee_id }}</span>
+              </div>
+              <div class="info-card">
+                <span class="info-label">Position</span>
+                <span class="info-value">{{ employeeInfo.position }}</span>
+              </div>
+              <div class="info-card">
+                <span class="info-label">Department</span>
+                <span class="info-value">{{ employeeInfo.department }}</span>
+              </div>
+              <div class="info-card">
+                <span class="info-label">Employment Type</span>
+                <span class="info-value">{{ formatEmploymentType(employeeInfo.employment_type) }}</span>
+              </div>
+              <div class="info-card">
+                <span class="info-label">Hire Date</span>
+                <span class="info-value">{{ formatDate(employeeInfo.hire_date) }}</span>
+              </div>
+              <div class="info-card">
+                <span class="info-label">Direct Manager</span>
+                <span class="info-value">{{ getManagerName(employeeInfo.manager) }}</span>
+              </div>
             </div>
           </div>
+
+          <!-- TAB 3: Security -->
+          <div v-if="activeTab === 'security'" class="fade-in">
+            <div class="panel-header">
+              <h3>Security Settings</h3>
+              <p>Manage your password and account security.</p>
+            </div>
+
+            <form @submit.prevent="updatePassword" class="modern-form password-form-wrapper">
+              <div class="form-group">
+                <label>Current Password</label>
+                <input v-model="passwordForm.current_password" type="password" required />
+              </div>
+              
+              <div class="password-split">
+                <div class="form-group">
+                  <label>New Password</label>
+                  <input v-model="passwordForm.password" type="password" required minlength="8" />
+                </div>
+                <div class="form-group">
+                  <label>Confirm Password</label>
+                  <input 
+                    v-model="passwordForm.password_confirmation" 
+                    type="password" 
+                    required 
+                    :class="{ 'error-border': passwordForm.password && passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation }"
+                  />
+                </div>
+              </div>
+
+              <div v-if="passwordError" class="alert alert-error">{{ passwordError }}</div>
+              <div v-if="passwordSuccess" class="alert alert-success">{{ passwordSuccess }}</div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn-primary" :disabled="updatingPassword || (passwordForm.password !== passwordForm.password_confirmation)">
+                  {{ updatingPassword ? 'Updating...' : 'Update Password' }}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- TAB 4: Documents -->
+          <div v-if="activeTab === 'documents'" class="fade-in">
+            <div class="panel-header">
+              <h3>My Documents</h3>
+              <p>Manage your official files and contracts.</p>
+            </div>
+
+            <div class="upload-zone">
+              <label for="document-upload" class="upload-trigger">
+                <div class="upload-content">
+                  <span class="upload-icon">☁️</span>
+                  <span class="upload-text">Click to upload files</span>
+                  <span class="upload-sub">PDF, DOC, JPG (Max 5MB)</span>
+                </div>
+                <input
+                  id="document-upload"
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.png"
+                  multiple
+                  @change="handleDocumentUpload"
+                  ref="documentInput"
+                />
+              </label>
+            </div>
+
+            <div v-if="documents.length > 0" class="docs-list">
+              <div v-for="doc in documents" :key="doc.id" class="doc-item">
+                <div class="doc-file-icon">{{ getFileIcon(doc.fileName) }}</div>
+                <div class="doc-details">
+                  <span class="doc-name">{{ doc.fileName }}</span>
+                  <span class="doc-meta">{{ formatDate(doc.uploadDate) }} • {{ doc.type || 'General' }}</span>
+                </div>
+                <div class="doc-tools">
+                  <button @click="downloadDocument(doc.id)" class="tool-btn download" title="Download">⬇</button>
+                  <button @click="deleteDocument(doc.id)" class="tool-btn delete" title="Delete">🗑</button>
+                </div>
+              </div>
+            </div>
+            
+            <div v-else class="empty-docs">
+              <p>No documents uploaded yet.</p>
+            </div>
+          </div>
+
         </div>
-      </div>
-      <!-- Loading State -->
-      <div v-if="loading" class="loading">
-        <div class="spinner"></div>
-        <p>Loading profile...</p>
-      </div>
-      <!-- Error State -->
-      <div v-if="error" class="error-message">
-        {{ error }}
-        <button @click="retryFetch" class="btn-primary">Retry</button>
-      </div>
+      </main>
+    </div>
+
+    <!-- Global Loading Overlay -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="spinner"></div>
     </div>
   </div>
 </template>
+
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+
 export default {
   name: 'Profile',
   setup() {
@@ -263,7 +266,14 @@ export default {
   },
   data() {
     return {
-      pageName: 'My Profile',
+      activeTab: 'personal',
+      tabs: [
+        { id: 'personal', name: 'Personal Details', icon: '👤' },
+        { id: 'job', name: 'Job Details', icon: '💼' },
+        { id: 'security', name: 'Security', icon: '🔒' },
+        { id: 'documents', name: 'Documents', icon: '📂' }
+      ],
+      // Existing data structure
       form: {
         first_name: '',
         last_name: '',
@@ -292,32 +302,26 @@ export default {
       successMessage: null,
       passwordSuccess: null,
       error: null,
-      retryCount: 0,
-      originalFormData: null,
-      originalPasswordData: null
+      originalFormData: null
     }
   },
   mounted() {
     this.fetchProfile()
   },
   methods: {
+    // --- API & LOGIC METHODS (Kept same logic, just polished) ---
     async fetchProfile(retry = false) {
       this.loading = true
       this.error = null
       try {
-        console.log('Fetching profile... (retry:', retry, ')')
         const [profileRes, docsRes] = await Promise.all([
           axios.get('/api/profile'),
           axios.get('/api/employee/documents').catch(() => ({ data: { data: [] } }))
         ])
         
-        console.log('Profile response:', profileRes.data)
-        console.log('Documents response:', docsRes.data)
-        
         const user = profileRes.data.user || profileRes.data
         const employee = profileRes.data.employee?.data || profileRes.data.employee
         
-        // Populate form with user data
         this.form = {
           first_name: user.first_name || '',
           last_name: user.last_name || '',
@@ -329,10 +333,8 @@ export default {
           emergency_contact: employee?.emergency_contact || ''
         }
         
-        // Store original data for reset
         this.originalFormData = { ...this.form }
         
-        // Store employee info separately (read-only data)
         if (employee) {
           this.employeeInfo = {
             employee_id: employee.employee_id,
@@ -340,29 +342,25 @@ export default {
             department: employee.department,
             employment_type: employee.employment_type,
             hire_date: employee.hire_date,
-            base_salary: employee.base_salary,
             manager: employee.manager
           }
         }
         
         this.profilePicUrl = employee?.profile_pic ? `/storage/${employee.profile_pic}` : ''
-        
         this.documents = docsRes.data.data || []
       } catch (err) {
-        console.error('Profile fetch error:', err)
         this.handleApiError(err, 'Failed to load profile')
       } finally {
         this.loading = false
       }
     },
-   
+
     async updateProfile() {
       this.updatingProfile = true
       this.formError = null
       this.successMessage = null
      
       try {
-        // Only send fields that have changed
         const payload = {}
         Object.keys(this.form).forEach(key => {
           if (this.form[key] !== this.originalFormData[key]) {
@@ -372,45 +370,23 @@ export default {
         
         if (Object.keys(payload).length === 0) {
           this.formError = 'No changes detected'
+          this.updatingProfile = false
           return
         }
         
-        console.log('Updating profile with:', payload)
+        await axios.put('/api/profile', payload)
         
-        const response = await axios.put('/api/profile', payload)
-        
-        console.log('Update response:', response.data)
-        
-        
-        // Update local state manually since store method may not exist
-        // If authStore has a user object, update it directly
         if (this.authStore.user) {
           this.authStore.user.first_name = this.form.first_name
           this.authStore.user.last_name = this.form.last_name
           this.authStore.user.email = this.form.email
         }
         
-        // Update original data
         this.originalFormData = { ...this.form }
-        
         this.successMessage = 'Profile updated successfully!'
-        
-        // Show notification if available
-        if (this.$notify) {
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Profile updated successfully!'
-          })
-        }
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => {
-          this.successMessage = null
-        }, 3000)
+        setTimeout(() => this.successMessage = null, 3000)
         
       } catch (err) {
-        console.error('Update error:', err)
         this.handleApiError(err, 'Failed to update profile')
       } finally {
         this.updatingProfile = false
@@ -418,50 +394,24 @@ export default {
     },
 
     async updatePassword() {
-      this.updatingPassword = true
-      this.passwordError = null
-      this.passwordSuccess = null
-
-      // Basic client-side validation
       if (this.passwordForm.password.length < 8) {
         this.passwordError = 'New password must be at least 8 characters long'
-        this.updatingPassword = false
         return
       }
       if (this.passwordForm.password !== this.passwordForm.password_confirmation) {
         this.passwordError = 'Passwords do not match'
-        this.updatingPassword = false
         return
       }
 
+      this.updatingPassword = true
+      this.passwordError = null
+      
       try {
-        console.log('Updating password...')
-        
-        const response = await axios.post('/api/profile/password', this.passwordForm)
-        
-        console.log('Password update response:', response.data)
-        
-        // Clear form
+        await axios.post('/api/profile/password', this.passwordForm)
         this.resetPasswordForm()
-        
         this.passwordSuccess = 'Password updated successfully!'
-        
-        // Show notification if available
-        if (this.$notify) {
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Password updated successfully!'
-          })
-        }
-        
-        // Clear success message after 3 seconds
-        setTimeout(() => {
-          this.passwordSuccess = null
-        }, 3000)
-        
+        setTimeout(() => this.passwordSuccess = null, 3000)
       } catch (err) {
-        console.error('Password update error:', err)
         this.handleApiError(err, 'Failed to update password', 'password')
       } finally {
         this.updatingPassword = false
@@ -469,23 +419,12 @@ export default {
     },
 
     resetPasswordForm() {
-      this.passwordForm = {
-        current_password: '',
-        password: '',
-        password_confirmation: ''
-      }
-      this.passwordError = null
-      this.passwordSuccess = null
+      this.passwordForm = { current_password: '', password: '', password_confirmation: '' }
     },
    
     async handleProfilePicUpload(event) {
       const file = event.target.files[0]
       if (!file) return
-      
-      if (file.size > 2 * 1024 * 1024) {
-        this.formError = 'Profile picture must be less than 2MB.'
-        return
-      }
       
       const formData = new FormData()
       formData.append('profile_pic', file)
@@ -494,55 +433,29 @@ export default {
         const response = await axios.post('/api/employee/profile-pic', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
-        
         this.profilePicUrl = response.data.profile_pic_url || `/storage/${response.data.profile_pic}`
-        
-        if (this.$notify) {
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Profile picture updated!'
-          })
-        }
       } catch (err) {
         this.handleApiError(err, 'Failed to upload profile picture')
       }
     },
    
     handleImageError() {
-      this.profilePicUrl = '/default-avatar.png'
+      this.profilePicUrl = '' // will fall back to default or initial in logic if handled
     },
    
     async handleDocumentUpload(event) {
       const files = Array.from(event.target.files)
       if (files.length === 0) return
-      
       this.uploadingDoc = true
       
       try {
         const formData = new FormData()
-        
-        for (const file of files) {
-          if (file.size > 5 * 1024 * 1024) {
-            this.formError = `File ${file.name} exceeds 5MB limit.`
-            continue
-          }
-          formData.append('documents', file)
-        }
+        for (const file of files) formData.append('documents', file)
         
         const response = await axios.post('/api/employee/documents', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
-        
         this.documents = [...this.documents, ...(response.data.newDocuments || [])]
-        
-        if (this.$notify) {
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: `${files.length} document(s) uploaded successfully!`
-          })
-        }
       } catch (err) {
         this.handleApiError(err, 'Failed to upload documents')
       } finally {
@@ -553,118 +466,56 @@ export default {
    
     async downloadDocument(id) {
       try {
-        const response = await axios.get(`/api/employee/documents/${id}/download`, {
-          responseType: 'blob'
-        })
-        
+        const response = await axios.get(`/api/employee/documents/${id}/download`, { responseType: 'blob' })
         const url = window.URL.createObjectURL(new Blob([response.data]))
         const link = document.createElement('a')
         link.href = url
-        link.setAttribute('download', `castle-document-${id}.pdf`)
+        link.setAttribute('download', `document-${id}.pdf`)
         document.body.appendChild(link)
         link.click()
         link.remove()
-        window.URL.revokeObjectURL(url)
       } catch (err) {
-        this.handleApiError(err, 'Failed to download document')
+        console.error(err)
       }
     },
    
     async deleteDocument(id) {
-      if (!confirm('Are you sure you want to delete this document?')) return
-      
+      if (!confirm('Delete this document?')) return
       try {
         await axios.delete(`/api/employee/documents/${id}`)
         this.documents = this.documents.filter(doc => doc.id !== id)
-        
-        if (this.$notify) {
-          this.$notify({
-            type: 'success',
-            title: 'Success',
-            text: 'Document deleted successfully!'
-          })
-        }
       } catch (err) {
-        this.handleApiError(err, 'Failed to delete document')
+        console.error(err)
       }
     },
    
     resetForm() {
-      if (this.originalFormData) {
-        this.form = { ...this.originalFormData }
-      } else {
-        this.fetchProfile()
-      }
+      if (this.originalFormData) this.form = { ...this.originalFormData }
       this.formError = null
-      this.successMessage = null
     },
    
     getFileIcon(fileName) {
       const ext = fileName.split('.').pop()?.toLowerCase()
-      const icons = {
-        pdf: '📄',
-        doc: '📝',
-        docx: '📝',
-        jpg: '🖼️',
-        jpeg: '🖼️',
-        png: '🖼️'
-      }
+      const icons = { pdf: '📄', doc: '📝', docx: '📝', jpg: '🖼️', png: '🖼️' }
       return icons[ext] || '📎'
     },
-   
-    retryFetch() {
-      this.retryCount++
-      if (this.retryCount <= 3) {
-        this.fetchProfile(true)
-      } else {
-        this.error = 'Max retries exceeded. Please refresh the page.'
-      }
-    },
-   
-    handleApiError(err, defaultMsg = 'An error occurred', target = 'form') {
-      let errorMsg = defaultMsg
-     
-      if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error')) {
-        errorMsg = 'Network error. Check your connection.'
-      } else if (err.response?.status === 401) {
-        errorMsg = 'Session expired. Redirecting to login...'
-        this.authStore.clearAuth()
-        this.$router.push({ name: 'login' })
-        return
-      } else if (err.response?.status === 403) {
-        errorMsg = 'Access denied.'
-      } else if (err.response?.status === 422) {
-        errorMsg = err.response.data.message || 'Please check the form for errors.'
-        if (err.response.data.errors) {
-          const errors = Object.values(err.response.data.errors).flat()
-          errorMsg = errors.join(', ')
-        }
-      } else if (err.response?.data?.message) {
-        errorMsg = err.response.data.message
-      }
+    
+    handleApiError(err, defaultMsg, target = 'form') {
+      let msg = defaultMsg
+      if (err.response?.data?.message) msg = err.response.data.message
       
-      if (target === 'password') {
-        this.passwordError = errorMsg
-      } else {
-        this.formError = errorMsg
-        this.error = errorMsg
-      }
+      if (target === 'password') this.passwordError = msg
+      else this.formError = msg
     },
    
     formatDate(date) {
       if (!date) return 'N/A'
-      return new Date(date).toLocaleDateString('en-ZM', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })
+      return new Date(date).toLocaleDateString('en-ZM', { year: 'numeric', month: 'short', day: 'numeric' })
     },
    
     formatEmploymentType(type) {
       if (!type) return 'N/A'
-      return type.split('_').map(word =>
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ')
+      return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     },
    
     getManagerName(manager) {
@@ -674,351 +525,513 @@ export default {
   }
 }
 </script>
+
 <style scoped>
+/* --- Layout & Variables --- */
 .profile-view {
-  padding: 2rem;
-  max-width: 1000px;
-  margin: 0 auto;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   min-height: 100vh;
-}
-.header {
-  background: white;
+  background-color: #f3f4f6; /* Light gray background */
   padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  text-align: center;
-  margin-bottom: 2rem;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1f2937;
 }
-.title {
-  margin: 0 0 0.5rem;
-  font-size: 2.5rem;
-  font-weight: 300;
-  color: #2c3e50;
+
+.profile-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 2rem;
+  align-items: start;
 }
-.subtitle {
-  margin: 0;
-  color: #7f8c8d;
-  font-size: 1.1rem;
-}
-.content {
+
+/* --- Left Sidebar: Identity Card --- */
+.identity-card {
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  padding: 2rem;
-  margin-bottom: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  position: sticky;
+  top: 2rem;
 }
-.profile-pic-section {
-  text-align: center;
-  margin-bottom: 2rem;
+
+.profile-header-bg {
+  height: 100px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
-.pic-container {
+
+.avatar-wrapper {
+  margin-top: -50px;
+  display: flex;
+  justify-content: center;
+}
+
+.avatar-container {
   position: relative;
-  display: inline-block;
-  margin-bottom: 1rem;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 4px solid white;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  background: #e5e7eb;
 }
+
 .profile-pic {
-  width: 150px;
-  height: 150px;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
-  border: 4px solid #e2e8f0;
 }
-.pic-upload-btn {
+
+/* Profile Hover Overlay */
+.avatar-overlay {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
   cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 500;
-  transition: transform 0.2s ease;
+  font-size: 0.8rem;
 }
-.pic-upload-btn:hover {
-  transform: scale(1.05);
+
+.avatar-container:hover .avatar-overlay {
+  opacity: 1;
 }
-.pic-upload-btn input {
+
+.avatar-overlay input {
   display: none;
 }
-.pic-info {
-  color: #7f8c8d;
+
+.identity-info {
+  text-align: center;
+  padding: 1rem 1.5rem;
+}
+
+.user-fullname {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.user-email {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.user-role-badge {
+  display: inline-block;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+}
+
+.identity-stats {
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  padding: 1rem 0;
+}
+
+.stat-item {
+  flex: 1;
+  text-align: center;
+  border-right: 1px solid #f3f4f6;
+}
+
+.stat-item:last-child {
+  border-right: none;
+}
+
+.stat-label {
+  display: block;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  display: block;
+  font-weight: 600;
+  color: #374151;
   font-size: 0.9rem;
 }
-.profile-form, .password-form {
+
+/* --- Right Content: Tabs & Panels --- */
+.profile-content {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  min-height: 500px;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0 1rem;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  padding: 1rem 1.5rem;
+  font-size: 0.95rem;
+  color: #6b7280;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tab-btn:hover {
+  color: #4f46e5;
+}
+
+.tab-btn.active {
+  color: #4f46e5;
+  border-bottom-color: #4f46e5;
+}
+
+.tab-panel {
+  padding: 2rem;
+  flex: 1;
+}
+
+.panel-header {
+  margin-bottom: 2rem;
+}
+
+.panel-header h3 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 0.5rem;
+}
+
+.panel-header p {
+  color: #6b7280;
+  margin: 0;
+}
+
+/* --- Forms --- */
+.modern-form {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  margin-bottom: 2rem;
 }
-.form-row {
+
+.form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
 }
+
 .form-group {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
 }
+
 .form-group.full-width {
   grid-column: 1 / -1;
 }
-.form-group label {
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #4a5568;
+
+label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
 }
-.form-group input,
-.form-group textarea {
+
+input, textarea {
   padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  transition: all 0.2s;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.error-border {
+  border-color: #ef4444 !important;
+}
+
+/* --- Info Cards (Job Details) --- */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.info-card {
+  background: #f9fafb;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #f3f4f6;
+}
+
+.info-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+
+.info-value {
+  font-weight: 600;
+  color: #1f2937;
   font-size: 1rem;
 }
-.form-group input:read-only {
-  background-color: #f7fafc;
-  cursor: not-allowed;
-}
-.form-group input:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-.mismatch {
-  border-color: #dc3545 !important;
-}
-.error-small {
-  color: #dc3545;
-  font-size: 0.8rem;
-  margin-top: 0.25rem;
-}
-.employee-info-section {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 1.5rem;
-  margin-top: 1.5rem;
-}
-.password-section {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 2rem;
-  margin-top: 2rem;
-}
-.form-error {
-  background: #fee;
-  color: #c33;
-  padding: 0.75rem;
-  border-radius: 6px;
-  border-left: 4px solid #dc3545;
-}
-.success-message {
-  background: #d4edda;
-  color: #155724;
-  padding: 0.75rem;
-  border-radius: 6px;
-  border-left: 4px solid #28a745;
-}
+
+/* --- Actions & Buttons --- */
 .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #f3f4f6;
 }
-.documents-section {
-  border-top: 1px solid #e2e8f0;
-  padding-top: 2rem;
-}
-.section-title {
-  margin: 0 0 0.5rem;
-  color: #2c3e50;
-  font-size: 1.5rem;
-}
-.section-subtitle {
-  margin: 0 0 1.5rem;
-  color: #7f8c8d;
-}
-.upload-area {
-  text-align: center;
-  padding: 2rem;
-  border: 2px dashed #e2e8f0;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  transition: border-color 0.2s ease;
-}
-.upload-area:hover {
-  border-color: #667eea;
-}
-.upload-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 1rem 2rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: 1.1rem;
-  transition: transform 0.2s ease;
-}
-.upload-btn:hover {
-  transform: translateY(-2px);
-}
-.upload-btn input {
-  display: none;
-}
-.upload-info {
-  color: #7f8c8d;
-  font-size: 0.9rem;
-  margin-top: 0.5rem;
-}
-.empty-state {
-  text-align: center;
-  padding: 2rem;
-  color: #7f8c8d;
-}
-.documents-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1rem;
-}
-.document-card {
-  background: #f8f9fa;
-  padding: 1.5rem;
-  border-radius: 8px;
-  text-align: center;
-  border: 1px solid #e2e8f0;
-  transition: box-shadow 0.2s ease;
-}
-.document-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-.doc-icon {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-}
-.doc-name {
-  margin: 0 0 0.25rem;
-  font-weight: 600;
-  color: #2c3e50;
-  font-size: 0.95rem;
-  word-break: break-all;
-}
-.doc-type {
-  margin: 0 0 0.5rem;
-  color: #7f8c8d;
-  font-size: 0.85rem;
-}
-.doc-date {
-  margin: 0 0 1rem;
-  color: #718096;
-  font-size: 0.8rem;
-}
-.doc-actions {
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-}
-.action-btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-.action-btn.download {
-  background: #28a745;
-  color: white;
-}
-.action-btn.download:hover {
-  background: #218838;
-}
-.action-btn.delete {
-  background: #dc3545;
-  color: white;
-}
-.action-btn.delete:hover {
-  background: #c82333;
-}
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  text-align: center;
-}
-.spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #667eea;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-.error-message {
-  background: #fee;
-  color: #c33;
-  padding: 1rem;
-  border-radius: 8px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-}
-.btn-primary, .btn-secondary {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 8px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: transform 0.2s ease;
-}
+
 .btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #4f46e5;
   color: white;
+  border: none;
+  padding: 0.6rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
 }
+
 .btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
+  background: #4338ca;
 }
+
 .btn-primary:disabled {
-  opacity: 0.6;
+  background: #a5b4fc;
   cursor: not-allowed;
 }
-.btn-secondary {
-  background: #e2e8f0;
-  color: #4a5568;
+
+.btn-ghost {
+  background: transparent;
+  color: #6b7280;
+  border: none;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
 }
-.btn-secondary:hover {
-  background: #cbd5e0;
+
+.btn-ghost:hover {
+  color: #1f2937;
+  background: #f3f4f6;
+  border-radius: 8px;
 }
+
+/* --- Alerts --- */
+.alert {
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.alert-error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.alert-success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+/* --- Documents Section --- */
+.upload-zone {
+  margin-bottom: 2rem;
+}
+
+.upload-trigger {
+  display: block;
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-trigger:hover {
+  border-color: #4f46e5;
+  background: #f5f3ff;
+}
+
+.upload-trigger input {
+  display: none;
+}
+
+.upload-icon {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.upload-text {
+  display: block;
+  font-weight: 600;
+  color: #4f46e5;
+}
+
+.upload-sub {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+.docs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.doc-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: box-shadow 0.2s;
+}
+
+.doc-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  border-color: #d1d5db;
+}
+
+.doc-file-icon {
+  font-size: 1.5rem;
+  margin-right: 1rem;
+}
+
+.doc-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.doc-name {
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.doc-meta {
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.doc-tools {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tool-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.download {
+  background: #f0fdf4;
+  color: #166534;
+}
+.download:hover { background: #dcfce7; }
+
+.delete {
+  background: #fef2f2;
+  color: #991b1b;
+}
+.delete:hover { background: #fee2e2; }
+
+/* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
-  .form-row {
+  .profile-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .identity-card {
+    position: static;
+  }
+  
+  .form-grid, .info-grid {
     grid-template-columns: 1fr;
   }
   
-  .profile-pic {
-    width: 120px;
-    height: 120px;
+  .profile-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
   }
-  
-  .documents-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .doc-actions {
-    flex-direction: column;
-  }
-  
-  .content {
-    padding: 1.5rem;
-  }
+}
+
+/* --- Utilities --- */
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.loading-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

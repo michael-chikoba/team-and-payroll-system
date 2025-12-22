@@ -9,7 +9,6 @@ use App\Models\Employee;
 use App\Models\Payroll;
 use App\Models\Payslip;
 use App\Services\PayrollCalculationService;
-use App\Models\TaxConfiguration;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -24,7 +23,6 @@ class PayrollController extends Controller
         $period = $validated['payroll_period'];
         $adjustments = $validated['adjustments'] ?? [];
 
-        // Find or create payroll
         $payroll = Payroll::firstOrCreate(
             ['payroll_period' => $period],
             [
@@ -36,7 +34,6 @@ class PayrollController extends Controller
 
         try {
             $employeeIds = $validated['employee_ids'] ?? [];
-            
             if (empty($employeeIds)) {
                 $employeeIds = Employee::pluck('id')->toArray();
             }
@@ -44,39 +41,23 @@ class PayrollController extends Controller
             $processedCount = 0;
             foreach ($employeeIds as $empId) {
                 $employee = Employee::find($empId);
-                
-                if (!$employee) {
-                    continue;
-                }
+                if (!$employee) continue;
 
-                // Get adjustments for this employee
                 $employeeAdjustments = $adjustments[$empId] ?? [];
-
-                // Check if payslip already exists
-                $payslip = Payslip::where('payroll_id', $payroll->id)
-                    ->where('employee_id', $empId)
-                    ->first();
+                $payslip = Payslip::where('payroll_id', $payroll->id)->where('employee_id', $empId)->first();
 
                 if ($payslip) {
-                    // Update existing payslip to 'paid' and apply adjustments
                     if (!empty($employeeAdjustments)) {
                         $this->applyAdjustmentsToPayslip($payslip, $employeeAdjustments);
                     }
                     $payslip->status = 'paid';
                     $payslip->save();
                 } else {
-                    // Create new payslip with 'paid' status and adjustments
-                    if (!empty($employeeAdjustments)) {
-                        $this->payrollService->createPayslipWithAdjustments($employee, $payroll, 'paid', $employeeAdjustments);
-                    } else {
-                        $this->payrollService->createPayslip($employee, $payroll, 'paid');
-                    }
+                    $this->payrollService->createPayslipWithAdjustments($employee, $payroll, 'paid', $employeeAdjustments);
                 }
-                
                 $processedCount++;
             }
 
-            // Update totals and mark as completed
             $this->payrollService->updatePayrollTotals($payroll);
             $payroll->status = 'completed';
             $payroll->processed_at = now();
@@ -88,59 +69,96 @@ class PayrollController extends Controller
                 'processed_count' => $processedCount,
             ]);
         } catch (\Exception $e) {
-            \Log::error('Payroll processing failed', [
-                'error' => $e->getMessage(),
-                'payroll_id' => $payroll->id,
-                'period' => $period,
-            ]);
-
-            if ($payroll->status === 'draft') {
-                $payroll->update(['status' => 'failed']);
-            }
-            
-            return response()->json([
-                'message' => 'Failed to process payroll: ' . $e->getMessage()
-            ], 500);
+            \Log::error('Payroll processing failed', ['error' => $e->getMessage()]);
+            return response()->json(['message' => 'Failed to process payroll: ' . $e->getMessage()], 500);
         }
     }
 
-    /**
- * Apply adjustments to existing payslip (UPDATED WITH PENSION)
- */
-private function applyAdjustmentsToPayslip(Payslip $payslip, array $adjustments): void
-{
-    $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
-    $deductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
-    
-    // Update gross salary with bonuses
-    $payslip->gross_salary += $bonuses;
-    $payslip->bonuses += $bonuses;
-    
-    // Update other_deductions with additional deductions
-    $payslip->other_deductions += $deductions;
-    
-    // Recalculate total deductions (NOW INCLUDING PENSION)
-    $payslip->total_deductions = $payslip->paye 
-        + $payslip->napsa 
-        + $payslip->nhima 
-        + ($payslip->pension ?? 0) // ADDED PENSION
-        + $payslip->other_deductions;
-    
-    $payslip->net_pay = $payslip->gross_salary - $payslip->total_deductions;
-    
-    // Store adjustments in breakdown
-    $breakdown = $payslip->breakdown ?? [];
-    $breakdown['adjustments'] = $adjustments;
-    $breakdown['adjustments_applied'] = [
-        'total_bonuses' => $bonuses,
-        'total_additional_deductions' => $deductions,
-        'net_effect' => $bonuses - $deductions
-    ];
-    
-    $payslip->breakdown = $breakdown;
-}
+    private function applyAdjustmentsToPayslip(Payslip $payslip, array $adjustments): void
+    {
+        $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
+        $deductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
+        
+        $payslip->gross_salary += $bonuses;
+        $payslip->bonuses += $bonuses;
+        $payslip->other_deductions += $deductions;
+        
+        // Recalculate total deductions based on stored dynamic breakdown if available
+        // If the breakdown exists, we sum the statutory deduction amounts from it
+        $statutoryTotal = 0;
+        if (isset($payslip->breakdown['deductions_breakdown']['statutory_total'])) {
+            $statutoryTotal = $payslip->breakdown['deductions_breakdown']['statutory_total'];
+        } else {
+            // Fallback for old records
+            $statutoryTotal = ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0) + ($payslip->pension ?? 0);
+        }
 
-    public function updateStatus(Request $request): JsonResponse
+        $payslip->total_deductions = $payslip->paye + $statutoryTotal + $payslip->other_deductions;
+        $payslip->net_pay = $payslip->gross_salary - $payslip->total_deductions;
+        
+        $breakdown = $payslip->breakdown ?? [];
+        $breakdown['adjustments'] = $adjustments;
+        $payslip->breakdown = $breakdown;
+    }
+
+    // ... updateStatus, employeesSummary (similar logic to previous) ...
+
+    public function employeesSummary(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'payroll_period' => 'required|string',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'per_page' => 'integer|min:1|max:1000',
+            'business_id' => 'nullable|integer',
+        ]);
+
+        $period = $validated['payroll_period'];
+        $businessId = $validated['business_id'] ?? null;
+
+        $payroll = Payroll::firstOrCreate(['payroll_period' => $period], [
+            'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'],
+            'status' => 'draft',
+        ]);
+
+        $employeeQuery = Employee::with('user');
+        if ($businessId) $employeeQuery->where('business_id', $businessId);
+        $employees = $employeeQuery->get();
+
+        $summaryData = [];
+        foreach ($employees as $employee) {
+            $payslip = Payslip::where('payroll_id', $payroll->id)->where('employee_id', $employee->id)->first();
+
+            if ($payslip) {
+                $payslipData = $this->formatDetailedPayslip($payslip);
+                $status = $payslip->status;
+            } else {
+                $previewData = $this->payrollService->generatePayslipPreview($employee, $payroll);
+                $payslipData = $this->formatPreviewPayslip($previewData, $employee, $payroll);
+                $status = 'pending';
+            }
+
+            $summaryData[] = [
+                'id' => $employee->id,
+                'name' => $employee->user ? $employee->user->first_name . ' ' . $employee->user->last_name : 'Unknown',
+                'position' => $employee->position ?? 'Unassigned',
+                'business_name' => $employee->business?->name ?? 'No Business',
+                'base_salary' => (float) $employee->base_salary,
+                'gross_salary' => (float) ($payslipData['summary']['gross_pay'] ?? 0),
+                'net_pay' => (float) ($payslipData['summary']['net_pay'] ?? 0),
+                'payroll_status' => $status,
+                'pay_period' => $period,
+                'payslip_data' => $payslipData,
+            ];
+        }
+
+        return response()->json([
+            'data' => $summaryData,
+            'payroll_id' => $payroll->id,
+        ]);
+    }
+      public function updateStatus(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'employee_ids' => 'required|array|min:1',
@@ -232,226 +250,116 @@ private function applyAdjustmentsToPayslip(Payslip $payslip, array $adjustments)
         ]);
     }
 
-   /**
- * Get payroll summary for employees in a period with pre-calculated values
- * This endpoint ensures all calculations are done backend-side
- */
-public function employeesSummary(Request $request): JsonResponse
-{
-    $validated = $request->validate([
-        'payroll_period' => 'required|string',
-        'start_date' => 'required|date',
-        'end_date' => 'required|date|after_or_equal:start_date',
-        'per_page' => 'integer|min:1|max:1000',
-        'business_id' => 'nullable|integer|exists:businesses,id', // Add this line
-    ]);
-
-    $period = $validated['payroll_period'];
-    $startDate = $validated['start_date'];
-    $endDate = $validated['end_date'];
-    $businessId = $validated['business_id'] ?? null; // Get business_id
-
-    // Find or create payroll for the period
-    $payroll = Payroll::firstOrCreate(
-        ['payroll_period' => $period],
-        [
-            'start_date' => $startDate,
-            'end_date' => $endDate,
-            'status' => 'draft',
-        ]
-    );
-
-    // Get employees with optional business filter
-    $employeeQuery = Employee::with('user');
     
-    if ($businessId) {
-        $employeeQuery->where('business_id', $businessId);
-    }
-    
-    $employees = $employeeQuery->get();
 
-    $summaryData = [];
-    foreach ($employees as $employee) {
-        // Find existing payslip
-        $payslip = Payslip::where('payroll_id', $payroll->id)
-            ->where('employee_id', $employee->id)
-            ->first();
-
-        if ($payslip) {
-            // Use existing payslip data
-            $payslipData = $this->formatDetailedPayslip($payslip);
-            $payrollStatus = $payslip->status ?? 'pending';
-        } else {
-            // Generate preview data (no save)
-            $previewData = $this->payrollService->generatePayslipPreview($employee, $payroll);
-            $payslipData = $this->formatPreviewPayslip($previewData, $employee, $payroll);
-            $payrollStatus = 'pending'; // Default for preview
-        }
-
-        $summaryData[] = [
-            'id' => $employee->id,
-            'name' => ($employee->user ? $employee->user->first_name . ' ' . $employee->user->last_name : 'Unknown Employee'),
-            'email' => $employee->user?->email,
-            'position' => $employee->position ?? $employee->department ?? 'Unassigned',
-            'department' => $employee->department ?? 'N/A',
-            'business_id' => $employee->business_id,
-            'business_name' => $employee->business?->name ?? 'No Business',
-            'base_salary' => (float) ($employee->base_salary ?? 0),
-            'transport_allowance' => (float) ($employee->transport_allowance ?? 0),
-            'lunch_allowance' => (float) ($employee->lunch_allowance ?? 0),
-            'gross_salary' => (float) ($payslipData['summary']['gross_pay'] ?? 0),
-            'net_pay' => (float) ($payslipData['summary']['net_pay'] ?? 0),
-            'payroll_status' => $payrollStatus,
-            'pay_period' => $period,
-            'payslip_data' => $payslipData,
-            'is_preview' => !isset($payslip),
-        ];
-    }
-
-    return response()->json([
-        'data' => $summaryData,
-        'payroll_period' => $period,
-        'payroll_id' => $payroll->id,
-        'total_employees' => count($summaryData),
-        'filter_business_id' => $businessId,
-        'filter_business_name' => $businessId ? \App\Models\Business::find($businessId)?->name : 'All Businesses',
-    ]);
-}
-
-    /**
-     * Format preview payslip data to match detailed format
-     */
-   /**
- * Format preview payslip data to match detailed format (UPDATED WITH PENSION)
- */
-private function formatPreviewPayslip(array $previewData, Employee $employee, Payroll $payroll): array
-{
-    return [
-        'id' => null, // No ID for preview
-        'employee' => [
-            'id' => $employee->id,
-            'employee_id' => $employee->employee_id,
-            'name' => $employee->user ? $employee->user->first_name . ' ' . $employee->user->last_name : 'Unknown Employee',
-            'email' => $employee->user?->email,
-            'department' => $employee->department,
-            'position' => $employee->position,
-            'employment_type' => $employee->employment_type, // ADDED
-        ],
-        'period' => [
-            'payroll_period' => $payroll->payroll_period,
-            'start_date' => $payroll->start_date->format('Y-m-d'),
-            'end_date' => $payroll->end_date->format('Y-m-d'),
-            'payment_date' => $payroll->end_date->format('Y-m-d'),
-        ],
-        'earnings' => $previewData['earnings'] ?? [],
-        'deductions' => $previewData['deductions'] ?? [], // Already includes pension from calculatePayslipData
-        'summary' => $previewData['summary'] ?? [],
-        'status' => 'pending',
-        'calculation_breakdown' => $previewData['breakdown'] ?? [],
-        'pdf_available' => false,
-        'created_at' => now()->format('Y-m-d H:i:s'),
-        'is_preview' => true,
-    ];
-}
-
-    /**
-     * Get detailed view of employee payslip for a specific period
-     */
     public function viewEmployeePayslip(Request $request, int $employeeId): JsonResponse
     {
-        $validated = $request->validate([
-            'payroll_period' => 'required|string',
-        ]);
-
+        $payrollPeriod = $request->query('payroll_period');
         $employee = Employee::with('user')->findOrFail($employeeId);
         
-        // Find payroll for the period
-        $payroll = Payroll::where('payroll_period', $validated['payroll_period'])->first();
+        $payroll = Payroll::where('payroll_period', $payrollPeriod)->first();
         if (!$payroll) {
-            return response()->json([
-                'message' => 'No payroll found for this period',
-                'data' => null
-            ], 404);
+            return response()->json(['message' => 'No payroll found', 'data' => null], 404);
         }
 
-        // Find or generate payslip data
-        $payslip = Payslip::where('payroll_id', $payroll->id)
-            ->where('employee_id', $employeeId)
-            ->first();
+        $payslip = Payslip::where('payroll_id', $payroll->id)->where('employee_id', $employeeId)->first();
 
         if (!$payslip) {
-            // Generate preview without saving
             $payslipData = $this->payrollService->generatePayslipPreview($employee, $payroll);
-            
             return response()->json([
-                'message' => 'Payslip preview generated (not yet processed)',
                 'data' => $this->formatPreviewPayslip($payslipData, $employee, $payroll),
                 'is_preview' => true
             ]);
         }
 
-        // Return actual payslip with full breakdown
-        $formattedPayslip = $this->formatDetailedPayslip($payslip);
         return response()->json([
-            'data' => $formattedPayslip,
+            'data' => $this->formatDetailedPayslip($payslip),
             'is_preview' => false
         ]);
     }
 
     /**
- * Format detailed payslip with full breakdown (UPDATED WITH PENSION)
- */
-private function formatDetailedPayslip(Payslip $payslip): array
-{
-    $breakdown = $payslip->breakdown ?? [];
-    
-    return [
-        'id' => $payslip->id,
-        'employee' => [
-            'id' => $payslip->employee->id,
-            'employee_id' => $payslip->employee->employee_id,
-            'name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
-            'email' => $payslip->employee->user->email,
-            'department' => $payslip->employee->department,
-            'position' => $payslip->employee->position,
-            'employment_type' => $payslip->employee->employment_type, // ADDED
-        ],
-        'period' => [
-            'payroll_period' => $payslip->payroll->payroll_period,
-            'start_date' => $payslip->pay_period_start?->format('Y-m-d'),
-            'end_date' => $payslip->pay_period_end?->format('Y-m-d'),
-            'payment_date' => $payslip->payment_date?->format('Y-m-d'),
-        ],
-        'earnings' => [
-            'basic_salary' => (float) $payslip->basic_salary,
-            'house_allowance' => (float) $payslip->house_allowance,
-            'transport_allowance' => (float) $payslip->transport_allowance,
-            'lunch_allowance' => (float) $payslip->other_allowances,
-            'overtime_hours' => (float) $payslip->overtime_hours,
-            'overtime_rate' => (float) $payslip->overtime_rate,
-            'overtime_pay' => (float) $payslip->overtime_pay,
-            'bonuses' => (float) ($payslip->bonuses ?? 0),
-            'gross_salary' => (float) $payslip->gross_salary,
-        ],
-        'deductions' => [
-            'paye' => (float) $payslip->paye,
-            'napsa' => (float) $payslip->napsa,
-            'nhima' => (float) $payslip->nhima,
-            'pension' => (float) ($payslip->pension ?? 0), // ADDED PENSION
-            'other_deductions' => (float) $payslip->other_deductions,
-            'total_deductions' => (float) $payslip->total_deductions,
-        ],
-        'summary' => [
-            'gross_pay' => (float) $payslip->gross_salary,
-            'total_deductions' => (float) $payslip->total_deductions,
-            'net_pay' => (float) $payslip->net_pay,
-        ],
-        'status' => $payslip->status,
-        'calculation_breakdown' => $breakdown,
-        'pdf_available' => !empty($payslip->pdf_path) && \Storage::exists($payslip->pdf_path),
-        'created_at' => $payslip->created_at->format('Y-m-d H:i:s'),
-    ];
-}
+     * Format PREVIEW data (Generic Statutory Array)
+     */
+    private function formatPreviewPayslip(array $previewData, Employee $employee, Payroll $payroll): array
+    {
+        return [
+            'id' => null,
+            'employee' => [
+                'name' => $employee->user ? $employee->user->first_name . ' ' . $employee->user->last_name : 'Unknown',
+                'department' => $employee->department,
+                'position' => $employee->position,
+            ],
+            'period' => [
+                'payroll_period' => $payroll->payroll_period,
+                'start_date' => $payroll->start_date->format('Y-m-d'),
+                'end_date' => $payroll->end_date->format('Y-m-d'),
+            ],
+            'earnings' => $previewData['earnings'],
+            'deductions' => [
+                'paye' => $previewData['deductions']['paye'],
+                'statutory' => $previewData['deductions']['statutory_breakdown'] ?? [], // Dynamic Array
+                'other_deductions' => $previewData['deductions']['other_deductions'],
+                'total_deductions' => $previewData['deductions']['total_deductions'],
+            ],
+            'summary' => $previewData['summary'],
+            'status' => 'pending',
+        ];
+    }
+
+    /**
+     * Format DETAILED Payslip from DB (Hybrid: Legacy + Dynamic)
+     */
+    private function formatDetailedPayslip(Payslip $payslip): array
+    {
+        $breakdown = $payslip->breakdown ?? [];
+        
+        // Try to get dynamic deductions from stored breakdown
+        $statutory = $breakdown['deductions_breakdown']['statutory_breakdown'] ?? [];
+        
+        // If empty (old record), reconstruct basic list from legacy columns
+        if (empty($statutory)) {
+            if ($payslip->napsa > 0) $statutory[] = ['name' => 'NAPSA', 'amount' => $payslip->napsa];
+            if ($payslip->nhima > 0) $statutory[] = ['name' => 'NHIMA', 'amount' => $payslip->nhima];
+            if ($payslip->pension > 0) $statutory[] = ['name' => 'Pension', 'amount' => $payslip->pension];
+        }
+
+        return [
+            'id' => $payslip->id,
+            'employee' => [
+                'name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
+                'department' => $payslip->employee->department,
+                'position' => $payslip->employee->position,
+            ],
+            'period' => [
+                'payroll_period' => $payslip->payroll->payroll_period,
+                'start_date' => $payslip->pay_period_start?->format('Y-m-d'),
+                'end_date' => $payslip->pay_period_end?->format('Y-m-d'),
+            ],
+            'earnings' => [
+                'basic_salary' => (float) $payslip->basic_salary,
+                'house_allowance' => (float) $payslip->house_allowance,
+                'transport_allowance' => (float) $payslip->transport_allowance,
+                'lunch_allowance' => (float) $payslip->other_allowances,
+                'overtime_pay' => (float) $payslip->overtime_pay,
+                'bonuses' => (float) $payslip->bonuses,
+                'gross_salary' => (float) $payslip->gross_salary,
+            ],
+            'deductions' => [
+                'paye' => (float) $payslip->paye,
+                'statutory' => $statutory, // Dynamic List of {name, amount}
+                'other_deductions' => (float) $payslip->other_deductions,
+                'total_deductions' => (float) $payslip->total_deductions,
+            ],
+            'summary' => [
+                'gross_pay' => (float) $payslip->gross_salary,
+                'total_deductions' => (float) $payslip->total_deductions,
+                'net_pay' => (float) $payslip->net_pay,
+            ],
+            'status' => $payslip->status,
+            'pdf_available' => !empty($payslip->pdf_path),
+        ];
+    }
 
     public function history(Request $request): JsonResponse
     {
