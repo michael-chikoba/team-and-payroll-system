@@ -5,163 +5,176 @@
     <title>Payslip - {{ $employee->user->first_name ?? '' }} {{ $employee->user->last_name ?? '' }}</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Helvetica', 'Arial', sans-serif;
             font-size: 12px;
-            color: #000;
+            color: #333;
             margin: 0;
             padding: 20px;
+            background: #fff;
         }
+
         .container {
             width: 100%;
             max-width: 800px;
             margin: 0 auto;
-            line-height: 1.5;
         }
+
+        /* --- Header Section --- */
         .header {
             text-align: center;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #444;
+            padding-bottom: 15px;
         }
         .company-name {
-            font-weight: bold;
-            font-size: 18px;
+            font-weight: 800;
+            font-size: 22px;
             margin-bottom: 5px;
             text-transform: uppercase;
+            letter-spacing: 1px;
         }
         .company-address {
             font-size: 11px;
-            color: #555;
-            margin-bottom: 10px;
+            color: #666;
+            margin-bottom: 5px;
         }
         .payslip-title {
             font-weight: bold;
             font-size: 16px;
-            margin-top: 10px;
+            margin-top: 15px;
+            text-transform: uppercase;
         }
-      
-        /* Info Table */
-        table.info-table {
+
+        /* --- Employee Info Table --- */
+        .info-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
         }
-        table.info-table td {
-            padding: 5px;
+        .info-table td {
+            padding: 6px 10px;
             vertical-align: top;
+            border-bottom: 1px solid #eee;
         }
-        table.info-table td.label {
+        .info-table td.label {
             font-weight: bold;
             width: 15%;
-            color: #333;
+            color: #555;
+            white-space: nowrap;
         }
-        table.info-table td.value {
+        .info-table td.value {
             width: 35%;
+            font-weight: 500;
         }
-      
-        /* Earnings & Deductions Table */
-        table.earnings-deductions {
+
+        /* --- Main Calculation Table --- */
+        .main-calc {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-            border: 1px solid #000;
+            border: 1px solid #333;
+            margin-bottom: 20px;
         }
-        table.earnings-deductions th {
-            background-color: #f0f0f0;
-            font-weight: bold;
-            padding: 8px;
-            border: 1px solid #000;
+
+        /* Headings */
+        .main-calc th {
+            background-color: #eee;
+            color: #000;
+            padding: 12px 10px;
+            border: 1px solid #333;
             text-align: left;
-            width: 50%;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            width: 50%; /* Strictly 50/50 split */
         }
-        table.earnings-deductions td {
-            padding: 0;
-            border: 1px solid #000;
+
+        .main-calc td {
+            border: 1px solid #333;
             vertical-align: top;
+            padding: 0; /* Padding handled by inner divs */
+        }
+
+        /* --- Row Item Styling --- */
+        .item-row {
+            display: table;
+            width: 100%;
+            border-bottom: 1px solid #f0f0f0;
         }
         
-        /* Inner tables for alignment */
-        .inner-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: none;
-        }
-        .inner-table td {
-            border: none;
-            padding: 6px 8px;
-            border-bottom: 1px solid #eee;
-        }
-        .inner-table tr:last-child td {
+        .item-row:last-child {
             border-bottom: none;
         }
-        .text-right { text-align: right; }
-        
-        /* Main Calculation Row */
-        .calc-row {
-            display: flex;
-            border-bottom: 1px solid #ccc;
-        }
-        .calc-col {
-            flex: 1;
-            padding: 0;
-        }
-        .row-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 10px;
-            border-right: 1px solid #000;
-        }
-        .row-item:last-child { border-right: none; }
-      
-        table.main-calc {
-            width: 100%;
-            border-collapse: collapse;
-            border: 1px solid #000;
-        }
-        table.main-calc th {
-            background-color: #e0e0e0;
-            padding: 10px;
-            border: 1px solid #000;
+
+        .item-name {
+            display: table-cell;
+            padding: 8px 10px;
             text-align: left;
+            vertical-align: middle;
+            color: #444;
         }
-        table.main-calc td {
-            border: 1px solid #000;
-            padding: 0;
-            vertical-align: top;
-        }
-        
-        .item-row {
-            width: 100%;
-            padding: 5px 8px;
-            border-bottom: 1px solid #eee;
-        }
-        .item-name { display: inline-block; width: 60%; }
-        .item-amt { display: inline-block; width: 38%; text-align: right; font-family: 'Courier New', monospace; }
 
-        .total-row td {
-            background-color: #f9f9f9;
+        .item-amt {
+            display: table-cell;
+            padding: 8px 10px;
+            text-align: right;
+            vertical-align: middle;
+            font-family: 'Courier New', monospace; /* Monospace for alignment */
             font-weight: bold;
-            padding: 10px;
-            border-top: 2px solid #000;
+            color: #000;
+            white-space: nowrap; /* Prevents decimals from breaking line */
+            width: 1%;
         }
 
+        /* Empty state helper */
+        .empty-row {
+            padding: 8px 10px;
+        }
+
+        /* --- Totals Row --- */
+        .total-wrapper {
+            background-color: #fafafa;
+            border-top: 2px solid #333;
+        }
+        .total-wrapper .item-name {
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+        .total-wrapper .item-amt {
+            font-size: 13px;
+        }
+
+        /* --- Net Pay Box --- */
+        .net-pay-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
         .net-pay {
             text-align: right;
             font-weight: bold;
             font-size: 16px;
-            margin-top: 20px;
-            padding: 15px;
-            border: 2px solid #000;
-            background-color: #f0f0f0;
+            padding: 15px 30px;
+            border: 2px solid #333;
+            background-color: #eee;
+            min-width: 200px;
         }
-      
+        .net-pay span {
+            display: block;
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: normal;
+        }
+
+        /* --- Footer --- */
         .footer {
-            margin-top: 40px;
+            margin-top: 50px;
             text-align: center;
             font-size: 10px;
-            color: #666;
+            color: #999;
             padding-top: 10px;
-            border-top: 1px solid #ccc;
+            border-top: 1px solid #eee;
         }
     </style>
 </head>
@@ -173,7 +186,7 @@
             <div class="company-address">{{ $company_address }}</div>
             <div class="payslip-title">Payslip: {{ $payroll->pay_period ?? 'N/A' }}</div>
         </div>
-      
+
         <!-- Employee Details -->
         <table class="info-table">
             <tr>
@@ -185,8 +198,11 @@
             <tr>
                 <td class="label">Name:</td>
                 <td class="value">{{ $employee->user->first_name ?? '' }} {{ $employee->user->last_name ?? '' }}</td>
-                <td class="label">Days Worked:</td>
-                <td class="value">{{ $payroll->working_days ?? '22' }}</td>
+                <td class="label">Pay Period:</td>
+                <td class="value">
+                    {{ $payslip->pay_period_start ? \Carbon\Carbon::parse($payslip->pay_period_start)->format('d M') : '' }} - 
+                    {{ $payslip->pay_period_end ? \Carbon\Carbon::parse($payslip->pay_period_end)->format('d M Y') : '' }}
+                </td>
             </tr>
             <tr>
                 <td class="label">Department:</td>
@@ -197,20 +213,17 @@
             <tr>
                 <td class="label">Type:</td>
                 <td class="value">{{ ucfirst(str_replace('_', ' ', $employee->employment_type ?? 'N/A')) }}</td>
-                <td class="label">Period:</td>
-                <td class="value">
-                    {{ $payslip->pay_period_start ? \Carbon\Carbon::parse($payslip->pay_period_start)->format('d M') : '' }} - 
-                    {{ $payslip->pay_period_end ? \Carbon\Carbon::parse($payslip->pay_period_end)->format('d M Y') : '' }}
-                </td>
+                <td class="label">Currency:</td>
+                <td class="value">{{ $currency_info['code'] ?? 'N/A' }} ({{ $currency_info['symbol'] ?? '' }})</td>
             </tr>
         </table>
-      
-        <!-- Dynamic Earnings & Deductions Table -->
+
+        <!-- Earnings & Deductions Table -->
         <table class="main-calc">
             <thead>
                 <tr>
-                    <th width="50%">EARNINGS</th>
-                    <th width="50%">DEDUCTIONS</th>
+                    <th>EARNINGS</th>
+                    <th>DEDUCTIONS</th>
                 </tr>
             </thead>
             <tbody>
@@ -220,11 +233,11 @@
                     <td>
                         @if($row['earning'])
                         <div class="item-row">
-                            <span class="item-name">{{ $row['earning']['name'] }}</span>
-                            <span class="item-amt">{{ number_format($row['earning']['amount'], 2) }}</span>
+                            <div class="item-name">{{ $row['earning']['name'] }}</div>
+                            <div class="item-amt">{{ $currency_info['symbol'] }}{{ number_format($row['earning']['amount'], 2) }}</div>
                         </div>
                         @else
-                        <div class="item-row">&nbsp;</div>
+                        <div class="item-row empty-row">&nbsp;</div>
                         @endif
                     </td>
                     
@@ -232,39 +245,42 @@
                     <td>
                         @if($row['deduction'])
                         <div class="item-row">
-                            <span class="item-name">{{ $row['deduction']['name'] }}</span>
-                            <span class="item-amt">{{ number_format($row['deduction']['amount'], 2) }}</span>
+                            <div class="item-name">{{ $row['deduction']['name'] }}</div>
+                            <div class="item-amt">{{ $currency_info['symbol'] }}{{ number_format($row['deduction']['amount'], 2) }}</div>
                         </div>
                         @else
-                        <div class="item-row">&nbsp;</div>
+                        <div class="item-row empty-row">&nbsp;</div>
                         @endif
                     </td>
                 </tr>
                 @endforeach
 
-                <!-- Totals -->
-                <tr class="total-row">
-                    <td>
-                        <div class="item-row">
-                            <span class="item-name">GROSS PAY</span>
-                            <span class="item-amt">{{ number_format($payslip->gross_salary, 2) }}</span>
+                <!-- Totals Row -->
+                <tr>
+                    <td class="total-wrapper">
+                        <div class="item-row" style="border: none;">
+                            <div class="item-name">Total Earnings</div>
+                            <div class="item-amt">{{ $currency_info['symbol'] }}{{ number_format($payslip->gross_salary, 2) }}</div>
                         </div>
                     </td>
-                    <td>
-                        <div class="item-row">
-                            <span class="item-name">TOTAL DEDUCTIONS</span>
-                            <span class="item-amt">{{ number_format($payslip->total_deductions, 2) }}</span>
+                    <td class="total-wrapper">
+                        <div class="item-row" style="border: none;">
+                            <div class="item-name">Total Deductions</div>
+                            <div class="item-amt">{{ $currency_info['symbol'] }}{{ number_format($payslip->total_deductions, 2) }}</div>
                         </div>
                     </td>
                 </tr>
             </tbody>
         </table>
-      
+
         <!-- Net Pay -->
-        <div class="net-pay">
-            NET PAY: K{{ number_format($payslip->net_pay, 2) }}
+        <div class="net-pay-container">
+            <div class="net-pay">
+                <span>NET SALARY PAYABLE</span>
+                {{ $currency_info['symbol'] }}{{ number_format($payslip->net_pay, 2) }}
+            </div>
         </div>
-      
+
         <!-- Footer -->
         <div class="footer">
             <p>Generated on {{ now()->format('d M Y H:i') }}</p>

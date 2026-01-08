@@ -63,6 +63,16 @@ export default [
           roles: ['employee', 'manager', 'admin'],
           title: 'My Shift'
         }
+      },
+        {
+        path: 'Tickets',
+        name: 'mytickets',
+        component: () => import('../../views/Tickets.vue'),
+        meta: { 
+          requiresAuth: true,
+          roles: ['employee', 'manager', 'admin'],
+          title: 'My Tickets'
+        }
       }
     ]
   }

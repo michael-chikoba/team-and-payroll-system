@@ -31,7 +31,7 @@
                   :key="business.id" 
                   :value="business.id"
                 >
-                  {{ business.name }} ({{ business.country_name }})
+                  {{ business.name }} ({{ business.country?.name || business.country_name || 'N/A' }})
                 </option>
               </select>
             </div>
@@ -86,8 +86,8 @@
           <div class="banner-details">
             <h2>{{ currentBusiness.name }}</h2>
             <div class="meta-tags">
-              <span class="tag">🌍 {{ currentBusiness.country_name }}</span>
-              <span v-if="countryInfo" class="tag">💱 {{ countryInfo.currency }}</span>
+              <span class="tag">🌍 {{ currentBusiness.country?.name || currentBusiness.country_name || 'N/A' }}</span>
+              <span v-if="currentBusiness.currency_code" class="tag">💱 {{ currentBusiness.currency_code }}</span>
               <span v-if="countryInfo" class="tag">🕐 {{ countryInfo.timezone }}</span>
             </div>
           </div>
@@ -127,17 +127,54 @@
                   <label>Currency <span class="required">*</span></label>
                   <select v-model="settings.currency" class="form-control" @change="onSettingChange">
                     <option disabled value="">Select Currency</option>
-                    <optgroup label="Common">
-                      <option value="ZMW">ZMW - Zambian Kwacha</option>
+                    <optgroup label="Major International Currencies">
                       <option value="USD">USD - US Dollar</option>
-                      <option value="GBP">GBP - British Pound</option>
                       <option value="EUR">EUR - Euro</option>
-                      <option value="ZAR">ZAR - South African Rand</option>
+                      <option value="GBP">GBP - British Pound</option>
                     </optgroup>
                     <optgroup label="African Currencies">
-                      <option v-for="curr in africanCurrencies" :key="curr.code" :value="curr.code">
-                        {{ curr.code }} - {{ curr.name }}
-                      </option>
+                      <option value="ZMW">ZMW - Zambian Kwacha</option>
+                      <option value="ZAR">ZAR - South African Rand</option>
+                      <option value="NGN">NGN - Nigerian Naira</option>
+                      <option value="KES">KES - Kenyan Shilling</option>
+                      <option value="GHS">GHS - Ghanaian Cedi</option>
+                      <option value="EGP">EGP - Egyptian Pound</option>
+                      <option value="DZD">DZD - Algerian Dinar</option>
+                      <option value="AOA">AOA - Angolan Kwanza</option>
+                      <option value="XOF">XOF - West African CFA Franc</option>
+                      <option value="BWP">BWP - Botswana Pula</option>
+                      <option value="BIF">BIF - Burundian Franc</option>
+                      <option value="XAF">XAF - Central African CFA Franc</option>
+                      <option value="CVE">CVE - Cape Verdean Escudo</option>
+                      <option value="KMF">KMF - Comorian Franc</option>
+                      <option value="CDF">CDF - Congolese Franc</option>
+                      <option value="DJF">DJF - Djiboutian Franc</option>
+                      <option value="ERN">ERN - Eritrean Nakfa</option>
+                      <option value="SZL">SZL - Eswatini Lilangeni</option>
+                      <option value="ETB">ETB - Ethiopian Birr</option>
+                      <option value="GMD">GMD - Gambian Dalasi</option>
+                      <option value="GNF">GNF - Guinean Franc</option>
+                      <option value="LSL">LSL - Lesotho Loti</option>
+                      <option value="LRD">LRD - Liberian Dollar</option>
+                      <option value="LYD">LYD - Libyan Dinar</option>
+                      <option value="MGA">MGA - Malagasy Ariary</option>
+                      <option value="MWK">MWK - Malawian Kwacha</option>
+                      <option value="MRU">MRU - Mauritanian Ouguiya</option>
+                      <option value="MUR">MUR - Mauritian Rupee</option>
+                      <option value="MAD">MAD - Moroccan Dirham</option>
+                      <option value="MZN">MZN - Mozambican Metical</option>
+                      <option value="NAD">NAD - Namibian Dollar</option>
+                      <option value="RWF">RWF - Rwandan Franc</option>
+                      <option value="STN">STN - São Tomé and Príncipe Dobra</option>
+                      <option value="SCR">SCR - Seychellois Rupee</option>
+                      <option value="SLL">SLL - Sierra Leonean Leone</option>
+                      <option value="SOS">SOS - Somali Shilling</option>
+                      <option value="SSP">SSP - South Sudanese Pound</option>
+                      <option value="SDG">SDG - Sudanese Pound</option>
+                      <option value="TZS">TZS - Tanzanian Shilling</option>
+                      <option value="TND">TND - Tunisian Dinar</option>
+                      <option value="UGX">UGX - Ugandan Shilling</option>
+                      <option value="ZWL">ZWL - Zimbabwean Dollar</option>
                     </optgroup>
                   </select>
                 </div>
@@ -398,28 +435,7 @@ export default {
       error: null,
       isSettingsMissing: false,
       submitting: false,
-      successMessage: null,
-
-      // Expanded African Currency List
-      africanCurrencies: [
-        { code: 'NGN', name: 'Nigerian Naira' },
-        { code: 'KES', name: 'Kenyan Shilling' },
-        { code: 'GHS', name: 'Ghanaian Cedi' },
-        { code: 'EGP', name: 'Egyptian Pound' },
-        { code: 'RWF', name: 'Rwandan Franc' },
-        { code: 'TZS', name: 'Tanzanian Shilling' },
-        { code: 'UGX', name: 'Ugandan Shilling' },
-        { code: 'BWP', name: 'Botswana Pula' },
-        { code: 'MAD', name: 'Moroccan Dirham' },
-        { code: 'XOF', name: 'West African CFA' },
-        { code: 'XAF', name: 'Central African CFA' },
-        { code: 'MUR', name: 'Mauritian Rupee' },
-        { code: 'NAD', name: 'Namibian Dollar' },
-        { code: 'ETB', name: 'Ethiopian Birr' },
-        { code: 'MWK', name: 'Malawian Kwacha' },
-        { code: 'MZN', name: 'Mozambican Metical' },
-        { code: 'AOA', name: 'Angolan Kwanza' }
-      ]
+      successMessage: null
     }
   },
 
@@ -435,7 +451,7 @@ export default {
     },
     
     isSuperAdmin() {
-      return this.authStore.user?.role === 'super_admin'
+      return this.authStore.user?.role === 'super_admin' || this.authStore.user?.role === 'admin'
     }
   },
 
@@ -452,21 +468,19 @@ export default {
       
       await this.loadBusinesses()
       
-      // Auto-select business if stored in user profile or only one exists
+      // Auto-select business if stored in user profile
       if (this.authStore.user?.current_business_id && !this.selectedBusinessId) {
         this.selectedBusinessId = this.authStore.user.current_business_id
-      }
-      
-      if (this.selectedBusinessId) {
         await this.loadBusinessSettings()
       }
     },
    
     async loadBusinesses() {
       try {
-        // Keeping original API endpoint
         const response = await axios.get('/api/admin/businesses-with-countries')
         this.businesses = response.data.businesses || []
+        
+        console.log('Businesses loaded:', this.businesses)
       } catch (err) {
         console.error('Failed to load businesses:', err)
         this.error = 'Failed to load businesses list.'
@@ -485,11 +499,20 @@ export default {
       this.currentBusiness = this.businesses.find(b => b.id == this.selectedBusinessId)
 
       try {
-        // Keeping original API endpoint
+        console.log('Loading settings for business:', this.selectedBusinessId)
+        
+        // Get the country code from the business
+        const countryCode = this.currentBusiness?.country?.code || this.currentBusiness?.country_code
+        
         const response = await axios.get('/api/admin/settings', {
-          params: { business_id: this.selectedBusinessId }
+          params: { 
+            business_id: this.selectedBusinessId,
+            country_code: countryCode
+          }
         })
        
+        console.log('Settings response:', response.data)
+        
         if (response.data && response.data.settings) {
           this.settings = { 
             ...this.settings,
@@ -497,18 +520,19 @@ export default {
             business_id: this.selectedBusinessId
           }
           
-          // Parsing logic to handle if backend returns stringified JSON or Array
+          // Parse departments if it's a string
           if (typeof this.settings.departments === 'string') {
              try {
                this.settings.departments = JSON.parse(this.settings.departments)
              } catch(e) {
+               console.error('Failed to parse departments:', e)
                this.settings.departments = []
              }
           } else if (!Array.isArray(this.settings.departments)) {
              this.settings.departments = []
           }
 
-          // Ensure at least one department row exists or default
+          // Ensure at least one department
           if (this.settings.departments.length === 0) {
              this.settings.departments = [{ name: 'General' }]
           }
@@ -517,8 +541,10 @@ export default {
           this.originalSettings = JSON.parse(JSON.stringify(this.settings))
         }
       } catch (err) {
-        // 404 handling for missing settings
-        if (err.response?.status === 404) {
+        console.error('Settings load error:', err)
+        
+        // 404 or 422 could mean settings don't exist yet
+        if (err.response?.status === 404 || err.response?.status === 422) {
           this.error = `Settings not yet configured for ${this.selectedBusinessName}.`
           this.isSettingsMissing = true
           this.prepareDefaultSettings()
@@ -536,7 +562,7 @@ export default {
       this.settings = {
         business_id: this.selectedBusinessId,
         company_name: business?.name || '',
-        company_address: '',
+        company_address: business?.address_line_1 || '',
         tax_id: business?.tax_identification_number || '',
         currency: business?.currency_code || 'ZMW',
         annual_leave_days: 21,
@@ -547,7 +573,6 @@ export default {
         max_login_attempts: 5,
         session_timeout: 60,
         date_format: 'd/m/Y',
-        // Default departments as requested by the system settings logic
         departments: [
           { name: 'Human Resources' },
           { name: 'Finance' },
@@ -562,12 +587,20 @@ export default {
       this.error = null
       
       try {
-        // Keeping original API endpoint
+        console.log('Initializing settings:', this.settings)
+        
         await axios.post('/api/admin/business-settings/initialize', this.settings)
         this.successMessage = `Settings initialized successfully for ${this.selectedBusinessName}!`
         this.isSettingsMissing = false
+        
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          this.successMessage = null
+        }, 5000)
+        
         await this.loadBusinessSettings()
       } catch (err) {
+        console.error('Initialize error:', err)
         this.handleApiError(err)
       } finally {
         this.submitting = false
@@ -580,7 +613,8 @@ export default {
       this.successMessage = null
      
       try {
-        // Keeping original API endpoint
+        console.log('Saving settings:', this.settings)
+        
         const response = await axios.put('/api/admin/settings', {
           ...this.settings,
           business_id: this.selectedBusinessId
@@ -589,10 +623,17 @@ export default {
         this.successMessage = response.data.message || 'Settings updated successfully!'
         this.originalSettings = JSON.parse(JSON.stringify(this.settings))
         
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          this.successMessage = null
+        }, 5000)
+        
+        // Reload businesses if company name changed
         if (this.settings.company_name !== this.currentBusiness.name) {
           await this.loadBusinesses()
         }
       } catch (err) {
+        console.error('Save error:', err)
         this.handleApiError(err)
       } finally {
         this.submitting = false
@@ -601,35 +642,44 @@ export default {
    
     addDepartment() {
       this.settings.departments.push({ name: '' })
+      this.onSettingChange()
     },
    
     removeDepartment(index) {
-      if (this.settings.departments.length > 0) {
+      if (this.settings.departments.length > 1) {
         this.settings.departments.splice(index, 1)
+        this.onSettingChange()
       }
     },
    
     onSettingChange() {
-      // Triggers computed properties
+      // Triggers computed properties to update
     },
    
     handleApiError(err) {
       let errorMsg = 'An unexpected error occurred.'
      
       if (err.code === 'ERR_NETWORK') {
-        errorMsg = 'Network error: Unable to connect to server.'
+        errorMsg = 'Network error: Unable to connect to server. Please check your connection.'
       } else if (err.response?.status === 401) {
-        errorMsg = 'Session expired.'
+        errorMsg = 'Session expired. Please log in again.'
         this.authStore.clearAuth()
         this.$router.push({ name: 'login' })
       } else if (err.response?.status === 422) {
         const errors = err.response.data.errors
-        errorMsg = errors ? Object.values(errors).flat().join(', ') : err.response.data.message
+        if (errors) {
+          errorMsg = Object.values(errors).flat().join(', ')
+        } else {
+          errorMsg = err.response.data.message || 'Validation failed. Please check your inputs.'
+        }
+      } else if (err.response?.status === 403) {
+        errorMsg = 'Permission denied. You do not have access to this resource.'
       } else {
         errorMsg = err.response?.data?.message || errorMsg
       }
      
       this.error = errorMsg
+      console.error('API Error:', errorMsg, err)
     }
   }
 }
@@ -644,7 +694,7 @@ export default {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: #1e293b;
   min-height: 100vh;
-  padding-bottom: 5rem; /* Space for sticky footer */
+  padding-bottom: 5rem;
 }
 
 /* Header */

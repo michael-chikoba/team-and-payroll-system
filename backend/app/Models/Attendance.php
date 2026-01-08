@@ -8,13 +8,13 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-
 class Attendance extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'employee_id',
+        'shift_assignment_id', // Link to shift
         'date',
         'clock_in',
         'clock_out',
@@ -31,6 +31,8 @@ class Attendance extends Model
         'total_hours' => 'float',
         'break_minutes' => 'integer',
     ];
+
+    protected $appends = ['full_date'];
 
     /**
      * Boot method for the model
@@ -73,12 +75,26 @@ class Attendance extends Model
         });
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relationships
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Get the employee that owns the attendance
      */
     public function employee(): BelongsTo
     {
         return $this->belongsTo(Employee::class);
+    }
+
+    /**
+     * Get the shift assignment
+     */
+    public function shiftAssignment(): BelongsTo
+    {
+        return $this->belongsTo(ShiftAssignment::class);
     }
 
     /**
@@ -97,7 +113,29 @@ class Attendance extends Model
         return $this->belongsTo(Business::class);
     }
 
-    // Add scopes for filtering
+    /*
+    |--------------------------------------------------------------------------
+    | Accessors & Attributes
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Get full date attribute
+     */
+    public function getFullDateAttribute(): string
+    {
+        return $this->date ? Carbon::parse($this->date)->format('Y-m-d') : '';
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scopes
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Filter by country
+     */
     public function scopeFilterByCountry($query, $countryId = null)
     {
         if ($countryId) {
@@ -106,6 +144,9 @@ class Attendance extends Model
         return $query;
     }
 
+    /**
+     * Filter by business
+     */
     public function scopeFilterByBusiness($query, $businessId = null)
     {
         if ($businessId) {
@@ -114,6 +155,9 @@ class Attendance extends Model
         return $query;
     }
 
+    /**
+     * Filter by department
+     */
     public function scopeFilterByDepartment($query, $department = null)
     {
         if ($department) {
@@ -155,6 +199,12 @@ class Attendance extends Model
     {
         return $query->whereNotNull('clock_out');
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Hours Calculation
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Calculate total hours worked for a single day
@@ -205,45 +255,113 @@ class Attendance extends Model
     }
 
     /**
-     * Parse time string to Carbon instance with proper date handling
+     * Get overtime hours for this attendance record
      */
-    private function parseTimeWithDate(string $time, string $date): Carbon
+    public function getOvertimeHours(): float
     {
-        try {
-            // Remove any timezone info that might be present
-            $time = trim($time);
-            
-            // If time contains full datetime, parse directly
-            if (strpos($time, ' ') !== false || strpos($time, 'T') !== false) {
-                return Carbon::parse($time)->timezone('Africa/Lusaka');
-            }
+        $overtimeThreshold = config('attendance.overtime_threshold', 8);
+        $totalHours = $this->total_hours ?? $this->calculateTotalHours();
 
-            // Time only format - ensure it's HH:MM:SS
-            if (preg_match('/^\d{1,2}:\d{2}(:\d{2})?$/', $time)) {
-                // Add seconds if missing
-                if (substr_count($time, ':') === 1) {
-                    $time .= ':00';
-                }
-                // Combine with date
-                return Carbon::parse($date . ' ' . $time, 'Africa/Lusaka');
-            }
+        return max(0, round($totalHours - $overtimeThreshold, 2));
+    }
 
-            // Fallback: try parsing as-is
-            return Carbon::parse($date . ' ' . $time, 'Africa/Lusaka');
+    /*
+    |--------------------------------------------------------------------------
+    | Shift-Based Status Detection
+    |--------------------------------------------------------------------------
+    */
 
-        } catch (\Exception $e) {
-            Log::error('Error parsing time', [
-                'time' => $time,
-                'date' => $date,
-                'error' => $e->getMessage()
-            ]);
-            throw $e;
+    /**
+     * Determine if employee is late based on shift
+     */
+    public function isLateForShift(): bool
+    {
+        if (!$this->shiftAssignment || !$this->clock_in) {
+            return false;
         }
+
+        $shiftStartTime = Carbon::parse($this->date . ' ' . $this->shiftAssignment->start_time);
+        $actualClockIn = Carbon::parse($this->date . ' ' . $this->clock_in);
+        
+        // Grace period: configurable (default 15 minutes)
+        $gracePeriod = config('attendance.grace_period_minutes', 15);
+        $lateThreshold = $shiftStartTime->copy()->addMinutes($gracePeriod);
+
+        return $actualClockIn->greaterThan($lateThreshold);
     }
 
     /**
+     * Get minutes late (if applicable)
+     */
+    public function getMinutesLate(): int
+    {
+        if (!$this->shiftAssignment || !$this->clock_in) {
+            return 0;
+        }
+
+        $shiftStartTime = Carbon::parse($this->date . ' ' . $this->shiftAssignment->start_time);
+        $actualClockIn = Carbon::parse($this->date . ' ' . $this->clock_in);
+        
+        if ($actualClockIn->lessThanOrEqualTo($shiftStartTime)) {
+            return 0;
+        }
+
+        return $actualClockIn->diffInMinutes($shiftStartTime);
+    }
+
+    /**
+     * Determine attendance status based on shift (static method for use before record creation)
+     */
+    public static function determineStatusFromShift(?ShiftAssignment $shift, ?string $clockIn, ?string $clockOut, string $date): string
+    {
+        // No shift assigned = use default logic
+        if (!$shift) {
+            if (!$clockIn) return 'absent';
+            
+            // Use default start time for employees without shifts
+            $defaultStartTime = config('attendance.default_start_time', '08:30');
+            $expectedStart = Carbon::parse($date . ' ' . $defaultStartTime);
+            $actualClockIn = Carbon::parse($date . ' ' . $clockIn);
+            $gracePeriod = config('attendance.grace_period_minutes', 15);
+            $lateThreshold = $expectedStart->copy()->addMinutes($gracePeriod);
+            
+            $isLate = $actualClockIn->greaterThan($lateThreshold);
+            
+            if (!$clockOut) {
+                return $isLate ? 'late' : 'present';
+            }
+            return $isLate ? 'late' : 'completed';
+        }
+
+        // Has shift but no clock-in = absent
+        if (!$clockIn) {
+            return 'absent';
+        }
+
+        // Has clock-in, check if late based on shift
+        $shiftStartTime = Carbon::parse($date . ' ' . $shift->start_time);
+        $actualClockIn = Carbon::parse($date . ' ' . $clockIn);
+        $gracePeriod = config('attendance.grace_period_minutes', 15);
+        $lateThreshold = $shiftStartTime->copy()->addMinutes($gracePeriod);
+
+        $isLate = $actualClockIn->greaterThan($lateThreshold);
+
+        // Determine final status
+        if ($clockOut) {
+            return $isLate ? 'late' : 'completed';
+        } else {
+            return $isLate ? 'late' : 'present';
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Static Helper Methods - Monthly Statistics
+    |--------------------------------------------------------------------------
+    */
+
+    /**
      * Get monthly total hours for an employee
-     * Calculates sum of all hours worked in a specific month
      */
     public static function getMonthlyTotalHours(int $employeeId, int $month, int $year): float
     {
@@ -251,7 +369,7 @@ class Attendance extends Model
             $totalHours = self::where('employee_id', $employeeId)
                 ->whereYear('date', $year)
                 ->whereMonth('date', $month)
-                ->whereNotNull('clock_out') // Only count completed shifts
+                ->whereNotNull('clock_out')
                 ->sum('total_hours');
 
             return round($totalHours, 2);
@@ -269,7 +387,6 @@ class Attendance extends Model
 
     /**
      * Get monthly statistics for an employee
-     * Returns comprehensive breakdown of hours and attendance
      */
     public static function getMonthlyStats(int $employeeId, int $month, int $year): array
     {
@@ -306,6 +423,39 @@ class Attendance extends Model
                 'error' => $e->getMessage()
             ]);
             return [];
+        }
+    }
+
+    /**
+     * Get monthly overtime hours
+     */
+    public static function getMonthlyOvertimeHours(int $employeeId, int $month, int $year): float
+    {
+        try {
+            $overtimeThreshold = config('attendance.overtime_threshold', 8);
+            
+            $attendances = self::where('employee_id', $employeeId)
+                ->whereYear('date', $year)
+                ->whereMonth('date', $month)
+                ->whereNotNull('clock_out')
+                ->get();
+
+            $totalOvertime = 0;
+            foreach ($attendances as $attendance) {
+                $dailyOvertime = max(0, $attendance->total_hours - $overtimeThreshold);
+                $totalOvertime += $dailyOvertime;
+            }
+
+            return round($totalOvertime, 2);
+
+        } catch (\Exception $e) {
+            Log::error('Error calculating monthly overtime', [
+                'employee_id' => $employeeId,
+                'month' => $month,
+                'year' => $year,
+                'error' => $e->getMessage()
+            ]);
+            return 0;
         }
     }
 
@@ -368,7 +518,6 @@ class Attendance extends Model
 
     /**
      * Get date range total hours
-     * Useful for payroll calculations between specific dates
      */
     public static function getDateRangeTotalHours(
         int $employeeId, 
@@ -394,56 +543,14 @@ class Attendance extends Model
         }
     }
 
-    /**
-     * Get overtime hours for a period
-     */
-    public function getOvertimeHours(): float
-    {
-        $overtimeThreshold = config('payroll.attendance.overtime_threshold', 8);
-        $totalHours = $this->total_hours ?? $this->calculateTotalHours();
-
-        return max(0, round($totalHours - $overtimeThreshold, 2));
-    }
-
-    /**
-     * Get monthly overtime hours
-     */
-    public static function getMonthlyOvertimeHours(
-        int $employeeId, 
-        int $month, 
-        int $year
-    ): float {
-        try {
-            $overtimeThreshold = config('payroll.attendance.overtime_threshold', 8);
-            
-            $attendances = self::where('employee_id', $employeeId)
-                ->whereYear('date', $year)
-                ->whereMonth('date', $month)
-                ->whereNotNull('clock_out')
-                ->get();
-
-            $totalOvertime = 0;
-            foreach ($attendances as $attendance) {
-                $dailyOvertime = max(0, $attendance->total_hours - $overtimeThreshold);
-                $totalOvertime += $dailyOvertime;
-            }
-
-            return round($totalOvertime, 2);
-
-        } catch (\Exception $e) {
-            Log::error('Error calculating monthly overtime', [
-                'employee_id' => $employeeId,
-                'month' => $month,
-                'year' => $year,
-                'error' => $e->getMessage()
-            ]);
-            return 0;
-        }
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Utility Methods
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Recalculate and update all hours for records with zero hours
-     * Useful for fixing data issues
      */
     public static function recalculateAllHours(int $employeeId = null): int
     {

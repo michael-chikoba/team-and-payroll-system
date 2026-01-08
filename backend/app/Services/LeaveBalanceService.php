@@ -13,10 +13,7 @@ use App\Models\Leave;
 use App\Models\SystemSetting;
 
 class LeaveBalanceService
-
 {
-     
-
     /**
      * Helper to resolve settings (Moved inside this class)
      */
@@ -57,22 +54,55 @@ class LeaveBalanceService
     }
 
     /**
+     * Clear cache for a specific business
+     * FIXED: Removed cache tags, using pattern-based clearing instead
+     */
+    private function clearBusinessCache(int $businessId): void
+    {
+        try {
+            // Get business info to find country code
+            $business = Business::with('country')->find($businessId);
+            $countryCode = $business->country->code ?? null;
+            
+            // Clear specific cache keys for this business
+            $leaveTypes = ['annual_leave_days', 'sick_leave_days', 'maternity_leave_days', 'paternity_leave_days'];
+            
+            foreach ($leaveTypes as $type) {
+                // Clear business-specific setting caches
+                Cache::forget("settings_{$businessId}_{$countryCode}_{$type}");
+                Cache::forget("settings_{$businessId}_global_{$type}");
+            }
+            
+            // Clear the main settings cache for this business
+            Cache::forget("system_settings_{$businessId}_{$countryCode}");
+            
+            Log::info('Cache cleared for business', [
+                'business_id' => $businessId,
+                'country_code' => $countryCode
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to clear business cache', [
+                'business_id' => $businessId,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
      * Get available balance dynamically
      */
-     public function getBalance(int $employeeId, string $type)
+    public function getBalance(int $employeeId, string $type): float
     {
         $employee = Employee::find($employeeId);
-        if (!$employee) return 0;
+        if (!$employee) {
+            Log::warning('Employee not found', ['employee_id' => $employeeId]);
+            return 0;
+        }
 
-        $settingKey = strtolower($type) . '_leave_days';
-        
-        // Fetch total allowed from Settings (Business/Country aware)
-        $totalAllowed = (int) $this->getSetting(
-            $settingKey,
-            $employee->business_id, 
-            $employee->country_code
-        );
+        // Get total allowed from system settings
+        $totalAllowed = LeaveBalance::getLeaveSettingForEmployee($employee, $type);
 
+        // Calculate used days from approved/pending leaves
         $usedDays = Leave::where('employee_id', $employeeId)
             ->where('type', $type)
             ->whereIn('status', ['approved', 'pending'])
@@ -82,36 +112,40 @@ class LeaveBalanceService
         return max(0, $totalAllowed - $usedDays);
     }
 
-    public function hasSufficientBalance(int $employeeId, string $type, int $requestedDays): bool
+    public function hasSufficientBalance(int $employeeId, string $type, float $requestedDays): bool
     {
         $balance = $this->getBalance($employeeId, $type);
+        
+        Log::info('Checking leave balance', [
+            'employee_id' => $employeeId,
+            'type' => $type,
+            'available' => $balance,
+            'requested' => $requestedDays,
+            'sufficient' => $balance >= $requestedDays
+        ]);
+        
         return $balance >= $requestedDays;
     }
 
-     public function getAllBalances(int $employeeId)
+    public function getAllBalances(int $employeeId): array
     {
         $employee = Employee::find($employeeId);
-        if (!$employee) return [];
+        if (!$employee) {
+            return [];
+        }
 
-        $types = ['annual', 'sick', 'maternity', 'paternity', 'bereavement'];
         $balances = [];
 
-        foreach ($types as $type) {
-            $settingKey = strtolower($type) . '_leave_days';
-            
-            // 1. Get Total from Settings
-            $totalAllowed = (int) $this->getSetting(
-                $settingKey, 
-                $employee->business_id, 
-                $employee->country_code
-            );
+        foreach (LeaveBalance::VALID_TYPES as $type) {
+            // Get total from settings
+            $totalAllowed = LeaveBalance::getLeaveSettingForEmployee($employee, $type);
 
             // Skip if this leave type is not configured (0 days)
             if ($totalAllowed === 0) {
                 continue;
             }
 
-            // 2. Get Used Days from database
+            // Get used days from database
             $usedDays = Leave::where('employee_id', $employeeId)
                 ->where('type', $type)
                 ->whereIn('status', ['approved', 'pending'])
@@ -124,16 +158,17 @@ class LeaveBalanceService
                 'available' => max(0, $totalAllowed - $usedDays)
             ];
         }
-        
+
         return $balances;
     }
-  
+
     /**
      * Sync leave balances for all employees in a business
+     * FIXED: Removed cache tags usage
      */
     public function syncEmployeeBalancesForBusiness(int $businessId, array $newLeaveSettings): int
     {
-        Log::info('LEAVE_BALANCE_SERVICE: Syncing balances for business', [
+        Log::info('Syncing leave balances for business', [
             'business_id' => $businessId,
             'new_settings' => $newLeaveSettings
         ]);
@@ -141,105 +176,136 @@ class LeaveBalanceService
         $currentYear = now()->year;
         $updatedCount = 0;
 
-        $employees = Employee::whereHas('user', function($q) use ($businessId) {
-            $q->where('current_business_id', $businessId);
-        })->get();
+        // Clear cache for this business (without tags)
+        $this->clearBusinessCache($businessId);
+
+        $employees = Employee::where('business_id', $businessId)->get();
 
         DB::beginTransaction();
         try {
             foreach ($employees as $employee) {
-                // Map settings keys to leave types
-                $typesToSync = [
-                    'annual' => 'annual_leave_days',
-                    'sick' => 'sick_leave_days',
-                    'maternity' => 'maternity_leave_days',
-                    'paternity' => 'paternity_leave_days'
-                ];
-
-                foreach ($typesToSync as $type => $settingKey) {
+                foreach (LeaveBalance::VALID_TYPES as $type) {
+                    $settingKey = LeaveBalance::SETTING_KEYS[$type];
+                    
                     if (isset($newLeaveSettings[$settingKey])) {
-                        $this->updateLeaveBalance($employee->id, $type, $currentYear, (int)$newLeaveSettings[$settingKey]);
+                        $newAllocation = (int) $newLeaveSettings[$settingKey];
+                        
+                        $balance = LeaveBalance::firstOrCreate(
+                            [
+                                'employee_id' => $employee->id,
+                                'type' => $type,
+                                'year' => $currentYear,
+                            ],
+                            [
+                                'allocated_days' => $newAllocation,
+                                'used_days' => 0,
+                                'carried_over' => 0,
+                                'balance' => $newAllocation,
+                            ]
+                        );
+
+                        // Update if already exists
+                        if (!$balance->wasRecentlyCreated) {
+                            $balance->allocated_days = $newAllocation;
+                            $balance->recalculateBalance();
+                        }
+
                         $updatedCount++;
                     }
                 }
             }
 
             DB::commit();
+            
+            Log::info('Leave balances synced successfully', [
+                'business_id' => $businessId,
+                'updated_count' => $updatedCount
+            ]);
+            
             return $updatedCount;
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('LEAVE_BALANCE_SERVICE: Error syncing balances', [
+            Log::error('Error syncing leave balances', [
                 'business_id' => $businessId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             throw $e;
         }
     }
-/**
+
+    /**
      * Deduct leave days when leave is approved
      * Renamed from deductLeave to deductBalance to match Controller usage
      */
-      public function deductBalance(int $employeeId, string $leaveType, float $days, ?int $year = null): bool
+    public function deductBalance(int $employeeId, string $leaveType, float $days, ?int $year = null): bool
     {
         $year = $year ?? now()->year;
 
-        Log::info('LEAVE_BALANCE_SERVICE: Deducting leave balance', [
+        Log::info('Deducting leave balance', [
             'employee_id' => $employeeId,
             'type' => $leaveType,
-            'days' => $days
+            'days' => $days,
+            'year' => $year
         ]);
 
         try {
+            $employee = Employee::find($employeeId);
+            if (!$employee) {
+                throw new \Exception("Employee not found");
+            }
+
             $balance = LeaveBalance::where('employee_id', $employeeId)
                 ->where('type', $leaveType)
                 ->where('year', $year)
                 ->first();
 
-            // Auto-initialize if missing (First leave of the year)
+            // Auto-initialize if missing
             if (!$balance) {
-                $employee = Employee::find($employeeId);
-                $settingKey = strtolower($leaveType) . '_leave_days';
-                $totalAllowed = (int) $this->getSetting($settingKey, $employee->business_id, $employee->country_code);
+                Log::info('Balance not found, initializing', [
+                    'employee_id' => $employeeId,
+                    'type' => $leaveType
+                ]);
                 
-                $balance = LeaveBalance::create([
+                $balances = LeaveBalance::initializeForEmployee($employee, $year);
+                $balance = $balances[$leaveType] ?? null;
+                
+                if (!$balance) {
+                    throw new \Exception("Failed to initialize leave balance");
+                }
+            }
+
+            // Deduct the balance
+            if (!$balance->deduct($days)) {
+                Log::warning('Failed to deduct leave balance', [
                     'employee_id' => $employeeId,
                     'type' => $leaveType,
-                    'year' => $year,
-                    'total_days' => $totalAllowed,
-                    'used_days' => 0,
-                    'available_days' => $totalAllowed,
-                    'carried_forward' => 0,
-                ]);
-            }
-
-            // Warning for negative balance, but proceed
-            if ($balance->available_days < $days) {
-                 Log::warning('LEAVE_BALANCE_SERVICE: Negative balance occurred', [
-                    'employee' => $employeeId,
-                    'available' => $balance->available_days,
+                    'available' => $balance->balance,
                     'requested' => $days
                 ]);
+                return false;
             }
 
-            $balance->used_days += $days;
-            $balance->available_days = $balance->total_days - $balance->used_days; // Recalculate based on total
-            $balance->save();
+            Log::info('Leave balance deducted successfully', [
+                'balance_id' => $balance->id,
+                'new_balance' => $balance->balance
+            ]);
 
             return true;
         } catch (\Exception $e) {
-            Log::error('LEAVE_BALANCE_SERVICE: Error deducting leave', [
+            Log::error('Error deducting leave balance', [
                 'employee_id' => $employeeId,
                 'error' => $e->getMessage()
             ]);
             return false;
         }
     }
+
     /**
      * Update or create a leave balance for an employee
-     * 
      * FIXED: Added quotes around leave_type value to prevent SQL error
      */
-   private function updateLeaveBalance(int $employeeId, string $leaveType, int $year, int $totalDays): void 
+    private function updateLeaveBalance(int $employeeId, string $leaveType, int $year, int $totalDays): void 
     {
         $balance = LeaveBalance::where('employee_id', $employeeId)
             ->where('type', $leaveType)
@@ -266,79 +332,27 @@ class LeaveBalanceService
         }
     }
 
-   public function initializeEmployeeBalances(Employee $employee, array $leaveSettings = []): void
+    public function initializeEmployeeBalances(Employee $employee): void
     {
-        $currentYear = now()->year;
-        $leaveTypes = ['annual', 'sick', 'maternity', 'paternity', 'bereavement'];
+        Log::info('Initializing leave balances for employee', [
+            'employee_id' => $employee->id,
+            'business_id' => $employee->business_id
+        ]);
 
-        DB::beginTransaction();
         try {
-            foreach ($leaveTypes as $type) {
-                // 1. Try passed settings first, 2. Fetch from DB Settings
-                $settingKey = strtolower($type) . '_leave_days';
-                
-                $days = isset($leaveSettings[$settingKey]) 
-                    ? (int)$leaveSettings[$settingKey] 
-                    : (int)$this->getSetting($settingKey, $employee->business_id, $employee->country_code);
-
-                // If 0, it means this leave type isn't configured for this business
-                if ($days > 0) {
-                    LeaveBalance::firstOrCreate(
-                        [
-                            'employee_id' => $employee->id,
-                            'type' => $type,
-                            'year' => $currentYear,
-                        ],
-                        [
-                            'total_days' => $days,
-                            'used_days' => 0,
-                            'available_days' => $days,
-                            'carried_forward' => 0,
-                        ]
-                    );
-                }
-            }
-            DB::commit();
+            $balances = LeaveBalance::initializeForEmployee($employee);
+            
+            Log::info('Leave balances initialized', [
+                'employee_id' => $employee->id,
+                'types_initialized' => array_keys($balances)
+            ]);
         } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('LEAVE_BALANCE_SERVICE: Init failed', ['error' => $e->getMessage()]);
+            Log::error('Failed to initialize leave balances', [
+                'employee_id' => $employee->id,
+                'error' => $e->getMessage()
+            ]);
             throw $e;
         }
-    }
-
-    /**
-     * Get employee's leave balances for a specific year
-     */
-    public function getEmployeeBalances(int $employeeId, int $year = null): array
-    {
-        $year = $year ?? now()->year;
-
-        Log::info('LEAVE_BALANCE_SERVICE: Getting employee balances', [
-            'employee_id' => $employeeId,
-            'year' => $year
-        ]);
-
-        $balances = LeaveBalance::where('employee_id', $employeeId)
-            ->where('year', $year)
-            ->get()
-            ->keyBy('type')
-            ->map(function ($balance) {
-                return [
-                    'total_days' => $balance->total_days,
-                    'used_days' => $balance->used_days,
-                    'available_days' => $balance->available_days,
-                    'carried_forward' => $balance->carried_forward,
-                ];
-            })
-            ->toArray();
-
-        Log::info('LEAVE_BALANCE_SERVICE: Balances retrieved', [
-            'employee_id' => $employeeId,
-            'year' => $year,
-            'types' => array_keys($balances)
-        ]);
-
-        return $balances;
     }
 
     /**
@@ -399,6 +413,41 @@ class LeaveBalanceService
         }
     }
 
+    public function restoreBalance(int $employeeId, string $leaveType, float $days, ?int $year = null): bool
+    {
+        $year = $year ?? now()->year;
+
+        Log::info('Restoring leave balance', [
+            'employee_id' => $employeeId,
+            'type' => $leaveType,
+            'days' => $days,
+            'year' => $year
+        ]);
+
+        try {
+            $balance = LeaveBalance::where('employee_id', $employeeId)
+                ->where('type', $leaveType)
+                ->where('year', $year)
+                ->first();
+
+            if (!$balance) {
+                Log::warning('Balance not found for restoration', [
+                    'employee_id' => $employeeId,
+                    'type' => $leaveType
+                ]);
+                return false;
+            }
+
+            return $balance->restore($days);
+        } catch (\Exception $e) {
+            Log::error('Error restoring leave balance', [
+                'employee_id' => $employeeId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
     /**
      * Restore leave days when leave is cancelled/rejected
      */
@@ -448,5 +497,56 @@ class LeaveBalanceService
             ]);
             return false;
         }
+    }
+
+    public function getEmployeeBalances(int $employeeId, ?int $year = null): array
+    {
+        $year = $year ?? now()->year;
+
+        $balances = LeaveBalance::where('employee_id', $employeeId)
+            ->where('year', $year)
+            ->get()
+            ->keyBy('type')
+            ->map(function ($balance) {
+                return [
+                    'total_days' => $balance->allocated_days,
+                    'used_days' => $balance->used_days,
+                    'available_days' => $balance->balance,
+                    'carried_forward' => $balance->carried_over,
+                ];
+            })
+            ->toArray();
+
+        return $balances;
+    }
+
+    /**
+     * Check if employee can be assigned a shift (not on approved leave)
+     */
+    public function canAssignShift(int $employeeId, string $date): bool
+    {
+        $isOnLeave = LeaveBalance::isEmployeeOnLeave($employeeId, $date);
+        
+        Log::info('Checking if employee can be assigned shift', [
+            'employee_id' => $employeeId,
+            'date' => $date,
+            'is_on_leave' => $isOnLeave,
+            'can_assign' => !$isOnLeave
+        ]);
+        
+        return !$isOnLeave;
+    }
+
+    /**
+     * Get reason why employee cannot be assigned shift
+     */
+    public function getShiftBlockReason(int $employeeId, string $date): ?string
+    {
+        if (LeaveBalance::isEmployeeOnLeave($employeeId, $date)) {
+            $leaveType = LeaveBalance::getLeaveType($employeeId, $date);
+            return "Employee is on " . ucfirst($leaveType ?? 'approved') . " leave on this date";
+        }
+
+        return null;
     }
 }

@@ -152,15 +152,23 @@ public function balance(Request $request): JsonResponse
        
         return $start->diffInDays($end) + 1;
     }
-    /**
-     * Get leaves for current month (for admin/HR)
-     */
-    public function currentMonthLeaves(Request $request): AnonymousResourceCollection
-    {
+   /**
+ * Get leaves for current month (for admin/HR dashboard)
+ */
+public function currentMonthLeaves(Request $request): JsonResponse
+{
+    try {
+        $currentUser = $request->user();
+        $businessId = $request->query('business_id');
+        
+        // Use business_id from query or user's current business
+        $filterBusinessId = $businessId ?: $currentUser->current_business_id;
+        
         $request->validate([
             'start_date' => 'sometimes|date',
             'end_date' => 'sometimes|date',
         ]);
+        
         // Use provided dates or default to current month
         $startDate = $request->start_date
             ? Carbon::parse($request->start_date)
@@ -169,8 +177,17 @@ public function balance(Request $request): JsonResponse
         $endDate = $request->end_date
             ? Carbon::parse($request->end_date)
             : Carbon::now()->endOfMonth();
-        $leaves = Leave::with([
-                'employee.user', // Load employee and user relationship
+        
+        Log::info('LEAVE_CONTROLLER: Fetching current month leaves', [
+            'user_id' => $currentUser->id,
+            'business_id' => $filterBusinessId,
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString()
+        ]);
+        
+        // Build query with business scoping
+        $leaveQuery = Leave::with([
+                'employee.user',
                 'manager'
             ])
             ->where(function($query) use ($startDate, $endDate) {
@@ -180,12 +197,84 @@ public function balance(Request $request): JsonResponse
                           $q->where('start_date', '<=', $startDate)
                             ->where('end_date', '>=', $endDate);
                       });
-            })
-            ->whereIn('status', ['approved', 'pending'])
-            ->orderBy('created_at', 'desc')
-            ->get();
-        return LeaveResource::collection($leaves);
+            });
+        
+        // Apply business filter if specified
+        if ($filterBusinessId) {
+            $leaveQuery->whereHas('employee.user', function($q) use ($filterBusinessId) {
+                $q->where('current_business_id', $filterBusinessId);
+            });
+        }
+        
+        $allLeaves = $leaveQuery->get();
+        
+        // Get pending leaves only
+        $pendingLeaves = $allLeaves->where('status', 'pending');
+        
+        // Count employees currently on leave (today)
+        $today = now()->toDateString();
+        $onLeaveQuery = Leave::where('status', 'approved')
+            ->where('start_date', '<=', $today)
+            ->where('end_date', '>=', $today);
+            
+        if ($filterBusinessId) {
+            $onLeaveQuery->whereHas('employee.user', function($q) use ($filterBusinessId) {
+                $q->where('current_business_id', $filterBusinessId);
+            });
+        }
+        
+        $onLeaveCount = $onLeaveQuery->count();
+        
+        Log::info('LEAVE_CONTROLLER: Current month leaves retrieved', [
+            'total_leaves' => $allLeaves->count(),
+            'pending_count' => $pendingLeaves->count(),
+            'on_leave_today' => $onLeaveCount
+        ]);
+        
+        // Return data in format expected by dashboard
+        return response()->json([
+            'pending_leaves' => $pendingLeaves->map(function($leave) {
+                return [
+                    'id' => $leave->id,
+                    'employee_id' => $leave->employee_id,
+                    'employee' => [
+                        'id' => $leave->employee->id,
+                        'first_name' => $leave->employee->user->first_name ?? '',
+                        'last_name' => $leave->employee->user->last_name ?? '',
+                        'name' => trim(($leave->employee->user->first_name ?? '') . ' ' . ($leave->employee->user->last_name ?? '')),
+                    ],
+                    'leave_type' => $leave->leave_type,
+                    'start_date' => $leave->start_date,
+                    'end_date' => $leave->end_date,
+                    'reason' => $leave->reason,
+                    'status' => $leave->status,
+                    'days' => $leave->days ?? 0,
+                    'created_at' => $leave->created_at->toDateTimeString(),
+                ];
+            })->values(),
+            'pending_count' => $pendingLeaves->count(),
+            'on_leave_count' => $onLeaveCount,
+            'total_leaves_this_month' => $allLeaves->count(),
+            'approved_count' => $allLeaves->where('status', 'approved')->count(),
+            'rejected_count' => $allLeaves->where('status', 'rejected')->count(),
+            'date_range' => [
+                'start' => $startDate->toDateString(),
+                'end' => $endDate->toDateString(),
+            ]
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('LEAVE_CONTROLLER: Failed to fetch current month leaves', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'message' => 'Failed to fetch leave data',
+            'error' => $e->getMessage()
+        ], 500);
     }
+}
     /**
      * Cancel a pending leave request (employee self-cancel)
      */

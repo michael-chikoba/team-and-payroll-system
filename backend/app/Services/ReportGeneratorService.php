@@ -9,164 +9,767 @@ use App\Models\Payslip;
 use App\Models\Employee;
 use App\Models\Business;
 use App\Models\Country;
+use App\Traits\PayslipExtractionTrait;
 use Carbon\Carbon;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Log;
 
+
 class ReportGeneratorService
 {
+    
     /**
-     * Generate payroll report data with business and country filters
+     * Generate comprehensive payroll report with dynamic earnings and deductions
      */
     public function generatePayrollReport(array $filters = [])
     {
-        Log::info('REPORT_SERVICE: Generating payroll report', [
+        Log::info('REPORT_SERVICE: Generating dynamic payroll report', [
             'filters' => $filters
         ]);
-
-        // Query payslips directly
-        $query = Payslip::with(['employee.user', 'employee.business', 'employee.country']);
-
-        if (isset($filters['start_date'])) {
-            $query->where('pay_period_start', '>=', $filters['start_date']);
+        
+        // Build query with relationships
+        $query = Payslip::with([
+            'employee.user',
+            'employee.business',
+            'employee.country'
+        ]);
+        
+        // Apply date filtering
+        if (isset($filters['start_date']) && isset($filters['end_date'])) {
+            $query->where(function($q) use ($filters) {
+                $q->where(function($subQ) use ($filters) {
+                    $subQ->whereBetween('pay_period_start', [$filters['start_date'], $filters['end_date']]);
+                })->orWhere(function($subQ) use ($filters) {
+                    $subQ->whereBetween('pay_period_end', [$filters['start_date'], $filters['end_date']]);
+                })->orWhere(function($subQ) use ($filters) {
+                    $subQ->where('pay_period_start', '<=', $filters['start_date'])
+                        ->where('pay_period_end', '>=', $filters['end_date']);
+                });
+            });
         }
-
-        if (isset($filters['end_date'])) {
-            $query->where('pay_period_end', '<=', $filters['end_date']);
-        }
-
+        
+        // Apply filters
         if (isset($filters['status']) && $filters['status'] !== 'all') {
             $query->where('status', $filters['status']);
         }
-
-        // Apply department filter
+        
+        if (isset($filters['employee_ids']) && !empty($filters['employee_ids'])) {
+            $query->whereIn('employee_id', $filters['employee_ids']);
+        }
+        
+        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
+            $query->whereHas('employee', function ($q) use ($filters) {
+                $q->where('business_id', $filters['business_id']);
+            });
+        }
+        
+        if (isset($filters['country']) && !empty($filters['country'])) {
+            if (is_numeric($filters['country'])) {
+                $query->whereHas('employee', function ($q) use ($filters) {
+                    $q->where('country_id', $filters['country']);
+                });
+            } else {
+                $country = Country::where('code', $filters['country'])->first();
+                if ($country) {
+                    $query->whereHas('employee', function ($q) use ($country) {
+                        $q->where('country_id', $country->id);
+                    });
+                }
+            }
+        }
+        
         if (isset($filters['department']) && !empty($filters['department'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
                 $q->where('department', $filters['department']);
             });
         }
-
-        // Apply business filter
-        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
-            $query->whereHas('employee', function ($q) use ($filters) {
-                $q->where('business_id', $filters['business_id']);
-            });
-            
-            Log::info('REPORT_SERVICE: Applied business filter', [
-                'business_id' => $filters['business_id']
-            ]);
-        }
-
-        // Apply country filter
-        if (isset($filters['country']) && !empty($filters['country'])) {
-            $query->whereHas('employee', function ($q) use ($filters) {
-                $q->where('country_id', $filters['country']);
-            });
-            
-            Log::info('REPORT_SERVICE: Applied country filter', [
-                'country_id' => $filters['country']
-            ]);
-        }
-
+        
+        // Get payslips
         $payslips = $query->orderBy('pay_period_start', 'desc')->get();
-
+        
         Log::info('REPORT_SERVICE: Payslips retrieved', [
-            'count' => $payslips->count()
+            'count' => $payslips->count(),
+            'sample_id' => $payslips->first()->id ?? null
         ]);
-
-        // Calculate totals including other deductions
-        $totalGrossSalary = $payslips->sum('gross_salary');
-        $totalNetSalary = $payslips->sum('net_pay');
-        $totalPaye = $payslips->sum('paye');
-        $totalNapsa = $payslips->sum('napsa');
-        $totalNhima = $payslips->sum('nhima');
-        $totalOtherDeductions = $payslips->sum('other_deductions');
-        $totalAllDeductions = $payslips->sum('total_deductions');
-        $totalTaxAmount = $totalPaye + $totalNapsa + $totalNhima;
-        $processedEmployees = $payslips->count();
-        $averageNetSalary = $processedEmployees > 0 ? $totalNetSalary / $processedEmployees : 0;
-        $averageGrossSalary = $processedEmployees > 0 ? $totalGrossSalary / $processedEmployees : 0;
-
-        // Calculate department breakdown if "All Departments" is selected
-        $departmentBreakdown = [];
-        if (!isset($filters['department']) || empty($filters['department'])) {
-            foreach ($payslips as $payslip) {
-                $dept = $payslip->employee->department ?? 'Unassigned';
+        
+        // Initialize tracking variables
+        $totals = [
+            'gross_salary' => 0,
+            'net_salary' => 0,
+            'total_deductions' => 0,
+            'total_paye_tax' => 0,
+            'total_earnings' => 0,
+        ];
+        
+        $globalEarningTypes = [];
+        $globalDeductionTypes = [];
+        $earningBreakdownForSummary = [];
+        $deductionBreakdownForSummary = [];
+        
+        // Process each payslip
+        $formattedPayslips = $payslips->map(function ($payslip) use (
+            &$totals,
+            &$globalEarningTypes,
+            &$globalDeductionTypes,
+            &$earningBreakdownForSummary,
+            &$deductionBreakdownForSummary
+        ) {
+            // Extract earnings and deductions using Payslip model methods
+            $earningsList = $this->extractEarningsFromPayslip($payslip);
+            $deductionsList = $this->extractDeductionsFromPayslip($payslip);
+            
+            Log::info('REPORT_SERVICE: Extracted payslip data', [
+                'payslip_id' => $payslip->id,
+                'earnings_count' => count($earningsList),
+                'deductions_count' => count($deductionsList),
+                'earnings_total' => array_sum(array_column($earningsList, 'amount')),
+                'deductions_total' => array_sum(array_column($deductionsList, 'amount'))
+            ]);
+            
+            // Calculate totals
+            $totalEarnings = array_sum(array_column($earningsList, 'amount'));
+            $totalDeductions = array_sum(array_column($deductionsList, 'amount'));
+            
+            $gross = $payslip->gross_salary ?? $totalEarnings;
+            $net = $payslip->net_pay ?? ($gross - $totalDeductions);
+            $payeTax = $payslip->paye ?? 0;
+            
+            // Update aggregates
+            $totals['gross_salary'] += $gross;
+            $totals['net_salary'] += $net;
+            $totals['total_deductions'] += $totalDeductions;
+            $totals['total_paye_tax'] += $payeTax;
+            $totals['total_earnings'] += $totalEarnings;
+            
+            // Process earnings
+            $earningsBreakdown = [];
+            foreach ($earningsList as $earning) {
+                $name = strtoupper($earning['name']);
+                $amount = (float)$earning['amount'];
+                $type = $earning['type'];
                 
-                if (!isset($departmentBreakdown[$dept])) {
-                    $departmentBreakdown[$dept] = [
+                $earningsBreakdown[$name] = $amount;
+                
+                // Track global totals
+                if (!isset($globalEarningTypes[$name])) {
+                    $globalEarningTypes[$name] = 0;
+                }
+                $globalEarningTypes[$name] += $amount;
+                
+                // Build summary breakdown
+                if (!isset($earningBreakdownForSummary[$name])) {
+                    $earningBreakdownForSummary[$name] = [
+                        'name' => $earning['name'],
+                        'type' => $type,
+                        'description' => $earning['description'],
+                        'total_amount' => 0,
                         'employee_count' => 0,
-                        'total_gross_salary' => 0,
-                        'total_net_salary' => 0,
-                        'total_tax' => 0,
-                        'total_other_deductions' => 0,
                     ];
                 }
-                
-                $departmentBreakdown[$dept]['employee_count']++;
-                $departmentBreakdown[$dept]['total_gross_salary'] += $payslip->gross_salary ?? 0;
-                $departmentBreakdown[$dept]['total_net_salary'] += $payslip->net_pay ?? 0;
-                $departmentBreakdown[$dept]['total_tax'] += ($payslip->paye ?? 0) + ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0);
-                $departmentBreakdown[$dept]['total_other_deductions'] += $payslip->other_deductions ?? 0;
+                $earningBreakdownForSummary[$name]['total_amount'] += $amount;
+                $earningBreakdownForSummary[$name]['employee_count']++;
             }
-        }
-
-        // Format payslip details with business/country info
-        $payslipDetails = $payslips->map(function ($payslip) {
+            
+            // Process deductions
+            $deductionsBreakdown = [];
+            foreach ($deductionsList as $deduction) {
+                $name = strtoupper($deduction['name']);
+                $amount = (float)$deduction['amount'];
+                $type = $deduction['type'];
+                
+                $deductionsBreakdown[$name] = $amount;
+                
+                // Track global totals
+                if (!isset($globalDeductionTypes[$name])) {
+                    $globalDeductionTypes[$name] = 0;
+                }
+                $globalDeductionTypes[$name] += $amount;
+                
+                // Build summary breakdown
+                if (!isset($deductionBreakdownForSummary[$name])) {
+                    $deductionBreakdownForSummary[$name] = [
+                        'name' => $deduction['name'],
+                        'type' => $type,
+                        'description' => $deduction['description'],
+                        'total_amount' => 0,
+                        'employee_count' => 0,
+                    ];
+                }
+                $deductionBreakdownForSummary[$name]['total_amount'] += $amount;
+                $deductionBreakdownForSummary[$name]['employee_count']++;
+            }
+            
+            // Get currency info
+            $currency = $payslip->currency;
+            $currencySymbol = $currency;
+            if ($payslip->employee && $payslip->employee->country) {
+                $currency = $payslip->employee->country->currency ?? $currency;
+                $currencySymbol = $payslip->employee->country->currency_symbol ?? $currency;
+            }
+            
             return [
+                'employee_name' => $payslip->employee->user
+                    ? ($payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name)
+                    : 'N/A',
                 'employee_id' => $payslip->employee_id,
-                'employee_name' => $payslip->employee->user 
-                    ? ($payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name) 
-                    : 'N/A',
-                'department' => $payslip->employee->department ?? 'Unassigned',
-                'business' => $payslip->employee->business ? $payslip->employee->business->name : 'No Business',
+                'business' => $payslip->employee->business ? $payslip->employee->business->name : 'N/A',
                 'country' => $payslip->employee->country ? $payslip->employee->country->name : 'N/A',
-                'gross_salary' => $payslip->gross_salary ?? 0,
-                'deductions' => $payslip->total_deductions ?? 0,
-                'net_salary' => $payslip->net_pay ?? 0,
-                'paye' => $payslip->paye ?? 0,
-                'napsa' => $payslip->napsa ?? 0,
-                'nhima' => $payslip->nhima ?? 0,
-                'other_deductions' => $payslip->other_deductions ?? 0,
-                'tax_amount' => ($payslip->paye ?? 0) + ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0),
-                'pay_period' => Carbon::parse($payslip->pay_period_start)->format('M d, Y') 
-                    . ' - ' 
-                    . Carbon::parse($payslip->pay_period_end)->format('M d, Y'),
-                'payment_date' => $payslip->payment_date 
-                    ? Carbon::parse($payslip->payment_date)->format('M d, Y') 
-                    : 'N/A',
-                'status' => $payslip->status ?? 'N/A',
+                'country_code' => $payslip->employee->country ? $payslip->employee->country->code : 'N/A',
+                'currency' => $currency,
+                'currency_symbol' => $currencySymbol,
+                'department' => $payslip->employee->department ?? 'Unassigned',
+                'pay_period' => Carbon::parse($payslip->pay_period_start)->format('M d') . ' - ' .
+                               Carbon::parse($payslip->pay_period_end)->format('M d, Y'),
+                'pay_period_start' => $payslip->pay_period_start,
+                'pay_period_end' => $payslip->pay_period_end,
+                'gross_salary' => $gross,
+                'net_salary' => $net,
+                'total_earnings' => $totalEarnings,
+                'total_deductions' => $totalDeductions,
+                'paye_tax' => $payeTax,
+                'earnings_breakdown' => $earningsBreakdown,
+                'deductions_breakdown' => $deductionsBreakdown,
+                'earnings' => $earningsList,
+                'deductions' => $deductionsList,
+                'status' => $payslip->status ?? 'N/A'
             ];
-        })->toArray();
-
-        // Add filter info to summary
+        });
+        
+        // Prepare headers
+        $earningHeaders = array_keys($globalEarningTypes);
+        $deductionHeaders = array_keys($globalDeductionTypes);
+        sort($earningHeaders);
+        sort($deductionHeaders);
+        
+        // Calculate averages
+        $processedCount = $payslips->count();
+        $averageGross = $processedCount > 0 ? $totals['gross_salary'] / $processedCount : 0;
+        $averageNet = $processedCount > 0 ? $totals['net_salary'] / $processedCount : 0;
+        
+        // Build filter info
         $filterInfo = $this->buildFilterInfo($filters);
-
+        
+        // Get currency from first payslip
+        if ($payslips->isNotEmpty() && $payslips->first()->employee && $payslips->first()->employee->country) {
+            $filterInfo['currency'] = $payslips->first()->employee->country->currency;
+            $filterInfo['currency_symbol'] = $payslips->first()->employee->country->currency_symbol;
+        }
+        
+        Log::info('REPORT_SERVICE: Report generation complete', [
+            'processed_employees' => $processedCount,
+            'earning_types' => count($earningHeaders),
+            'deduction_types' => count($deductionHeaders),
+            'total_earnings' => $totals['total_earnings'],
+            'total_deductions' => $totals['total_deductions']
+        ]);
+        
         return [
-            'data' => $payslipDetails,
+            'data' => $formattedPayslips,
             'summary' => [
-                'period_start' => $filters['start_date'] ?? 'N/A',
-                'period_end' => $filters['end_date'] ?? 'N/A',
-                'department' => $filters['department'] ?? 'All Departments',
-                'processed_employees' => $processedEmployees,
-                'total_gross_salary' => $totalGrossSalary,
-                'total_net_salary' => $totalNetSalary,
-                'average_gross_salary' => $averageGrossSalary,
-                'average_net_salary' => $averageNetSalary,
-                'total_tax_amount' => $totalTaxAmount,
-                'total_paye' => $totalPaye,
-                'total_napsa' => $totalNapsa,
-                'total_nhima' => $totalNhima,
-                'total_other_deductions' => $totalOtherDeductions,
-                'total_all_deductions' => $totalAllDeductions,
-                'department_breakdown' => !empty($departmentBreakdown) ? $departmentBreakdown : null,
+                'processed_employees' => $processedCount,
+                'total_gross_salary' => $totals['gross_salary'],
+                'total_net_salary' => $totals['net_salary'],
+                'total_earnings' => $totals['total_earnings'],
+                'total_all_deductions' => $totals['total_deductions'],
+                'total_paye_tax' => $totals['total_paye_tax'],
+                'average_gross_salary' => $averageGross,
+                'average_net_salary' => $averageNet,
+                'earning_totals' => $globalEarningTypes,
+                'deduction_totals' => $globalDeductionTypes,
+                'earning_headers' => $earningHeaders,
+                'deduction_headers' => $deductionHeaders,
+                'earning_breakdown' => array_values($earningBreakdownForSummary),
+                'deduction_breakdown' => array_values($deductionBreakdownForSummary),
+                'department_breakdown' => $this->calculateDepartmentBreakdown($formattedPayslips),
                 'filters' => $filterInfo,
+                'currency' => $filterInfo['currency'] ?? 'KES',
+                'currency_symbol' => $filterInfo['currency_symbol'] ?? 'KES',
             ],
-            'filters' => $filters,
             'generated_at' => now(),
         ];
     }
 
+    /**
+     * Extract earnings from payslip using the model's built-in method
+     */
+    private function extractEarningsFromPayslip(Payslip $payslip): array
+    {
+        Log::info('EXTRACTION: Processing payslip earnings', [
+            'payslip_id' => $payslip->id,
+            'employee_id' => $payslip->employee_id,
+            'gross_salary' => $payslip->gross_salary
+        ]);
+
+        // Use the Payslip model's earnings_breakdown attribute
+        $earningsBreakdown = $payslip->earnings_breakdown;
+        $earnings = [];
+        
+        // Extract basic salary
+        if (!empty($earningsBreakdown['basic_salary']) && $earningsBreakdown['basic_salary'] > 0) {
+            $earnings[] = [
+                'name' => 'Basic Salary',
+                'amount' => (float)$earningsBreakdown['basic_salary'],
+                'type' => 'basic',
+                'description' => 'Basic Salary'
+            ];
+        }
+        
+        // Extract allowances
+        if (!empty($earningsBreakdown['allowances'])) {
+            $allowances = $earningsBreakdown['allowances'];
+            
+            if (!empty($allowances['housing']) && $allowances['housing'] > 0) {
+                $earnings[] = [
+                    'name' => 'Housing Allowance',
+                    'amount' => (float)$allowances['housing'],
+                    'type' => 'allowance',
+                    'description' => 'Housing Allowance'
+                ];
+            }
+            
+            if (!empty($allowances['transport']) && $allowances['transport'] > 0) {
+                $earnings[] = [
+                    'name' => 'Transport Allowance',
+                    'amount' => (float)$allowances['transport'],
+                    'type' => 'allowance',
+                    'description' => 'Transport Allowance'
+                ];
+            }
+            
+            if (!empty($allowances['lunch']) && $allowances['lunch'] > 0) {
+                $earnings[] = [
+                    'name' => 'Lunch Allowance',
+                    'amount' => (float)$allowances['lunch'],
+                    'type' => 'allowance',
+                    'description' => 'Lunch/Other Allowance'
+                ];
+            }
+        }
+        
+        // Extract overtime
+        if (!empty($earningsBreakdown['overtime']['pay']) && $earningsBreakdown['overtime']['pay'] > 0) {
+            $earnings[] = [
+                'name' => 'Overtime',
+                'amount' => (float)$earningsBreakdown['overtime']['pay'],
+                'type' => 'overtime',
+                'description' => 'Overtime Pay'
+            ];
+        }
+        
+        // Extract bonuses
+        if (!empty($earningsBreakdown['bonuses']) && $earningsBreakdown['bonuses'] > 0) {
+            $earnings[] = [
+                'name' => 'Bonus',
+                'amount' => (float)$earningsBreakdown['bonuses'],
+                'type' => 'bonus',
+                'description' => 'Bonus'
+            ];
+        }
+        
+        Log::info('EXTRACTION: Earnings extracted', [
+            'payslip_id' => $payslip->id,
+            'count' => count($earnings),
+            'total' => array_sum(array_column($earnings, 'amount'))
+        ]);
+        
+        return $earnings;
+    }
+
+    /**
+     * Extract deductions from payslip using the model's built-in method
+     */
+    private function extractDeductionsFromPayslip(Payslip $payslip): array
+    {
+        Log::info('EXTRACTION: Processing payslip deductions', [
+            'payslip_id' => $payslip->id,
+            'employee_id' => $payslip->employee_id,
+            'total_deductions' => $payslip->total_deductions
+        ]);
+
+        // Use the Payslip model's getAllDeductionsFlat method
+        $deductionsFlat = $payslip->getAllDeductionsFlat();
+        $deductions = [];
+        
+        foreach ($deductionsFlat as $name => $deductionData) {
+            if ($deductionData['amount'] > 0) {
+                $deductions[] = [
+                    'name' => $deductionData['name'],
+                    'amount' => (float)$deductionData['amount'],
+                    'type' => $deductionData['type'],
+                    'description' => $deductionData['name']
+                ];
+            }
+        }
+        
+        Log::info('EXTRACTION: Deductions extracted', [
+            'payslip_id' => $payslip->id,
+            'count' => count($deductions),
+            'total' => array_sum(array_column($deductions, 'amount'))
+        ]);
+        
+        return $deductions;
+    }
+
+    /**
+     * Generate earnings-only report
+     */
+    public function generateEarningsReport(array $filters = [])
+    {
+        Log::info('REPORT_SERVICE: Generating earnings report', ['filters' => $filters]);
+        
+        // Get the full payroll report first
+        $payrollReport = $this->generatePayrollReport($filters);
+        
+        // Extract only earnings-related data
+        $earningsData = $payrollReport['data']->map(function ($payslip) {
+            return [
+                'employee_name' => $payslip['employee_name'],
+                'employee_id' => $payslip['employee_id'],
+                'business' => $payslip['business'],
+                'country' => $payslip['country'],
+                'country_code' => $payslip['country_code'],
+                'currency' => $payslip['currency'],
+                'currency_symbol' => $payslip['currency_symbol'],
+                'department' => $payslip['department'],
+                'pay_period' => $payslip['pay_period'],
+                'pay_period_start' => $payslip['pay_period_start'],
+                'pay_period_end' => $payslip['pay_period_end'],
+                'total_earnings' => $payslip['total_earnings'],
+                'gross_salary' => $payslip['gross_salary'],
+                'earnings_breakdown' => $payslip['earnings_breakdown'],
+                'earnings' => $payslip['earnings'],
+                'status' => $payslip['status']
+            ];
+        });
+        
+        return [
+            'data' => $earningsData,
+            'summary' => [
+                'processed_employees' => $payrollReport['summary']['processed_employees'],
+                'total_earnings' => $payrollReport['summary']['total_earnings'],
+                'total_gross_salary' => $payrollReport['summary']['total_gross_salary'],
+                'average_earnings' => $payrollReport['summary']['processed_employees'] > 0 ?
+                    $payrollReport['summary']['total_earnings'] / $payrollReport['summary']['processed_employees'] : 0,
+                'earning_totals' => $payrollReport['summary']['earning_totals'],
+                'earning_headers' => $payrollReport['summary']['earning_headers'],
+                'earning_breakdown' => $payrollReport['summary']['earning_breakdown'],
+                'department_breakdown' => $this->calculateDepartmentEarningsBreakdown($earningsData),
+                'filters' => $payrollReport['summary']['filters'],
+                'currency' => $payrollReport['summary']['currency'],
+                'currency_symbol' => $payrollReport['summary']['currency_symbol'],
+            ],
+            'generated_at' => now(),
+        ];
+    }
+    
+    /**
+     * Generate deductions-only report
+     */
+    public function generateDeductionsReport(array $filters = [])
+    {
+        Log::info('REPORT_SERVICE: Generating deductions report', ['filters' => $filters]);
+        
+        // Get the full payroll report first
+        $payrollReport = $this->generatePayrollReport($filters);
+        
+        // Extract only deductions-related data
+        $deductionsData = $payrollReport['data']->map(function ($payslip) {
+            return [
+                'employee_name' => $payslip['employee_name'],
+                'employee_id' => $payslip['employee_id'],
+                'business' => $payslip['business'],
+                'country' => $payslip['country'],
+                'country_code' => $payslip['country_code'],
+                'currency' => $payslip['currency'],
+                'currency_symbol' => $payslip['currency_symbol'],
+                'department' => $payslip['department'],
+                'pay_period' => $payslip['pay_period'],
+                'pay_period_start' => $payslip['pay_period_start'],
+                'pay_period_end' => $payslip['pay_period_end'],
+                'total_deductions' => $payslip['total_deductions'],
+                'paye_tax' => $payslip['paye_tax'],
+                'deductions_breakdown' => $payslip['deductions_breakdown'],
+                'deductions' => $payslip['deductions'],
+                'net_salary' => $payslip['net_salary'],
+                'status' => $payslip['status']
+            ];
+        });
+        
+        return [
+            'data' => $deductionsData,
+            'summary' => [
+                'processed_employees' => $payrollReport['summary']['processed_employees'],
+                'total_deductions' => $payrollReport['summary']['total_all_deductions'],
+                'total_paye_tax' => $payrollReport['summary']['total_paye_tax'],
+                'average_deductions' => $payrollReport['summary']['processed_employees'] > 0 ?
+                    $payrollReport['summary']['total_all_deductions'] / $payrollReport['summary']['processed_employees'] : 0,
+                'deduction_totals' => $payrollReport['summary']['deduction_totals'],
+                'deduction_headers' => $payrollReport['summary']['deduction_headers'],
+                'deduction_breakdown' => $payrollReport['summary']['deduction_breakdown'],
+                'department_breakdown' => $this->calculateDepartmentDeductionsBreakdown($deductionsData),
+                'filters' => $payrollReport['summary']['filters'],
+                'currency' => $payrollReport['summary']['currency'],
+                'currency_symbol' => $payrollReport['summary']['currency_symbol'],
+            ],
+            'generated_at' => now(),
+        ];
+    }
+
+    /**
+     * Helper: Calculate department breakdown
+     */
+    private function calculateDepartmentBreakdown($payslips): array
+    {
+        $breakdown = [];
+        
+        foreach ($payslips as $payslip) {
+            $dept = $payslip['department'] ?? 'Unassigned';
+            
+            if (!isset($breakdown[$dept])) {
+                $breakdown[$dept] = [
+                    'employee_count' => 0,
+                    'total_gross_salary' => 0,
+                    'total_net_salary' => 0,
+                    'total_deductions' => 0,
+                    'total_earnings' => 0,
+                ];
+            }
+            
+            $breakdown[$dept]['employee_count']++;
+            $breakdown[$dept]['total_gross_salary'] += $payslip['gross_salary'];
+            $breakdown[$dept]['total_net_salary'] += $payslip['net_salary'];
+            $breakdown[$dept]['total_deductions'] += $payslip['total_deductions'];
+            $breakdown[$dept]['total_earnings'] += $payslip['total_earnings'];
+        }
+        
+        return $breakdown;
+    }
+    
+    /**
+     * Calculate department earnings breakdown
+     */
+    private function calculateDepartmentEarningsBreakdown($earningsData): array
+    {
+        $departmentBreakdown = [];
+        
+        foreach ($earningsData as $data) {
+            $department = $data['department'] ?? 'Unassigned';
+            
+            if (!isset($departmentBreakdown[$department])) {
+                $departmentBreakdown[$department] = [
+                    'employee_count' => 0,
+                    'total_earnings' => 0,
+                    'total_gross_salary' => 0,
+                ];
+            }
+            
+            $departmentBreakdown[$department]['employee_count']++;
+            $departmentBreakdown[$department]['total_earnings'] += $data['total_earnings'];
+            $departmentBreakdown[$department]['total_gross_salary'] += $data['gross_salary'];
+        }
+        
+        return $departmentBreakdown;
+    }
+    
+    /**
+     * Calculate department deductions breakdown
+     */
+    private function calculateDepartmentDeductionsBreakdown($deductionsData): array
+    {
+        $departmentBreakdown = [];
+        
+        foreach ($deductionsData as $data) {
+            $department = $data['department'] ?? 'Unassigned';
+            
+            if (!isset($departmentBreakdown[$department])) {
+                $departmentBreakdown[$department] = [
+                    'employee_count' => 0,
+                    'total_deductions' => 0,
+                    'total_paye_tax' => 0,
+                ];
+            }
+            
+            $departmentBreakdown[$department]['employee_count']++;
+            $departmentBreakdown[$department]['total_deductions'] += $data['total_deductions'];
+            $departmentBreakdown[$department]['total_paye_tax'] += $data['paye_tax'];
+        }
+        
+        return $departmentBreakdown;
+    }
+    
+    /**
+     * Helper method to build filter info
+     */
+    private function buildFilterInfo(array $filters): array
+    {
+        $filterInfo = [];
+        
+        if (!empty($filters['business_id'])) {
+            $business = Business::find($filters['business_id']);
+            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+            $filterInfo['business_id'] = $filters['business_id'];
+        }
+        
+        if (!empty($filters['country'])) {
+            if (is_numeric($filters['country'])) {
+                $country = Country::find($filters['country']);
+            } else {
+                $country = Country::where('code', $filters['country'])->first();
+            }
+            
+            $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
+            $filterInfo['country_code'] = $country ? $country->code : $filters['country'];
+            $filterInfo['currency'] = $country ? $country->currency : 'KES';
+            $filterInfo['currency_symbol'] = $country ? $country->currency_symbol : 'KES';
+        }
+        
+        if (!empty($filters['department'])) {
+            $filterInfo['department'] = $filters['department'];
+        }
+        
+        if (!empty($filters['start_date'])) {
+            $filterInfo['start_date'] = $filters['start_date'];
+        }
+        
+        if (!empty($filters['end_date'])) {
+            $filterInfo['end_date'] = $filters['end_date'];
+        }
+        
+        if (!empty($filters['status']) && $filters['status'] !== 'all') {
+            $filterInfo['status'] = $filters['status'];
+        }
+        
+        return $filterInfo;
+    }
+  
+     /**
+     * Calculate deduction breakdown
+     */
+    private function calculateDeductionBreakdown($payslips): array
+    {
+        $deductionBreakdown = [];
+        
+        foreach ($payslips as $payslip) {
+            $deductions = $payslip['deductions'] ?? [];
+            
+            foreach ($deductions as $name => $deductionData) {
+                if (!isset($deductionBreakdown[$name])) {
+                    $deductionBreakdown[$name] = [
+                        'name' => $name,
+                        'type' => is_array($deductionData) ? ($deductionData['type'] ?? 'unknown') : 'unknown',
+                        'description' => is_array($deductionData) ? ($deductionData['description'] ?? $name) : $name,
+                        'total_amount' => 0,
+                        'employee_count' => 0,
+                    ];
+                }
+                
+                $amount = is_array($deductionData) ? ($deductionData['amount'] ?? 0) : $deductionData;
+                $deductionBreakdown[$name]['total_amount'] += $amount;
+                $deductionBreakdown[$name]['employee_count']++;
+            }
+        }
+        
+        return array_values($deductionBreakdown);
+    }
+   /**
+     * Calculate earning breakdown
+     */
+    private function calculateEarningBreakdown($payslips): array
+    {
+        $earningBreakdown = [];
+        
+        foreach ($payslips as $payslip) {
+            $earnings = $payslip['earnings'] ?? [];
+            
+            foreach ($earnings as $name => $earningData) {
+                if (!isset($earningBreakdown[$name])) {
+                    $earningBreakdown[$name] = [
+                        'name' => $name,
+                        'type' => is_array($earningData) ? ($earningData['type'] ?? 'regular') : 'regular',
+                        'description' => is_array($earningData) ? ($earningData['description'] ?? $name) : $name,
+                        'total_amount' => 0,
+                        'employee_count' => 0,
+                    ];
+                }
+                
+                $amount = is_array($earningData) ? ($earningData['amount'] ?? 0) : $earningData;
+                $earningBreakdown[$name]['total_amount'] += $amount;
+                $earningBreakdown[$name]['employee_count']++;
+            }
+        }
+        
+        return array_values($earningBreakdown);
+    }
+
+    /**
+     * Calculate deductions by type
+     */
+    private function calculateDeductionsByType($payslips): array
+    {
+        $deductionsByType = [];
+        
+        foreach ($payslips as $payslip) {
+            $deductions = $payslip['deductions'] ?? [];
+            
+            foreach ($deductions as $name => $deductionData) {
+                $type = is_array($deductionData) ? ($deductionData['type'] ?? 'other') : 'other';
+                $amount = is_array($deductionData) ? ($deductionData['amount'] ?? 0) : $deductionData;
+                
+                if (!isset($deductionsByType[$type])) {
+                    $deductionsByType[$type] = 0;
+                }
+                
+                $deductionsByType[$type] += $amount;
+            }
+        }
+        
+        return $deductionsByType;
+    }
+    /**
+     * Calculate earnings by type
+     */
+    private function calculateEarningsByType($payslips): array
+    {
+        $earningsByType = [];
+        
+        foreach ($payslips as $payslip) {
+            $earnings = $payslip['earnings'] ?? [];
+            
+            foreach ($earnings as $name => $earningData) {
+                $type = is_array($earningData) ? ($earningData['type'] ?? 'regular') : 'regular';
+                $amount = is_array($earningData) ? ($earningData['amount'] ?? 0) : $earningData;
+                
+                if (!isset($earningsByType[$type])) {
+                    $earningsByType[$type] = 0;
+                }
+                
+                $earningsByType[$type] += $amount;
+            }
+        }
+        
+        return $earningsByType;
+    }
+
+   /**
+     * Map deduction field to type
+     */
+    private function mapDeductionType($field): string
+    {
+        $typeMapping = [
+            'paye' => 'tax',
+            'napsa' => 'statutory',
+            'nhima' => 'statutory',
+            'pension' => 'pension',
+            'social_security' => 'statutory',
+            'provident_fund' => 'pension',
+            'health_insurance' => 'health',
+            'union_dues' => 'voluntary',
+            'loan_deduction' => 'loan',
+            'advance_deduction' => 'advance',
+        ];
+        
+        return $typeMapping[$field] ?? 'other';
+    }
     /**
      * Generate attendance report with business and country filters
      */
@@ -175,31 +778,24 @@ class ReportGeneratorService
         Log::info('REPORT_SERVICE: Generating attendance report', [
             'filters' => $filters
         ]);
-
         $query = Attendance::with(['employee.user', 'employee.business', 'employee.country']);
-
         if (isset($filters['employee_id'])) {
             $query->where('employee_id', $filters['employee_id']);
         }
-
         if (isset($filters['start_date'])) {
             $query->where('date', '>=', $filters['start_date']);
         }
-
         if (isset($filters['end_date'])) {
             $query->where('date', '<=', $filters['end_date']);
         }
-
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
         }
-
         if (isset($filters['department'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
                 $q->where('department', $filters['department']);
             });
         }
-
         // Apply business filter
         if (isset($filters['business_id']) && !empty($filters['business_id'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
@@ -210,7 +806,6 @@ class ReportGeneratorService
                 'business_id' => $filters['business_id']
             ]);
         }
-
         // Apply country filter
         if (isset($filters['country']) && !empty($filters['country'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
@@ -221,27 +816,23 @@ class ReportGeneratorService
                 'country_id' => $filters['country']
             ]);
         }
-
         $attendances = $query->orderBy('date', 'desc')->get();
-
         Log::info('REPORT_SERVICE: Attendances retrieved', [
             'count' => $attendances->count()
         ]);
-
         $summary = [
             'total_days' => $attendances->count(),
             'present_days' => $attendances->where('status', 'present')->count(),
             'absent_days' => $attendances->where('status', 'absent')->count(),
             'late_days' => $attendances->where('status', 'late')->count(),
             'total_hours' => $attendances->sum('total_hours'),
-            'attendance_rate' => $attendances->count() > 0 ? 
+            'attendance_rate' => $attendances->count() > 0 ?
                 ($attendances->where('status', 'present')->count() / $attendances->count()) * 100 : 0,
         ];
-
         // Format attendance data for export
         $attendanceData = $attendances->map(function ($attendance) {
             return [
-                'employee_name' => $attendance->employee->user 
+                'employee_name' => $attendance->employee->user
                     ? ($attendance->employee->user->first_name . ' ' . $attendance->employee->user->last_name)
                     : 'N/A',
                 'department' => $attendance->employee->department ?? 'N/A',
@@ -254,10 +845,8 @@ class ReportGeneratorService
                 'status' => $attendance->status ?? 'N/A',
             ];
         })->toArray();
-
         // Add filter info
         $filterInfo = $this->buildFilterInfo($filters);
-
         return [
             'data' => $attendanceData,
             'summary' => array_merge($summary, ['filters' => $filterInfo]),
@@ -265,7 +854,6 @@ class ReportGeneratorService
             'generated_at' => now(),
         ];
     }
-
     /**
      * Generate leave report with business and country filters
      */
@@ -274,29 +862,22 @@ class ReportGeneratorService
         Log::info('REPORT_SERVICE: Generating leave report', [
             'filters' => $filters
         ]);
-
         $query = Leave::with(['employee.user', 'employee.business', 'employee.country']);
-
         if (isset($filters['employee_id'])) {
             $query->where('employee_id', $filters['employee_id']);
         }
-
         if (isset($filters['type'])) {
             $query->where('type', $filters['type']);
         }
-
         if (isset($filters['status']) && $filters['status'] !== 'all') {
             $query->where('status', $filters['status']);
         }
-
         if (isset($filters['start_date'])) {
             $query->where('start_date', '>=', $filters['start_date']);
         }
-
         if (isset($filters['end_date'])) {
             $query->where('end_date', '<=', $filters['end_date']);
         }
-
         // Apply business filter
         if (isset($filters['business_id']) && !empty($filters['business_id'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
@@ -307,7 +888,6 @@ class ReportGeneratorService
                 'business_id' => $filters['business_id']
             ]);
         }
-
         // Apply country filter
         if (isset($filters['country']) && !empty($filters['country'])) {
             $query->whereHas('employee', function ($q) use ($filters) {
@@ -318,13 +898,10 @@ class ReportGeneratorService
                 'country_id' => $filters['country']
             ]);
         }
-
         $leaves = $query->orderBy('created_at', 'desc')->get();
-
         Log::info('REPORT_SERVICE: Leaves retrieved', [
             'count' => $leaves->count()
         ]);
-
         $summary = [
             'total_leaves' => $leaves->count(),
             'approved_leaves' => $leaves->where('status', 'approved')->count(),
@@ -334,11 +911,10 @@ class ReportGeneratorService
             'approval_rate' => $leaves->whereIn('status', ['approved', 'rejected'])->count() > 0 ?
                 ($leaves->where('status', 'approved')->count() / $leaves->whereIn('status', ['approved', 'rejected'])->count()) * 100 : 0,
         ];
-
         // Format leave data for export
         $leaveData = $leaves->map(function ($leave) {
             return [
-                'employee_name' => $leave->employee->user 
+                'employee_name' => $leave->employee->user
                     ? ($leave->employee->user->first_name . ' ' . $leave->employee->user->last_name)
                     : 'N/A',
                 'department' => $leave->employee->department ?? 'N/A',
@@ -352,38 +928,14 @@ class ReportGeneratorService
                 'reason' => $leave->reason ?? 'N/A',
             ];
         })->toArray();
-
         // Add filter info
         $filterInfo = $this->buildFilterInfo($filters);
-
         return [
             'data' => $leaveData,
             'summary' => array_merge($summary, ['filters' => $filterInfo]),
             'filters' => $filters,
             'generated_at' => now(),
         ];
-    }
-
-    /**
-     * Helper method to build filter info
-     */
-    private function buildFilterInfo(array $filters): array
-    {
-        $filterInfo = [];
-        
-        if (isset($filters['business_id']) && !empty($filters['business_id'])) {
-            $business = Business::find($filters['business_id']);
-            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-            $filterInfo['business_id'] = $filters['business_id'];
-        }
-        
-        if (isset($filters['country']) && !empty($filters['country'])) {
-            $country = Country::find($filters['country']);
-            $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
-            $filterInfo['country_id'] = $filters['country'];
-        }
-        
-        return $filterInfo;
     }
 
     /**
@@ -397,10 +949,8 @@ class ReportGeneratorService
                 'filename' => $filename,
                 'data_keys' => array_keys($data)
             ]);
-
             // Prepare data for the view
             $reportData = $this->prepareDataForPdf($data);
-
             // Generate PDF
             $pdf = PDF::loadView($view, ['report' => $reportData])
                 ->setPaper('a4', 'landscape')
@@ -409,9 +959,7 @@ class ReportGeneratorService
                     'isRemoteEnabled' => false,
                     'defaultFont' => 'sans-serif'
                 ]);
-
             return $pdf->download($filename);
-
         } catch (\Exception $e) {
             Log::error('REPORT_SERVICE: PDF Generation Error', [
                 'error' => $e->getMessage(),
@@ -424,6 +972,7 @@ class ReportGeneratorService
 
     /**
      * Prepare data structure for PDF views
+     * This method is crucial for ensuring the Blade view receives the expected keys.
      */
     private function prepareDataForPdf(array $data): array
     {
@@ -432,90 +981,210 @@ class ReportGeneratorService
             'has_summary' => isset($data['summary']),
             'has_data' => isset($data['data'])
         ]);
-
-        // If data already has the correct structure from ReportController, return it directly
-        if (isset($data['total_net_salary']) && isset($data['payslip_details'])) {
-            Log::info('REPORT_SERVICE: Using direct data structure from ReportController');
-            return $data;
+        $preparedData = [];
+        // Scenario 1: Data comes directly from ReportController (wrapped in 'success' and 'data')
+        if (isset($data['success']) && isset($data['data']) && is_array($data['data'])) {
+             Log::info('REPORT_SERVICE: Detected Controller JSON response structure, unpacking data');
+             $preparedData = $data['data'];
         }
-
-        // If data has summary and data sections (from ReportGeneratorService)
-        if (isset($data['summary']) && isset($data['data'])) {
-            Log::info('REPORT_SERVICE: Using summary/data structure', [
-                'summary_keys' => array_keys($data['summary'])
-            ]);
-            
-            return [
-                'period_start' => $data['summary']['period_start'] ?? $data['filters']['start_date'] ?? now()->startOfMonth()->format('Y-m-d'),
-                'period_end' => $data['summary']['period_end'] ?? $data['filters']['end_date'] ?? now()->format('Y-m-d'),
-                'processed_employees' => $data['summary']['processed_employees'] ?? 0,
-                'total_gross_salary' => $data['summary']['total_gross_salary'] ?? 0,
-                'total_net_salary' => $data['summary']['total_net_salary'] ?? 0,
-                'average_net_salary' => $data['summary']['average_net_salary'] ?? 0,
-                'total_tax_amount' => $data['summary']['total_tax_amount'] ?? 0,
-                'total_paye' => $data['summary']['total_paye'] ?? 0,
-                'total_napsa' => $data['summary']['total_napsa'] ?? 0,
-                'total_nhima' => $data['summary']['total_nhima'] ?? 0,
-                'total_other_deductions' => $data['summary']['total_other_deductions'] ?? 0,
-                'total_all_deductions' => $data['summary']['total_all_deductions'] ?? 0,
-                'payslip_details' => $data['data'] ?? [],
-                'generated_at' => $data['generated_at'] ?? now(),
-                'filters' => $data['summary']['filters'] ?? [],
-            ];
+        // Scenario 2: Data comes from ReportGeneratorService's own generateXReport methods (has 'summary' and 'data')
+        elseif (isset($data['summary']) && isset($data['data'])) {
+            Log::info('REPORT_SERVICE: Detected Service output structure');
+            $preparedData = array_merge($data['summary'], ['payslip_details' => $data['data'] ?? []]);
+            $preparedData['generated_at'] = $data['generated_at'] ?? now();
         }
-
-        Log::warning('REPORT_SERVICE: Unknown data structure for PDF preparation', [
-            'data_keys' => array_keys($data)
+        // Scenario 3: Data is already a flattened array (e.g., from generatePayrollReportData helper)
+        else {
+            Log::info('REPORT_SERVICE: Detected flattened data structure, using as is.');
+            $preparedData = $data;
+        }
+        // Ensure period_start and period_end are always present and in Y-m-d format for Carbon parsing in view
+        $preparedData['period_start'] = $preparedData['start_date'] ?? ($preparedData['period_start'] ?? now()->startOfMonth()->toDateString());
+        $preparedData['period_end'] = $preparedData['end_date'] ?? ($preparedData['period_end'] ?? now()->endOfMonth()->toDateString());
+        
+        // Ensure tax-related keys match what the Blade view expects
+        $preparedData['total_paye_tax'] = $preparedData['total_paye_tax'] ?? $preparedData['total_paye'] ?? 0;
+        $preparedData['total_tax_withheld'] = $preparedData['total_tax_withheld'] ?? $preparedData['total_tax_amount'] ?? 0;
+        // Ensure earnings and deductions totals are present
+        $preparedData['total_earnings'] = $preparedData['total_earnings'] ?? $preparedData['total_gross_salary'] ?? 0;
+        $preparedData['total_deductions'] = $preparedData['total_all_deductions'] ?? $preparedData['total_deductions'] ?? 0;
+        // Log the final structure being sent to the PDF view
+        Log::info('REPORT_SERVICE: Final data structure for PDF view', [
+            'keys' => array_keys($preparedData),
+            'period_start' => $preparedData['period_start'],
+            'period_end' => $preparedData['period_end'],
+            'total_paye_tax' => $preparedData['total_paye_tax'],
+            'total_tax_withheld' => $preparedData['total_tax_withheld'],
+            'total_earnings' => $preparedData['total_earnings'],
+            'total_deductions' => $preparedData['total_deductions'],
         ]);
-
-        return $data;
+        return $preparedData;
     }
 
     /**
-     * Export report to CSV with proper formatting
+     * Updated CSV Export to handle dynamic columns for payroll (with earnings and deductions)
      */
-    public function exportToCsv(array $data, string $filename)
+    public function exportToCsv(array $data, string $filename, string $reportType = 'payroll')
     {
-        try {
-            Log::info('REPORT_SERVICE: Generating CSV', [
-                'filename' => $filename,
-                'data_count' => count($data)
-            ]);
+        $callback = function() use ($data, $reportType) {
+            $file = fopen('php://output', 'w');
+            fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF)); // BOM
 
-            $callback = function() use ($data) {
-                $file = fopen('php://output', 'w');
+            // Check if this is the dynamic payroll report structure
+            if ($reportType === 'payroll' && isset($data['summary']['earning_headers']) && isset($data['summary']['deduction_headers']) && isset($data['data'])) {
+                $earningHeaders = $data['summary']['earning_headers'];
+                $deductionHeaders = $data['summary']['deduction_headers'];
                 
-                // Add BOM for UTF-8 encoding (helps with Excel)
-                fprintf($file, chr(0xEF).chr(0xBB).chr(0xBF));
+                // Build CSV Headers
+                $csvHeaders = ['Employee', 'Employee ID', 'Business', 'Country', 'Department', 'Pay Period', 'Gross Salary'];
                 
-                // Add headers if data exists
-                if (!empty($data)) {
-                    fputcsv($file, array_keys($data[0]));
-                    
-                    // Add data rows
-                    foreach ($data as $row) {
-                        fputcsv($file, $row);
-                    }
-                } else {
-                    // Add a message if no data
-                    fputcsv($file, ['No data available for the selected period']);
+                // Add earning columns
+                foreach ($earningHeaders as $h) {
+                    $csvHeaders[] = $h . ' (Earnings)';
                 }
                 
-                fclose($file);
-            };
+                $csvHeaders[] = 'Total Earnings';
+                
+                // Add deduction columns
+                foreach ($deductionHeaders as $h) {
+                    $csvHeaders[] = $h . ' (Deductions)';
+                }
+                
+                $csvHeaders[] = 'Total Deductions';
+                $csvHeaders[] = 'Net Salary';
+                $csvHeaders[] = 'Status';
+                
+                fputcsv($file, $csvHeaders);
 
-            return response()->streamDownload($callback, $filename, [
-                'Content-Type' => 'text/csv',
-                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-            ]);
+                // Build Rows
+                foreach ($data['data'] as $row) {
+                    $csvRow = [
+                        $row['employee_name'],
+                        $row['employee_id'],
+                        $row['business'],
+                        $row['country'],
+                        $row['department'],
+                        $row['pay_period'],
+                        $row['gross_salary']
+                    ];
 
-        } catch (\Exception $e) {
-            Log::error('REPORT_SERVICE: CSV Generation Error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
-        }
+                    // Map dynamic earnings to columns (fill 0 if empty)
+                    foreach ($earningHeaders as $h) {
+                        $csvRow[] = $row['earnings_breakdown'][$h] ?? 0;
+                    }
+
+                    $csvRow[] = $row['total_earnings'] ?? $row['gross_salary'];
+
+                    // Map dynamic deductions to columns (fill 0 if empty)
+                    foreach ($deductionHeaders as $h) {
+                        $csvRow[] = $row['deductions_breakdown'][$h] ?? 0;
+                    }
+
+                    $csvRow[] = $row['total_deductions'];
+                    $csvRow[] = $row['net_salary'];
+                    $csvRow[] = $row['status'];
+
+                    fputcsv($file, $csvRow);
+                }
+            } 
+            // Earnings-only report
+            elseif ($reportType === 'earnings' && isset($data['summary']['earning_headers']) && isset($data['data'])) {
+                $earningHeaders = $data['summary']['earning_headers'];
+                
+                // Build CSV Headers
+                $csvHeaders = ['Employee', 'Employee ID', 'Business', 'Country', 'Department', 'Pay Period'];
+                
+                // Add earning columns
+                foreach ($earningHeaders as $h) {
+                    $csvHeaders[] = $h;
+                }
+                
+                $csvHeaders[] = 'Total Earnings';
+                $csvHeaders[] = 'Gross Salary';
+                $csvHeaders[] = 'Status';
+                
+                fputcsv($file, $csvHeaders);
+
+                // Build Rows
+                foreach ($data['data'] as $row) {
+                    $csvRow = [
+                        $row['employee_name'],
+                        $row['employee_id'],
+                        $row['business'],
+                        $row['country'],
+                        $row['department'],
+                        $row['pay_period']
+                    ];
+
+                    // Map dynamic earnings to columns (fill 0 if empty)
+                    foreach ($earningHeaders as $h) {
+                        $csvRow[] = $row['earnings_breakdown'][$h] ?? 0;
+                    }
+
+                    $csvRow[] = $row['total_earnings'];
+                    $csvRow[] = $row['gross_salary'];
+                    $csvRow[] = $row['status'];
+
+                    fputcsv($file, $csvRow);
+                }
+            }
+            // Deductions-only report
+            elseif ($reportType === 'deductions' && isset($data['summary']['deduction_headers']) && isset($data['data'])) {
+                $deductionHeaders = $data['summary']['deduction_headers'];
+                
+                // Build CSV Headers
+                $csvHeaders = ['Employee', 'Employee ID', 'Business', 'Country', 'Department', 'Pay Period'];
+                
+                // Add deduction columns
+                foreach ($deductionHeaders as $h) {
+                    $csvHeaders[] = $h;
+                }
+                
+                $csvHeaders[] = 'Total Deductions';
+                $csvHeaders[] = 'PAYE Tax';
+                $csvHeaders[] = 'Net Salary';
+                $csvHeaders[] = 'Status';
+                
+                fputcsv($file, $csvHeaders);
+
+                // Build Rows
+                foreach ($data['data'] as $row) {
+                    $csvRow = [
+                        $row['employee_name'],
+                        $row['employee_id'],
+                        $row['business'],
+                        $row['country'],
+                        $row['department'],
+                        $row['pay_period']
+                    ];
+
+                    // Map dynamic deductions to columns (fill 0 if empty)
+                    foreach ($deductionHeaders as $h) {
+                        $csvRow[] = $row['deductions_breakdown'][$h] ?? 0;
+                    }
+
+                    $csvRow[] = $row['total_deductions'];
+                    $csvRow[] = $row['paye_tax'] ?? 0;
+                    $csvRow[] = $row['net_salary'];
+                    $csvRow[] = $row['status'];
+
+                    fputcsv($file, $csvRow);
+                }
+            }
+            // Fallback for non-payroll reports (Attendance/Leave)
+            elseif (!empty($data) && isset($data[0])) {
+                $headers = array_keys($data[0]);
+                fputcsv($file, array_map(fn($h) => str_replace('_', ' ', ucwords($h)), $headers));
+                foreach ($data as $row) fputcsv($file, $row);
+            }
+
+            fclose($file);
+        };
+
+        return response()->streamDownload($callback, $filename, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
     /**
@@ -524,65 +1193,22 @@ class ReportGeneratorService
     public function generateProductivityReport(array $filters = []): array
     {
         $query = Employee::with(['user', 'attendances', 'leaves', 'business', 'country']);
-
         if (isset($filters['employee_id'])) {
             $query->where('id', $filters['employee_id']);
         }
-
         if (isset($filters['department'])) {
             $query->where('department', $filters['department']);
         }
-
         // Apply business filter
         if (isset($filters['business_id']) && !empty($filters['business_id'])) {
             $query->where('business_id', $filters['business_id']);
         }
-
         // Apply country filter
         if (isset($filters['country']) && !empty($filters['country'])) {
             $query->where('country_id', $filters['country']);
         }
-
         $employees = $query->get();
-
-        // Calculate productivity metrics for each employee
         $productivityData = $employees->map(function ($employee) use ($filters) {
-            // Filter attendances by date range if provided
-            $attendances = $employee->attendances;
-            
-            if (isset($filters['start_date'])) {
-                $attendances = $attendances->where('date', '>=', $filters['start_date']);
-            }
-            
-            if (isset($filters['end_date'])) {
-                $attendances = $attendances->where('date', '<=', $filters['end_date']);
-            }
-
-            // Calculate metrics
-            $totalDays = $attendances->count();
-            $presentDays = $attendances->where('status', 'present')->count();
-            $lateDays = $attendances->where('status', 'late')->count();
-            $absentDays = $attendances->where('status', 'absent')->count();
-            $totalHours = $attendances->sum('total_hours');
-            
-            $attendanceRate = $totalDays > 0 ? ($presentDays / $totalDays) * 100 : 0;
-            
-            // Calculate leaves
-            $leaves = $employee->leaves;
-            
-            if (isset($filters['start_date']) && isset($filters['end_date'])) {
-                $leaves = $leaves->whereBetween('start_date', [$filters['start_date'], $filters['end_date']]);
-            }
-            
-            $approvedLeaves = $leaves->where('status', 'approved')->sum('total_days');
-            
-            // Calculate productivity score (0-100)
-            $productivityScore = $this->calculateProductivityScore(
-                $attendanceRate,
-                $lateDays,
-                $totalDays
-            );
-
             return [
                 'employee_id' => $employee->id,
                 'employee_name' => $employee->user->first_name . ' ' . $employee->user->last_name ?? 'N/A',
@@ -590,30 +1216,26 @@ class ReportGeneratorService
                 'department' => $employee->department ?? 'N/A',
                 'business' => $employee->business ? $employee->business->name : 'No Business',
                 'country' => $employee->country ? $employee->country->name : 'N/A',
-                'total_working_days' => $totalDays,
-                'present_days' => $presentDays,
-                'late_days' => $lateDays,
-                'absent_days' => $absentDays,
-                'total_hours_worked' => round($totalHours, 2),
-                'approved_leave_days' => $approvedLeaves,
-                'attendance_rate' => round($attendanceRate, 2),
-                'productivity_score' => round($productivityScore, 2),
+                'total_working_days' => $this->getTotalWorkingDays($employee, $filters),
+                'present_days' => $this->getPresentDays($employee, $filters),
+                'late_days' => $this->getLateDays($employee, $filters),
+                'absent_days' => $this->getAbsentDays($employee, $filters),
+                'total_hours_worked' => $this->getTotalHoursWorked($employee, $filters),
+                'approved_leave_days' => $this->getApprovedLeaveDays($employee, $filters),
+                'attendance_rate' => $this->calculateAttendanceRate($employee, $filters),
+                'productivity_score' => $this->calculateProductivityScore($employee, $filters),
             ];
         });
-
-        // Calculate summary statistics
         $summary = [
             'total_employees' => $employees->count(),
             'average_attendance_rate' => round($productivityData->avg('attendance_rate'), 2),
             'average_productivity_score' => round($productivityData->avg('productivity_score'), 2),
             'total_hours_worked' => round($productivityData->sum('total_hours_worked'), 2),
-            'average_hours_per_employee' => $employees->count() > 0 ? 
+            'average_hours_per_employee' => $employees->count() > 0 ?
                 round($productivityData->sum('total_hours_worked') / $employees->count(), 2) : 0,
         ];
-
         // Add filter info
         $filterInfo = $this->buildFilterInfo($filters);
-
         return [
             'data' => $productivityData->toArray(),
             'summary' => array_merge($summary, ['filters' => $filterInfo]),
@@ -622,11 +1244,15 @@ class ReportGeneratorService
         ];
     }
 
-    /**
+   /**
      * Calculate productivity score
      */
-    private function calculateProductivityScore(float $attendanceRate, int $lateDays, int $totalDays): float
+    private function calculateProductivityScore(Employee $employee, array $filters): float
     {
+        $attendanceRate = $this->calculateAttendanceRate($employee, $filters);
+        $lateDays = $this->getLateDays($employee, $filters);
+        $totalDays = $this->getTotalWorkingDays($employee, $filters);
+        
         // Base score from attendance rate (0-70 points)
         $attendanceScore = ($attendanceRate / 100) * 70;
         
@@ -640,5 +1266,84 @@ class ReportGeneratorService
         
         // Ensure score is between 0 and 100
         return max(0, min(100, $score));
+    }
+    private function getTotalWorkingDays(Employee $employee, array $filters): int
+    {
+        $attendanceQuery = $employee->attendances();
+        
+        if (isset($filters['start_date'])) {
+            $attendanceQuery->where('date', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $attendanceQuery->where('date', '<=', $filters['end_date']);
+        }
+        return $attendanceQuery->count();
+    }
+private function getPresentDays(Employee $employee, array $filters): int
+    {
+        $attendanceQuery = $employee->attendances()->where('status', 'present');
+        
+        if (isset($filters['start_date'])) {
+            $attendanceQuery->where('date', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $attendanceQuery->where('date', '<=', $filters['end_date']);
+        }
+        return $attendanceQuery->count();
+    }
+    private function getLateDays(Employee $employee, array $filters): int
+    {
+        $attendanceQuery = $employee->attendances()->where('status', 'late');
+        
+        if (isset($filters['start_date'])) {
+            $attendanceQuery->where('date', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $attendanceQuery->where('date', '<=', $filters['end_date']);
+        }
+        return $attendanceQuery->count();
+    }
+    private function getAbsentDays(Employee $employee, array $filters): int
+    {
+        $attendanceQuery = $employee->attendances()->where('status', 'absent');
+        
+        if (isset($filters['start_date'])) {
+            $attendanceQuery->where('date', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $attendanceQuery->where('date', '<=', $filters['end_date']);
+        }
+        return $attendanceQuery->count();
+    }
+    private function getTotalHoursWorked(Employee $employee, array $filters): float
+    {
+        $attendanceQuery = $employee->attendances();
+        
+        if (isset($filters['start_date'])) {
+            $attendanceQuery->where('date', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $attendanceQuery->where('date', '<=', $filters['end_date']);
+        }
+        return $attendanceQuery->sum('total_hours');
+    }
+    private function getApprovedLeaveDays(Employee $employee, array $filters): int
+    {
+        $leaveQuery = $employee->leaves()->where('status', 'approved');
+        
+        if (isset($filters['start_date'])) {
+            $leaveQuery->where('start_date', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $leaveQuery->where('end_date', '<=', $filters['end_date']);
+        }
+        return $leaveQuery->sum('total_days');
+    }
+
+    private function calculateAttendanceRate(Employee $employee, array $filters): float
+    {
+        $totalDays = $this->getTotalWorkingDays($employee, $filters);
+        $presentDays = $this->getPresentDays($employee, $filters);
+        return $totalDays > 0 ? ($presentDays / $totalDays) * 100 : 0;
     }
 }

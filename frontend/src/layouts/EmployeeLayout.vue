@@ -5,68 +5,105 @@
         <span class="logo-icon">🚀</span>
         <h1 class="title">Portal</h1>
       </div>
+      
       <!-- Attendance Toggle Button Section -->
       <div class="attendance-toggle-section">
         <ClockToggle />
       </div>
+
+      <!-- Navigation Menu -->
       <nav class="nav">
         <router-link to="/employee/dashboard" class="nav-link" active-class="active">
           <span class="link-icon">🏠</span>
           <span class="link-text">Dashboard</span>
         </router-link>
+        
         <router-link to="/employee/attendance" class="nav-link" active-class="active">
           <span class="link-icon">⏰</span>
           <span class="link-text">Attendance</span>
         </router-link>
+        
         <router-link to="/employee/leaves" class="nav-link" active-class="active">
           <span class="link-icon">🏖️</span>
           <span class="link-text">Leaves</span>
         </router-link>
+        
         <router-link to="/employee/apply-leave" class="nav-link" active-class="active">
           <span class="link-icon">📝</span>
           <span class="link-text">Apply Leave</span>
         </router-link>
+        
         <router-link to="/employee/payslips" class="nav-link" active-class="active">
           <span class="link-icon">💵</span>
           <span class="link-text">Payslips</span>
         </router-link>
         
         <!-- Tasks link -->
-        <router-link
-          :to="{ name: 'TaskBoard' }"
-          class="nav-link"
-          active-class="active"
-        >
+        <router-link :to="{ name: 'TaskBoard' }" class="nav-link" active-class="active">
           <span class="link-icon">🗂️</span>
           <span class="link-text">Tasks</span>
         </router-link>
 
         <!-- Schedules link -->
-        <router-link
-          :to="{ name: 'EmployeeSchedules' }"
-          class="nav-link"
-          active-class="active"
-        >
+        <router-link :to="{ name: 'EmployeeSchedules' }" class="nav-link" active-class="active">
           <span class="link-icon">📅</span>
           <span class="link-text">Schedules</span>
         </router-link>
 
-        <!-- ✅ Added My Shifts link -->
-        <router-link
-          :to="{ name: 'myshifts' }"
-          class="nav-link"
-          active-class="active"
-        >
+        <!-- My Shifts link -->
+        <router-link :to="{ name: 'myshifts' }" class="nav-link" active-class="active">
           <span class="link-icon">⏱️</span>
           <span class="link-text">My Shifts</span>
         </router-link>
+
+        <!-- ✅ TICKETS LINK - Positioned here for visibility -->
+        <router-link :to="{ name: 'mytickets' }" class="nav-link" active-class="active">
+          <span class="link-icon">🎫</span>
+          <span class="link-text">Tickets</span>
+          <!-- Badge only shows if count is greater than 0 -->
+          <span v-if="pendingTicketsCount > 0" class="notification-badge-sidebar">
+            {{ pendingTicketsCount }}
+          </span>
+        </router-link>
+
+        <!-- Reports link -->
+        <router-link :to="{ name: 'charts' }" class="nav-link" active-class="active">
+          <span class="link-icon">📊</span>
+          <span class="link-text">Reports</span>
+        </router-link>
       </nav>
     </aside>
+
     <div class="content-area">
       <header class="top-header">
-        <h2 class="page-title">Welcome Back!</h2>
+        <h2 class="page-title">{{ currentPageTitle }}</h2>
         
-        <!-- Profile Dropdown in Top Right -->
+        <!-- Quick Action Buttons -->
+        <div class="quick-actions">
+          <!-- Create Ticket Button (Visible on Tickets page) -->
+          <button 
+            v-if="showQuickCreateTicket"
+            @click="openQuickCreateTicket" 
+            class="quick-action-button"
+            title="Create New Ticket"
+          >
+            <span class="quick-action-icon">🎫</span>
+            <span class="quick-action-text">New Ticket</span>
+          </button>
+          
+          <button @click="openChartModal" class="quick-action-button" title="View Charts">
+            <span class="quick-action-icon">📊</span>
+            <span class="quick-action-text">Charts</span>
+          </button>
+          
+          <button @click="openNotifications" class="quick-action-button" title="Notifications">
+            <span class="quick-action-icon">🔔</span>
+            <span class="quick-action-text">Notifications</span>
+            <span v-if="unreadCount > 0" class="notification-badge">{{ unreadCount }}</span>
+          </button>
+        </div>
+        
+        <!-- Profile Dropdown -->
         <div class="profile-dropdown-container">
           <button @click="toggleDropdown" class="profile-button">
             <span class="avatar-placeholder">{{ getInitials() }}</span>
@@ -78,20 +115,53 @@
           <transition name="dropdown">
             <div v-if="isDropdownOpen" class="dropdown-menu">
               <router-link to="/employee/profile" class="dropdown-item" @click="closeDropdown">
-                <span class="dropdown-icon">👤</span>
-                Profile
+                <span class="dropdown-icon">👤</span> Profile
+              </router-link>
+              <router-link :to="{ name: 'mytickets' }" class="dropdown-item" @click="closeDropdown">
+                <span class="dropdown-icon">🎫</span> My Tickets
+                <span v-if="pendingTicketsCount > 0" class="dropdown-badge">{{ pendingTicketsCount }}</span>
+              </router-link>
+              <router-link to="/employee/charts" class="dropdown-item" @click="closeDropdown">
+                <span class="dropdown-icon">📊</span> Reports & Charts
               </router-link>
               <div class="dropdown-divider"></div>
               <button @click="logout" class="dropdown-item logout-item">
-                <span class="dropdown-icon">➡️</span>
-                Logout
+                <span class="dropdown-icon">➡️</span> Logout
               </button>
             </div>
           </transition>
         </div>
       </header>
+
       <main class="main">
         <router-view />
+        
+        <!-- Chart Modal -->
+        <transition name="modal">
+          <div v-if="showChartModal" class="modal-overlay" @click.self="closeChartModal">
+            <div class="modal-container">
+              <div class="modal-header">
+                <h3>📊 Analytics Dashboard</h3>
+                <button @click="closeChartModal" class="modal-close-btn">×</button>
+              </div>
+              <div class="modal-content">
+                <ChartComponent />
+              </div>
+              <div class="modal-footer">
+                <button @click="goToDetailedCharts" class="btn-primary">View Detailed Reports</button>
+                <button @click="closeChartModal" class="btn-secondary">Close</button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
+        <!-- Quick Create Ticket Modal -->
+        <CreateTicketModal
+          v-if="showQuickCreateModal"
+          :show="showQuickCreateModal"
+          @close="closeQuickCreateModal"
+          @created="handleTicketCreated"
+        />
       </main>
     </div>
   </div>
@@ -99,34 +169,91 @@
 
 <script>
 import { useAuthStore } from '@/stores/auth'
+import { useRoute, useRouter } from 'vue-router'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import ClockToggle from '@/components/common/Toggle.vue'
-import { ref, onMounted, onUnmounted } from 'vue'
+import ChartComponent from '@/components/ChatInterface.vue'
+import CreateTicketModal from '@/components/Tickets/CreateTicketModal.vue'
+import axios from 'axios'
 
 export default {
   name: 'ModernEmployeeLayout',
   components: {
-    ClockToggle
+    ClockToggle,
+    ChartComponent,
+    CreateTicketModal
   },
   setup() {
     const authStore = useAuthStore()
+    const router = useRouter()
+    const route = useRoute()
+    
+    // State
     const isDropdownOpen = ref(false)
+    const showChartModal = ref(false)
+    const showQuickCreateModal = ref(false)
+    const unreadCount = ref(3)
+    const pendingTicketsCount = ref(0)
 
-    const toggleDropdown = () => {
-      isDropdownOpen.value = !isDropdownOpen.value
+    // Compute current page title
+    const currentPageTitle = computed(() => {
+      return route.meta?.title || 'Welcome Back!'
+    })
+
+    // Show quick create ticket button only on tickets page
+    const showQuickCreateTicket = computed(() => {
+      return route.name === 'mytickets'
+    })
+
+    // Dropdown Logic
+    const toggleDropdown = () => isDropdownOpen.value = !isDropdownOpen.value
+    const closeDropdown = () => isDropdownOpen.value = false
+
+    // Modal Logic
+    const openChartModal = () => {
+      showChartModal.value = true
+      closeDropdown()
+    }
+    const closeChartModal = () => showChartModal.value = false
+    
+    const openQuickCreateTicket = () => showQuickCreateModal.value = true
+    const closeQuickCreateModal = () => showQuickCreateModal.value = false
+
+    const handleTicketCreated = () => {
+      closeQuickCreateModal()
+      if (route.name === 'mytickets') {
+        // Emit event to refresh tickets list if a global bus exists, or handle locally
+        window.dispatchEvent(new CustomEvent('refresh-tickets'))
+      }
+      fetchPendingTicketsCount()
     }
 
-    const closeDropdown = () => {
-      isDropdownOpen.value = false
+    const goToDetailedCharts = () => {
+      closeChartModal()
+      router.push({ name: 'charts' })
+    }
+
+    const openNotifications = () => {
+      alert('Notifications feature coming soon!')
     }
 
     const getInitials = () => {
       const name = authStore.user?.fullName || 'Employee'
-      return name
-        .split(' ')
-        .map(word => word[0])
-        .join('')
-        .toUpperCase()
-        .slice(0, 2)
+      return name.split(' ').map(word => word[0]).join('').toUpperCase().slice(0, 2)
+    }
+
+    // API Calls
+    const fetchPendingTicketsCount = async () => {
+      try {
+        // Ensure this endpoint exists in your backend
+        const response = await axios.get('/api/tickets/count', { 
+          params: { status: 'pending' } 
+        }).catch(() => ({ data: { total: 0 } })) // Fallback if API fails
+        
+        pendingTicketsCount.value = response.data.total || 0
+      } catch (error) {
+        console.error('Failed to fetch ticket count')
+      }
     }
 
     const handleClickOutside = (event) => {
@@ -138,26 +265,30 @@ export default {
 
     onMounted(() => {
       document.addEventListener('click', handleClickOutside)
+      fetchPendingTicketsCount()
+      const intervalId = setInterval(fetchPendingTicketsCount, 300000) // 5 mins
+      onUnmounted(() => clearInterval(intervalId))
     })
 
     onUnmounted(() => {
       document.removeEventListener('click', handleClickOutside)
     })
 
+    watch(() => route.path, () => {
+      if (route.name === 'mytickets') fetchPendingTicketsCount()
+    })
+
     return { 
-      authStore, 
-      isDropdownOpen, 
-      toggleDropdown, 
-      closeDropdown,
-      getInitials
+      authStore, isDropdownOpen, showChartModal, showQuickCreateModal,
+      unreadCount, pendingTicketsCount, currentPageTitle, showQuickCreateTicket,
+      toggleDropdown, closeDropdown, openChartModal, closeChartModal,
+      openQuickCreateTicket, closeQuickCreateModal, handleTicketCreated,
+      goToDetailedCharts, openNotifications, getInitials, logout: () => {
+        authStore.clearAuth()
+        router.push({ name: 'login' })
+      }
     }
-  },
-  methods: {
-    logout() {
-      this.authStore.clearAuth()
-      this.$router.push({ name: 'login' })
-    },
-  },
+  }
 }
 </script>
 
@@ -171,27 +302,31 @@ export default {
   --text-color: #333333;
   --text-light: #7a7a7a;
   --border-color: #eaeaea;
+  --ticket-color: #ff6b6b;
+  --danger-color: #d9534f;
 }
 
-/* Base Layout */
+/* Layout */
 .employee-layout {
   display: flex;
   min-height: 100vh;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', sans-serif;
   background-color: var(--background-color);
+  overflow: hidden; /* Prevents double scrollbars */
 }
 
-/* Sidebar Styling */
+/* Sidebar Styling - UPDATED FOR VISIBILITY */
 .sidebar {
   width: 260px;
   background-color: var(--surface-color);
   box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
-  padding: 2rem 1rem;
+  padding: 1.5rem 1rem;
   display: flex;
   flex-direction: column;
+  height: 100vh;
   position: sticky;
   top: 0;
-  height: 100vh;
+  z-index: 100;
 }
 
 .logo-section {
@@ -200,7 +335,7 @@ export default {
   gap: 10px;
   margin-bottom: 1rem;
   padding: 0 0.5rem;
-  color: var(--primary-color);
+  flex-shrink: 0; /* Prevents logo from shrinking */
 }
 
 .title {
@@ -211,15 +346,33 @@ export default {
 }
 
 .attendance-toggle-section {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
   padding: 0 0.25rem;
+  flex-shrink: 0;
 }
 
+/* IMPORTANT: Navigation Scroll Styling */
 .nav {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
   flex: 1;
+  overflow-y: auto; /* ENABLE SCROLLING FOR SIDEBAR */
+  padding-right: 5px; /* Space for scrollbar */
+  margin-right: -5px;
+  
+  /* Modern Scrollbar Styling */
+  scrollbar-width: thin;
+  scrollbar-color: #ddd transparent;
+}
+
+.nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.nav::-webkit-scrollbar-thumb {
+  background-color: #ddd;
+  border-radius: 4px;
 }
 
 .nav-link {
@@ -228,11 +381,13 @@ export default {
   gap: 15px;
   color: var(--text-light);
   text-decoration: none;
-  padding: 1rem 1.25rem;
+  padding: 0.85rem 1.25rem; /* Slightly reduced padding to fit more items */
   border-radius: 12px;
   font-weight: 500;
   transition: all 0.2s ease;
-  font-size: 1rem;
+  font-size: 0.95rem;
+  position: relative;
+  flex-shrink: 0; /* Prevents links from squishing */
 }
 
 .nav-link:hover {
@@ -246,85 +401,117 @@ export default {
   font-weight: 600;
 }
 
-.link-icon {
-  font-size: 1.2rem;
+/* Specific styling for Tickets active state */
+.nav-link.active[href*="tickets"] {
+  background-color: rgba(255, 107, 107, 0.1);
+  color: var(--ticket-color);
 }
 
+.link-icon { font-size: 1.2rem; }
+
+/* Badge Styling */
+.notification-badge-sidebar {
+  margin-left: auto; /* Pushes badge to the far right */
+  background-color: var(--ticket-color);
+  color: white;
+  border-radius: 10px;
+  min-width: 20px;
+  height: 20px;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+/* Content Area */
 .content-area {
   flex: 1;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .top-header {
   background-color: var(--surface-color);
-  padding: 1.5rem 3rem;
+  padding: 1rem 2rem;
   border-bottom: 1px solid var(--border-color);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .page-title {
-  margin: 0;
-  font-size: 1.8rem;
-  font-weight: 300;
+  font-size: 1.5rem;
+  font-weight: 400;
   color: var(--text-color);
 }
 
-.profile-dropdown-container {
+.quick-actions { display: flex; gap: 10px; align-items: center; }
+
+.quick-action-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
   position: relative;
 }
+
+.quick-action-button:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: var(--danger-color);
+  color: white;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Dropdown */
+.profile-dropdown-container { position: relative; }
 
 .profile-button {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 0.5rem 1rem;
-  border-radius: 12px;
-  transition: all 0.2s ease;
-}
-
-.profile-button:hover {
-  background-color: #f0f4f8;
 }
 
 .avatar-placeholder {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background-color: var(--primary-color);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
   font-weight: 600;
-}
-
-.user-name-header {
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 0.95rem;
-}
-
-.dropdown-arrow {
-  font-size: 0.7rem;
-  color: var(--text-light);
-  transition: transform 0.2s ease;
-}
-
-.dropdown-arrow.open {
-  transform: rotate(180deg);
 }
 
 .dropdown-menu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: 120%;
   right: 0;
   background-color: var(--surface-color);
   border-radius: 12px;
@@ -337,64 +524,52 @@ export default {
 .dropdown-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0.75rem 1.25rem;
+  gap: 10px;
+  padding: 0.75rem 1rem;
   color: var(--text-color);
   text-decoration: none;
-  border: none;
-  background: none;
   width: 100%;
   text-align: left;
+  border: none;
+  background: none;
   cursor: pointer;
-  font-size: 0.95rem;
-  font-weight: 500;
+}
+
+.dropdown-item:hover { background-color: #f0f4f8; }
+.dropdown-divider { border-bottom: 1px solid var(--border-color); margin: 4px 0; }
+.logout-item { color: var(--danger-color); }
+
+/* Main Content */
+.main {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto; /* Content scrolls independently */
+}
+
+/* Transitions */
+.dropdown-enter-active, .dropdown-leave-active, 
+.modal-enter-active, .modal-leave-active {
   transition: all 0.2s ease;
 }
-
-.dropdown-item:hover {
-  background-color: #f0f4f8;
-}
-
-.dropdown-icon {
-  font-size: 1.1rem;
-}
-
-.dropdown-divider {
-  height: 1px;
-  background-color: var(--border-color);
-  margin: 0.5rem 0;
-}
-
-.logout-item {
-  color: #e24a4a;
-}
-
-.logout-item:hover {
-  background-color: rgba(226, 74, 74, 0.1);
-}
-
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: all 0.2s ease;
-}
-
-.dropdown-enter-from,
-.dropdown-leave-to {
+.dropdown-enter-from, .dropdown-leave-to, 
+.modal-enter-from, .modal-leave-to {
   opacity: 0;
   transform: translateY(-10px);
 }
 
-.main {
-  flex: 1;
-  padding: 2rem 3rem;
-  overflow-y: auto;
-}
-
+/* Mobile Responsiveness */
 @media (max-width: 992px) {
-  .sidebar { width: 80px; padding: 1rem 0.5rem; }
-  .title, .link-text { display: none; }
+  .sidebar { width: 70px; padding: 1rem 0.5rem; }
+  .title, .link-text, .user-name-header, .quick-action-text { display: none; }
+  .nav-link { justify-content: center; padding: 1rem 0.5rem; }
   .logo-section { justify-content: center; }
-  .nav-link { justify-content: center; }
-  .user-name-header { display: none; }
+  .notification-badge-sidebar {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    margin: 0;
+    min-width: 16px;
+    height: 16px;
+  }
 }
 </style>

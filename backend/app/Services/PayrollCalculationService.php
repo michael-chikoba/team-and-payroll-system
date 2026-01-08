@@ -8,6 +8,7 @@ use App\Models\Payslip;
 use App\Models\TaxConfiguration;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class PayrollCalculationService
 {
@@ -15,16 +16,21 @@ class PayrollCalculationService
         private AttendanceService $attendanceService
     ) {}
 
-    /**
-     * Generate payslip preview without saving
-     */
-    public function generatePayslipPreview(Employee $employee, Payroll $payroll): array
+  
+
+   
+public function generatePayslipPreview(Employee $employee, Payroll $payroll): array
     {
-        $taxConfig = TaxConfiguration::active()->first();
+        // Load relationships
+        $employee->load(['country', 'business']);
+        
+        $taxConfig = $this->getTaxConfigForEmployee($employee);
         
         if (!$taxConfig) {
-            throw new \Exception('No active tax configuration found');
+            throw new \Exception('No active tax configuration found for employee');
         }
+
+        $this->logTaxConfigUsage($employee, $taxConfig, 'preview');
 
         return $this->calculatePayslipData($employee, $payroll, $taxConfig, 'pending');
     }
@@ -47,11 +53,21 @@ class PayrollCalculationService
         array $adjustments = []
     ): ?Payslip {
         try {
-            $taxConfig = TaxConfiguration::active()->first();
+            // Load necessary relationships
+            $employee->load(['country', 'business']);
+            
+            $taxConfig = $this->getTaxConfigForEmployee($employee);
             
             if (!$taxConfig) {
-                throw new \Exception('No active tax configuration found');
+                Log::error('No tax configuration found', [
+                    'employee_id' => $employee->id,
+                    'business_id' => $employee->business_id,
+                    'country_code' => $employee->getCountryCode()
+                ]);
+                throw new \Exception('No active tax configuration found for employee');
             }
+
+            $this->logTaxConfigUsage($employee, $taxConfig, 'creation');
 
             $calculationData = $this->calculatePayslipData($employee, $payroll, $taxConfig, $status);
             
@@ -60,27 +76,47 @@ class PayrollCalculationService
             $additionalDeductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
             
             // Update calculation data with adjustments
-            $calculationData['bonuses'] += $bonuses;
-            $calculationData['gross_salary'] += $bonuses;
-            $calculationData['deductions']['other_deductions'] += $additionalDeductions;
-            $calculationData['deductions']['total_deductions'] += $additionalDeductions;
-            $calculationData['net_pay'] = $calculationData['gross_salary'] - $calculationData['deductions']['total_deductions'];
-            
-            // Update breakdown with adjustments
-            $calculationData['breakdown']['adjustments'] = $adjustments;
-            $calculationData['breakdown']['adjustments_applied'] = [
-                'total_bonuses' => $bonuses,
-                'total_additional_deductions' => $additionalDeductions,
-                'net_effect' => $bonuses - $additionalDeductions
-            ];
+            if ($bonuses > 0 || $additionalDeductions > 0) {
+                $calculationData['bonuses'] += $bonuses;
+                $calculationData['gross_salary'] += $bonuses;
+                $calculationData['deductions']['other_deductions'] += $additionalDeductions;
+                $calculationData['deductions']['total_deductions'] += $additionalDeductions;
+                $calculationData['net_pay'] = $calculationData['gross_salary'] - $calculationData['deductions']['total_deductions'];
+                
+                // Update breakdown with adjustments
+                $calculationData['breakdown']['adjustments'] = $adjustments;
+                $calculationData['breakdown']['adjustments_applied'] = [
+                    'total_bonuses' => $bonuses,
+                    'total_additional_deductions' => $additionalDeductions,
+                    'net_effect' => $bonuses - $additionalDeductions
+                ];
+            }
 
-            // Map dynamic deductions to legacy columns for reporting compatibility
+            // Map dynamic deductions to legacy columns for backward compatibility
             $statutory = collect($calculationData['deductions']['statutory_breakdown']);
             
-            // Search by name/type for legacy columns
-            $napsaAmount = $statutory->filter(fn($i) => stripos($i['name'], 'NAPSA') !== false)->sum('amount');
-            $nhimaAmount = $statutory->filter(fn($i) => stripos($i['name'], 'NHIMA') !== false)->sum('amount');
-            $pensionAmount = $statutory->filter(fn($i) => $i['type'] === 'pension' && stripos($i['name'], 'NAPSA') === false)->sum('amount');
+            $napsaAmount = $statutory->where('type', 'levy')
+                ->filter(fn($i) => stripos($i['name'], 'NAPSA') !== false)
+                ->sum('amount');
+            
+            $nhimaAmount = $statutory->where('type', 'health')
+                ->filter(fn($i) => stripos($i['name'], 'NHIMA') !== false || stripos($i['name'], 'NHIF') !== false)
+                ->sum('amount');
+            
+            $pensionAmount = $statutory->where('type', 'pension')
+                ->filter(fn($i) => stripos($i['name'], 'NAPSA') === false)
+                ->sum('amount');
+
+            Log::debug('Creating payslip', [
+                'employee_id' => $employee->id,
+                'payroll_id' => $payroll->id,
+                'basic_salary' => $calculationData['basic_salary'],
+                'gross_salary' => $calculationData['gross_salary'],
+                'net_pay' => $calculationData['net_pay'],
+                'napsa' => $napsaAmount,
+                'nhima' => $nhimaAmount,
+                'pension' => $pensionAmount
+            ]);
 
             return Payslip::create([
                 'employee_id' => $employee->id,
@@ -108,35 +144,125 @@ class PayrollCalculationService
                 'total_deductions' => $calculationData['deductions']['total_deductions'],
                 'net_pay' => $calculationData['net_pay'],
                 'status' => $status,
-                'breakdown' => $calculationData['breakdown'], // Full dynamic breakdown stored here
+                'breakdown' => $calculationData['breakdown'],
             ]);
         } catch (\Exception $e) {
-            \Log::error("Failed to create payslip for employee {$employee->id}: " . $e->getMessage());
+            Log::error("Failed to create payslip for employee {$employee->id}: " . $e->getMessage(), [
+                'employee_id' => $employee->id,
+                'employee_name' => $employee->user->first_name ?? 'Unknown',
+                'business_id' => $employee->business_id,
+                'country_code' => $employee->getCountryCode(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return null;
         }
     }
 
     /**
-     * Calculate complete payslip data using tax configuration
+     * Get appropriate tax configuration for employee
      */
-    private function calculatePayslipData(Employee $employee, Payroll $payroll, TaxConfiguration $taxConfig, string $status): array
+    private function getTaxConfigForEmployee(Employee $employee): ?TaxConfiguration
     {
-        // 1. Basic Salary
+        $businessId = $employee->business_id;
+        $countryCode = $employee->getCountryCode();
+
+        Log::info("Looking up tax configuration", [
+            'employee_id' => $employee->id,
+            'employee_name' => $employee->user->first_name ?? 'Unknown',
+            'business_id' => $businessId,
+            'country_id' => $employee->country_id,
+            'country_code' => $countryCode,
+            'business_country_code' => $employee->business->country_code ?? null
+        ]);
+
+        if (!$countryCode) {
+            Log::warning("Employee has no country code", [
+                'employee_id' => $employee->id,
+                'employee_name' => $employee->user->first_name ?? 'Unknown',
+                'business_id' => $businessId
+            ]);
+        }
+
+        $config = TaxConfiguration::getForBusinessAndCountry($businessId, $countryCode);
+        
+        if (!$config) {
+            Log::error("No tax configuration found for employee", [
+                'employee_id' => $employee->id,
+                'employee_name' => $employee->user->first_name ?? 'Unknown',
+                'business_id' => $businessId,
+                'business_name' => $employee->business->name ?? 'Unknown',
+                'country_code' => $countryCode ?? 'Not set'
+            ]);
+        }
+        
+        return $config;
+    }
+
+    /**
+     * Log which tax configuration is being used
+     */
+    private function logTaxConfigUsage(Employee $employee, TaxConfiguration $taxConfig, string $operation): void
+    {
+        $configType = 'global';
+        if ($taxConfig->business_id && $taxConfig->country_code) {
+            $configType = 'business-specific';
+        } elseif ($taxConfig->country_code) {
+            $configType = 'country-specific';
+        }
+
+        Log::info("Tax configuration applied", [
+            'operation' => $operation,
+            'employee_id' => $employee->id,
+            'employee_name' => ($employee->user->first_name ?? '') . ' ' . ($employee->user->last_name ?? ''),
+            'business_id' => $employee->business_id,
+            'business_name' => $employee->business->name ?? 'Unknown',
+            'employee_country_id' => $employee->country_id,
+            'employee_country_code' => $employee->getCountryCode(),
+            'tax_config_id' => $taxConfig->id,
+            'tax_config_type' => $configType,
+            'tax_config_country' => $taxConfig->country_code ?? 'global',
+            'tax_config_business_id' => $taxConfig->business_id ?? 'all',
+            'currency' => $taxConfig->getCurrency(),
+            'rounding_method' => $taxConfig->config_data['roundingMethod'] ?? 'nearest',
+            'statutory_deductions_count' => count($taxConfig->config_data['statutory_deductions'] ?? [])
+        ]);
+    }
+
+    /**
+ * Calculate complete payslip data using tax configuration
+ */
+private function calculatePayslipData(Employee $employee, Payroll $payroll, TaxConfiguration $taxConfig, string $status): array
+{
+    try {
+        // 1. Basic Salary from employee record
         $basicSalary = (float) $employee->base_salary;
         
-        // 2. Allowances
-        $allowances = $this->calculateAllowances($employee, $taxConfig);
+        if ($basicSalary <= 0) {
+            throw new \InvalidArgumentException("Basic salary must be greater than 0");
+        }
+        
+        // 2. Allowances from tax config and employee data
+        $allowances = $taxConfig->calculateAllowances($employee);
+        
+        Log::debug("Allowances calculated", [
+            'employee_id' => $employee->id,
+            'basic_salary' => $basicSalary,
+            'housing' => $allowances['housing'],
+            'transport' => $allowances['transport'],
+            'lunch' => $allowances['lunch'],
+            'total' => $allowances['total']
+        ]);
         
         // 3. Overtime
         $overtimeData = $this->calculateOvertimeData($employee, $payroll);
         
-        // 4. Bonuses (Placeholder)
+        // 4. Bonuses (can be adjusted later)
         $bonuses = 0.0;
         
         // 5. Gross Salary
         $grossSalary = $basicSalary + $allowances['total'] + $overtimeData['pay'] + $bonuses;
         
-        // 6. Deductions (Dynamic Statutory + PAYE)
+        // 6. Deductions using dynamic statutory deductions from config
         $deductions = $this->calculateDeductions($basicSalary, $grossSalary, $taxConfig, $employee);
         
         // 7. Net Pay
@@ -144,8 +270,13 @@ class PayrollCalculationService
         
         // 8. Prepare Breakdown
         $breakdown = [
-            'calculation_method' => 'Dynamic Statutory Deductions',
+            'calculation_method' => 'Dynamic Tax Configuration',
             'tax_config_id' => $taxConfig->id,
+            'tax_config_type' => $this->getTaxConfigType($taxConfig),
+            'tax_config_country' => $taxConfig->country_code ?? 'global',
+            'tax_config_business_id' => $taxConfig->business_id ?? 'all',
+            'employee_country_code' => $employee->getCountryCode(),
+            'currency' => $taxConfig->getCurrency(),
             'earnings_breakdown' => [
                 'basic_salary' => $basicSalary,
                 'allowances' => $allowances,
@@ -159,9 +290,9 @@ class PayrollCalculationService
                 'minus_deductions' => $deductions['total_deductions'],
                 'equals_net_pay' => $netPay,
             ],
-            'statutory_details' => $deductions['statutory_breakdown'],
+            'statutory_details' => $deductions['statutory_breakdown'] ?? [],
         ];
-
+        
         return [
             // Flat data for DB creation
             'basic_salary' => $basicSalary,
@@ -176,7 +307,7 @@ class PayrollCalculationService
             'breakdown' => $breakdown,
             'status' => $status,
 
-            // *** FIX: Structured arrays required by Controller for Preview ***
+            // Structured arrays required by Controller for Preview
             'earnings' => [
                 'basic_salary' => $basicSalary,
                 'house_allowance' => $allowances['housing'],
@@ -192,24 +323,157 @@ class PayrollCalculationService
                 'net_pay' => $netPay,
             ]
         ];
+        
+    } catch (\Exception $e) {
+        Log::error('Failed to calculate payslip data', [
+            'employee_id' => $employee->id,
+            'payroll_id' => $payroll->id ?? null,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        throw $e;
+    }
+}
+
+
+/**
+ * Determine tax config type
+ */
+private function getTaxConfigType(TaxConfiguration $taxConfig): string
+{
+    if ($taxConfig->business_id && $taxConfig->country_code) {
+        return 'business-specific';
+    } elseif ($taxConfig->country_code) {
+        return 'country-specific';
+    }
+    return 'global';
+}
+
+/**
+ * Calculate deductions using tax configuration
+ */
+private function calculateDeductions(
+    float $basicSalary, 
+    float $grossSalary, 
+    TaxConfiguration $taxConfig, 
+    Employee $employee
+): array {
+    // 1. Calculate Statutory Deductions (Dynamic from config)
+    $statutory = $taxConfig->calculateStatutoryDeductions($employee, $basicSalary, $grossSalary);
+    
+    // 2. Determine Taxable Income (reduce by pension-type deductions)
+    $taxableIncome = $grossSalary;
+    
+    foreach ($statutory['breakdown'] as $item) {
+        if ($item['type'] === 'pension') {
+            $taxableIncome -= $item['amount'];
+        }
     }
 
+    // 3. Calculate PAYE using tax bands from config
+    $paye = $taxConfig->calculatePAYE($taxableIncome);
+    
+    // 4. Other deductions (can be added later)
+    $otherDeductions = 0.0;
+    
+    // 5. Total deductions
+    $totalDeductions = $paye + $statutory['total_employee'] + $otherDeductions;
+
+    Log::debug("Deductions calculated", [
+        'employee_id' => $employee->id,
+        'basic_salary' => $basicSalary,
+        'gross_salary' => $grossSalary,
+        'taxable_income' => $taxableIncome,
+        'paye' => $paye,
+        'statutory_total' => $statutory['total_employee'],
+        'statutory_count' => count($statutory['breakdown']),
+        'total_deductions' => $totalDeductions
+    ]);
+
+    return [
+        'paye' => $paye,
+        'statutory_breakdown' => $statutory['breakdown'],
+        'statutory_total' => $statutory['total_employee'],
+        'employer_total' => $statutory['total_employer'],
+        'other_deductions' => $otherDeductions,
+        'total_deductions' => $totalDeductions,
+    ];
+}
+
+/**
+ * Calculate overtime data
+ */
+private function calculateOvertimeData(Employee $employee, Payroll $payroll): array
+{
+    $overtimeHours = $this->attendanceService->getOvertimeHours(
+        $employee->id,
+        $payroll->start_date,
+        $payroll->end_date
+    );
+    
+    // Standard 173.33 hours/month (40 hours/week * 52 weeks / 12 months)
+    $hourlyRate = $employee->base_salary > 0 ? ($employee->base_salary / 173.33) : 0;
+    $overtimeRate = $hourlyRate * 1.5; // 1.5x for overtime
+    $overtimePay = $overtimeHours * $overtimeRate;
+
+    return [
+        'hours' => round($overtimeHours, 2),
+        'rate' => round($overtimeRate, 2),
+        'pay' => round($overtimePay, 2),
+    ];
+}
+
+/**
+ * Update payroll totals
+ */
+public function updatePayrollTotals(Payroll $payroll): void
+{
+    $payslips = $payroll->payslips()->get();
+    
+    $payroll->update([
+        'total_gross' => $payslips->sum('gross_salary'),
+        'total_net' => $payslips->sum('net_pay'),
+        'employee_count' => $payslips->count(),
+    ]);
+    
+    Log::info('Payroll totals updated', [
+        'payroll_id' => $payroll->id,
+        'total_gross' => $payroll->total_gross,
+        'total_net' => $payroll->total_net,
+        'employee_count' => $payroll->employee_count
+    ]);
+}
+
     /**
-     * Calculate allowances
+     * Calculate allowances - FIXED to properly retrieve from employee
      */
     private function calculateAllowances(Employee $employee, TaxConfiguration $taxConfig): array
     {
         $basicSalary = (float) $employee->base_salary;
         $config = $taxConfig->config_data;
         
-        // Check if housing allowance logic is enabled in config
+        // Housing allowance (25% of basic if enabled in config)
         $housing = 0;
         if (!empty($config['includeHousingAllowance']) && $config['includeHousingAllowance'] === true) {
              $housing = $basicSalary * 0.25; 
         }
 
-        $transport = (float) $employee->transport_allowance;
-        $lunch = (float) $employee->lunch_allowance;
+        // CRITICAL FIX: Get transport and lunch allowances directly from employee attributes
+        // Make sure to cast to float and handle null values
+        $transport = (float) ($employee->transport_allowance ?? 0.00);
+        $lunch = (float) ($employee->lunch_allowance ?? 0.00);
+
+        Log::debug("Allowances calculated", [
+            'employee_id' => $employee->id,
+            'basic_salary' => $basicSalary,
+            'housing_allowance' => $housing,
+            'transport_allowance' => $transport,
+            'lunch_allowance' => $lunch,
+            'housing_enabled_in_config' => $config['includeHousingAllowance'] ?? false,
+            'transport_from_db' => $employee->transport_allowance,
+            'lunch_from_db' => $employee->lunch_allowance
+        ]);
 
         return [
             'housing' => $this->applyRounding($housing, $config),
@@ -219,63 +483,9 @@ class PayrollCalculationService
         ];
     }
 
-    /**
-     * Calculate DEDUCTIONS (Dynamic Version)
-     */
-    private function calculateDeductions(float $basicSalary, float $grossSalary, TaxConfiguration $taxConfig, Employee $employee): array
-    {
-        $config = $taxConfig->config_data;
-        
-        // 1. Calculate Statutory Deductions (Dynamic Array)
-        $statutory = $taxConfig->calculateStatutoryDeductions($employee, $basicSalary, $grossSalary);
-        
-        // 2. Determine Taxable Income
-        // Assume pension/social security types reduce taxable income.
-        $taxableIncome = $grossSalary;
-        
-        foreach($statutory['breakdown'] as $item) {
-            if ($item['type'] === 'pension') {
-                $taxableIncome -= $item['amount'];
-            }
-        }
 
-        // 3. Calculate PAYE
-        $paye = $taxConfig->calculatePAYE($taxableIncome);
-        
-        // 4. Totals
-        $otherDeductions = 0;
-        $totalDeductions = $paye + $statutory['total_employee'] + $otherDeductions;
 
-        return [
-            'paye' => $paye,
-            'statutory_breakdown' => $statutory['breakdown'], 
-            'statutory_total' => $statutory['total_employee'],
-            'employer_total' => $statutory['total_employer'],
-            'other_deductions' => $otherDeductions,
-            'total_deductions' => $this->applyRounding($totalDeductions, $config),
-        ];
-    }
-
-    private function calculateOvertimeData(Employee $employee, Payroll $payroll): array
-    {
-        $overtimeHours = $this->attendanceService->getOvertimeHours(
-            $employee->id,
-            $payroll->start_date,
-            $payroll->end_date
-        );
-        
-        // Standard 173.33 hours/month
-        $hourlyRate = $employee->base_salary > 0 ? ($employee->base_salary / 173.33) : 0; 
-        $overtimeRate = $hourlyRate * 1.5;
-        $overtimePay = $overtimeHours * $overtimeRate;
-
-        return [
-            'hours' => $overtimeHours,
-            'rate' => round($overtimeRate, 2),
-            'pay' => round($overtimePay, 2),
-        ];
-    }
-
+    
     private function applyRounding(float $amount, array $config): float
     {
         $method = $config['roundingMethod'] ?? 'nearest';
@@ -286,15 +496,5 @@ class PayrollCalculationService
             case 'none': return $amount;
             default: return round($amount, 2);
         }
-    }
-    
-    public function updatePayrollTotals(Payroll $payroll): void
-    {
-        $payslips = $payroll->payslips()->get();
-        $payroll->update([
-            'total_gross' => $payslips->sum('gross_salary'),
-            'total_net' => $payslips->sum('net_pay'),
-            'employee_count' => $payslips->count(),
-        ]);
     }
 }

@@ -260,51 +260,51 @@ export default {
       } catch (e) { console.error('Failed to load businesses', e); }
     },
     
-    async fetchDashboardData(retry = false) {
+  async fetchDashboardData(retry = false) {
       this.loading = true;
       this.error = null;
       
       try {
         const params = { business_id: this.selectedBusinessId || undefined };
         
-        // Parallel Fetch
-        const [empRes, attRes, leaveRes, payrollRes, auditRes] = await Promise.all([
-          axios.get('/api/admin/employees', { params }),
-          axios.get('/api/admin/reports/attendance', { params }),
-          axios.get('/api/admin/reports/leave', { params }),
-          axios.get('/api/admin/reports/payroll', { params }),
+        // Parallel Fetch - Use the systemStats endpoint and get today's date
+        const today = new Date().toISOString().split('T')[0];
+        
+        const [statsRes, attRes, leaveRes, auditRes] = await Promise.all([
+          axios.get('/api/admin/stats', { params }),
+          axios.get('/api/admin/attendance/status', { params: { ...params, date: today } }),
+          axios.get('/api/admin/leaves/current-month', { params }),
           axios.get('/api/admin/audit-logs', { params: { ...params, limit: 5 } })
         ]);
         
-        // 1. Employee Stats
-        const employees = empRes.data.data || empRes.data || [];
-        this.stats.totalEmployees = employees.length;
+        // 1. System Stats
+        const statsData = statsRes.data.stats || statsRes.data || {};
+        this.stats.totalEmployees = statsData.total_employees || 0;
         
+        // Calculate new employees this month from employees list
         const now = new Date();
-        this.stats.newEmployees = employees.filter(e => {
-          if (!e.hire_date) return false;
-          const d = new Date(e.hire_date);
-          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }).length;
+        this.stats.newEmployees = 0; // Will calculate if we get employee details
 
         // 2. Attendance Stats
-        const attData = attRes.data.data || attRes.data || {};
-        // Assuming API returns 'present_count' or we calculate from list
-        this.stats.activeToday = attData.present_today || 0;
+        const attData = attRes.data || {};
+        const attSummary = attData.summary || {};
+        this.stats.activeToday = attSummary.present_count || 0;
         this.stats.attendanceRate = this.stats.totalEmployees > 0 
           ? Math.round((this.stats.activeToday / this.stats.totalEmployees) * 100) 
           : 0;
 
         // 3. Leave Stats
-        const leaveData = leaveRes.data.data || leaveRes.data || {};
-        this.stats.onLeave = leaveData.on_leave || 0;
+        const leaveData = leaveRes.data || {};
+        this.stats.onLeave = leaveData.on_leave_count || 0;
         this.stats.pendingLeaves = leaveData.pending_count || 0;
         
         // Approvals List
         if (leaveData.pending_leaves && Array.isArray(leaveData.pending_leaves)) {
           this.pendingApprovals = leaveData.pending_leaves.slice(0, 5).map(l => ({
             id: l.id,
-            name: l.employee?.name || `Employee #${l.employee_id}`,
+            name: l.employee?.first_name && l.employee?.last_name 
+              ? `${l.employee.first_name} ${l.employee.last_name}`
+              : l.employee?.name || `Employee #${l.employee_id}`,
             type: this.formatLeaveType(l.leave_type),
             date: this.formatDateRange(l.start_date, l.end_date)
           }));
@@ -312,42 +312,52 @@ export default {
           this.pendingApprovals = [];
         }
 
-        // 4. Payroll Stats
-        const payData = payrollRes.data.data || payrollRes.data || {};
-        this.stats.monthlyPayroll = payData.total_payroll || 0;
+        // 4. Payroll Stats from system stats (amount in local currency)
+        this.stats.monthlyPayroll = statsData.current_month_payroll_amount || 0;
 
         // 5. Activity Log
         const auditData = auditRes.data.data || auditRes.data || [];
         this.recentActivity = auditData.slice(0, 5).map(log => ({
           id: log.id,
-          text: log.description || log.action,
+          text: log.description || log.action || 'Activity',
           time: this.formatRelativeTime(log.created_at),
           color: this.getActivityColor(log.action)
         }));
 
-        // 6. Department Breakdown
+        // 6. Department Breakdown from attendance data
+        const attDataList = attData.data || [];
         const deptMap = {};
-        employees.forEach(e => {
-          const d = e.department || 'Unassigned';
-          if (!deptMap[d]) deptMap[d] = { name: d, employees: 0, present: 0 };
+        
+        attDataList.forEach(att => {
+          const d = att.department || 'Unassigned';
+          if (!deptMap[d]) {
+            deptMap[d] = { 
+              id: d,
+              name: d, 
+              employees: 0, 
+              present: 0 
+            };
+          }
           deptMap[d].employees++;
+          if (att.status === 'present' || att.status === 'completed') {
+            deptMap[d].present++;
+          }
         });
         
-        // Add attendance logic if available in employee object or separate list
-        // For now estimating using random distribution or data if available
         this.departments = Object.values(deptMap).map(d => ({
           ...d,
-          attendancePct: Math.round(Math.random() * (100 - 80) + 80) // Mock if real data missing
+          attendancePct: d.employees > 0 
+            ? Math.round((d.present / d.employees) * 100) 
+            : 0
         }));
 
       } catch (err) {
-        console.error(err);
+        console.error('Dashboard fetch error:', err);
         this.handleApiError(err);
       } finally {
         this.loading = false;
       }
     },
-    
     // --- Helpers ---
     formatLeaveType(type) {
       return (type || 'Leave').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());

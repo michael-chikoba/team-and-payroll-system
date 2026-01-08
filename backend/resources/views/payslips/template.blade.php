@@ -2,387 +2,290 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Payslip - {{ $employee->user->first_name ?? '' }} {{ $employee->user->last_name ?? '' }}</title>
     <style>
-        /* General Document Styling for Print/PDF */
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Helvetica', 'Arial', sans-serif;
             font-size: 12px;
-            color: #000;
+            color: #333;
             margin: 0;
             padding: 20px;
+            background: #fff;
         }
+
         .container {
             width: 100%;
             max-width: 800px;
             margin: 0 auto;
-            line-height: 1.5;
         }
+
+        /* --- Header Section --- */
         .header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #444;
+            padding-bottom: 15px;
         }
         .company-name {
-            font-weight: bold;
-            font-size: 16px;
+            font-weight: 800;
+            font-size: 22px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .company-address {
+            font-size: 11px;
+            color: #666;
             margin-bottom: 5px;
         }
         .payslip-title {
             font-weight: bold;
             font-size: 16px;
-            margin-bottom: 15px;
-            text-decoration: underline;
-        }
-        
-        /* --- General Table Styling --- */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 15px;
-        }
-        
-        /* Employee Info Table (2x2 structure) */
-        table.info-table {
-            border: 1px solid #000;
-        }
-        
-        table.info-table td {
-            padding: 8px 10px;
-            border: 1px solid #000;
-            vertical-align: top;
-        }
-        
-        table.info-table td.label {
-            font-weight: bold;
-            width: 20%; /* Adjusted width for better balance (20% label, 30% value) */
-            background-color: #f5f5f5;
-        }
-        
-        table.info-table td.value {
-            width: 30%; /* Adjusted width for better balance */
-        }
-        
-        /* --- Earnings & Deductions Table (The core financial structure) --- */
-        table.earnings-deductions {
-            border: 1px solid #000;
-            margin-top: 20px;
-        }
-        
-        table.earnings-deductions th {
-            background-color: #e0e0e0;
-            font-weight: bold;
-            padding: 10px;
-            border: 1px solid #000;
-            text-align: left;
-        }
-        
-        table.earnings-deductions td {
-            padding: 8px 10px;
-            border: 1px solid #000;
-        }
-        
-        /* Enforce right alignment and monospace font for all amounts */
-        table.earnings-deductions td.amount {
-            text-align: right;
-            font-family: 'Courier New', monospace;
-            font-weight: bold;
-        }
-        
-        table.earnings-deductions tr.total-row {
-            background-color: #d0d0d0; /* Darker background for totals */
-            font-weight: bold;
-            font-size: 13px;
-        }
-        
-        /* Summary Tables (Bonuses/Add. Deductions) */
-        table.summary-table {
-            border: 1px solid #000;
-            margin-top: 10px;
-        }
-        
-        table.summary-table th {
-            background-color: #e0e0e0;
-            font-weight: bold;
-            padding: 8px;
-            border: 1px solid #000;
-            text-align: center;
-        }
-        
-        table.summary-table td {
-            padding: 8px;
-            border: 1px solid #000;
-            text-align: left;
+            margin-top: 15px;
+            text-transform: uppercase;
         }
 
-        /* Net Pay Box */
+        /* --- Employee Info Table --- */
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        .info-table td {
+            padding: 6px 10px;
+            vertical-align: top;
+            border-bottom: 1px solid #eee;
+        }
+        .info-table td.label {
+            font-weight: bold;
+            width: 15%;
+            color: #555;
+            white-space: nowrap;
+        }
+        .info-table td.value {
+            width: 35%;
+            font-weight: 500;
+        }
+
+        /* --- Main Calculation Table --- */
+        .main-calc {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #333;
+            margin-bottom: 20px;
+        }
+
+        /* Headings */
+        .main-calc th {
+            background-color: #eee;
+            color: #000;
+            padding: 12px 10px;
+            border: 1px solid #333;
+            text-align: left;
+            font-size: 13px;
+            font-weight: bold;
+            text-transform: uppercase;
+            width: 50%; /* Strictly 50/50 split */
+        }
+
+        .main-calc td {
+            border: 1px solid #333;
+            vertical-align: top;
+            padding: 0; /* Padding handled by inner divs */
+        }
+
+        /* --- Row Item Styling --- */
+        .item-row {
+            display: table;
+            width: 100%;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .item-row:last-child {
+            border-bottom: none;
+        }
+
+        .item-name {
+            display: table-cell;
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: middle;
+            color: #444;
+        }
+
+        .item-amt {
+            display: table-cell;
+            padding: 8px 10px;
+            text-align: right;
+            vertical-align: middle;
+            font-family: 'Courier New', monospace; /* Monospace for alignment */
+            font-weight: bold;
+            color: #000;
+            white-space: nowrap; /* Prevents decimals from breaking line */
+            width: 1%;
+        }
+
+        /* Empty state helper */
+        .empty-row {
+            padding: 8px 10px;
+        }
+
+        /* --- Totals Row --- */
+        .total-wrapper {
+            background-color: #fafafa;
+            border-top: 2px solid #333;
+        }
+        .total-wrapper .item-name {
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
+        .total-wrapper .item-amt {
+            font-size: 13px;
+        }
+
+        /* --- Net Pay Box --- */
+        .net-pay-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
         .net-pay {
             text-align: right;
             font-weight: bold;
             font-size: 16px;
-            margin-top: 25px;
-            padding: 15px;
-            border: 2px solid #000;
-            background-color: #ccffcc; /* Light green highlight for net pay */
+            padding: 15px 30px;
+            border: 2px solid #333;
+            background-color: #eee;
+            min-width: 200px;
         }
-        
-        .section-title {
-            font-weight: bold;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            font-size: 13px;
-            text-decoration: underline;
+        .net-pay span {
+            display: block;
+            font-size: 11px;
+            color: #666;
+            margin-bottom: 5px;
+            font-weight: normal;
         }
-        
+
+        /* --- Footer --- */
         .footer {
-            margin-top: 30px;
+            margin-top: 50px;
             text-align: center;
             font-size: 10px;
-            color: #666;
-            padding-top: 20px;
-            border-top: 1px solid #ccc;
-        }
-        
-        .footer p {
-            margin: 5px 0;
+            color: #999;
+            padding-top: 10px;
+            border-top: 1px solid #eee;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Company & Payslip Header -->
+        <!-- Header -->
         <div class="header">
-            <div class="company-name">Castle Holdings Ltd</div>
-            <div class="payslip-title">Payslip for the month of {{ $payroll->pay_period ?? 'N/A' }}</div>
+            <div class="company-name">{{ $company_name }}</div>
+            <div class="company-address">{{ $company_address }}</div>
+            <div class="payslip-title">Payslip: {{ $payroll->pay_period ?? 'N/A' }}</div>
         </div>
-        
-        <!-- Employee Details Section (Table structure for clear presentation) -->
+
+        <!-- Employee Details -->
         <table class="info-table">
             <tr>
-                <td class="label">Code</td>
+                <td class="label">Employee ID:</td>
                 <td class="value">{{ $employee->employee_id ?? 'N/A' }}</td>
-                <td class="label">Employer</td>
-                <td class="value">Castle Holdings Ltd</td>
+                <td class="label">Pay Date:</td>
+                <td class="value">{{ $payslip->payment_date ? \Carbon\Carbon::parse($payslip->payment_date)->format('d M Y') : 'N/A' }}</td>
             </tr>
             <tr>
-                <td class="label">Name</td>
+                <td class="label">Name:</td>
                 <td class="value">{{ $employee->user->first_name ?? '' }} {{ $employee->user->last_name ?? '' }}</td>
-                <td class="label">Period</td>
-                <td class="value">{{ $payroll->payroll_period ?? 'N/A' }}</td>
+                <td class="label">Pay Period:</td>
+                <td class="value">
+                    {{ $payslip->pay_period_start ? \Carbon\Carbon::parse($payslip->pay_period_start)->format('d M') : '' }} - 
+                    {{ $payslip->pay_period_end ? \Carbon\Carbon::parse($payslip->pay_period_end)->format('d M Y') : '' }}
+                </td>
             </tr>
             <tr>
-                <td class="label">Department</td>
+                <td class="label">Department:</td>
                 <td class="value">{{ $employee->department ?? 'N/A' }}</td>
-                <td class="label">Position</td>
+                <td class="label">Position:</td>
                 <td class="value">{{ $employee->position ?? 'N/A' }}</td>
             </tr>
             <tr>
-                <td class="label">Email</td>
-                <td class="value">{{ $employee->user->email ?? 'N/A' }}</td>
-                <td class="label">Pay Date</td>
-                <td class="value">{{ $payslip->payment_date ? \Carbon\Carbon::parse($payslip->payment_date)->format('d/m/Y') : 'N/A' }}</td>
-            </tr>
-            <tr>
-                <td class="label">Pay Period Start</td>
-                <td class="value">{{ $payslip->pay_period_start ? \Carbon\Carbon::parse($payslip->pay_period_start)->format('d/m/Y') : 'N/A' }}</td>
-                <td class="label">Pay Period End</td>
-                <td class="value">{{ $payslip->pay_period_end ? \Carbon\Carbon::parse($payslip->pay_period_end)->format('d/m/Y') : 'N/A' }}</td>
-            </tr>
-            <tr>
-                <td class="label">Working Days</td>
-                <td class="value">{{ $payroll->working_days ?? '22' }}</td>
-                <td class="label">Base Salary</td>
-                <td class="value">K{{ number_format($employee->base_salary ?? 0, 2) }}</td>
+                <td class="label">Type:</td>
+                <td class="value">{{ ucfirst(str_replace('_', ' ', $employee->employment_type ?? 'N/A')) }}</td>
+                <!-- Empty cells to maintain table structure -->
+                <td class="label">&nbsp;</td>
+                <td class="value">&nbsp;</td>
             </tr>
         </table>
-        
-        <!-- Earnings & Deductions Table (4-column structure is clear and rigid) -->
-        <table class="earnings-deductions">
+
+        <!-- Earnings & Deductions Table -->
+        <table class="main-calc">
             <thead>
                 <tr>
                     <th>EARNINGS</th>
-                    <th style="text-align: right;">AMOUNT (K)</th>
                     <th>DEDUCTIONS</th>
-                    <th style="text-align: right;">AMOUNT (K)</th>
                 </tr>
             </thead>
             <tbody>
-                <!-- Basic Income & Core Deductions -->
+                @foreach($table_rows as $row)
                 <tr>
-                    <td>Basic Salary</td>
-                    <td class="amount">{{ number_format($payslip->basic_salary ?? 0, 2) }}</td>
-                    <td>PAYE Tax</td>
-                    <td class="amount">{{ number_format($payslip->paye ?? 0, 2) }}</td>
+                    <!-- Earning Column -->
+                    <td>
+                        @if($row['earning'])
+                        <div class="item-row">
+                            <div class="item-name">{{ $row['earning']['name'] }}</div>
+                            <div class="item-amt">{{ number_format($row['earning']['amount'], 2) }}</div>
+                        </div>
+                        @else
+                        <div class="item-row empty-row">&nbsp;</div>
+                        @endif
+                    </td>
+                    
+                    <!-- Deduction Column -->
+                    <td>
+                        @if($row['deduction'])
+                        <div class="item-row">
+                            <div class="item-name">{{ $row['deduction']['name'] }}</div>
+                            <div class="item-amt">{{ number_format($row['deduction']['amount'], 2) }}</div>
+                        </div>
+                        @else
+                        <div class="item-row empty-row">&nbsp;</div>
+                        @endif
+                    </td>
                 </tr>
-                
-                <!-- Allowances & Statutory Deductions -->
-                <tr>
-                    <td>Housing Allowance (25%)</td>
-                    <td class="amount">{{ number_format($payslip->house_allowance ?? 0, 2) }}</td>
-                    <td>NAPSA (10% of gross)</td>
-                    <td class="amount">{{ number_format($payslip->napsa ?? 0, 2) }}</td>
-                </tr>
-                
-                <tr>
-                    <td>Transport Allowance</td>
-                    <td class="amount">{{ number_format($payslip->transport_allowance ?? 0, 2) }}</td>
-                    <td>NHIMA (1% of gross)</td>
-                    <td class="amount">{{ number_format($payslip->nhima ?? 0, 2) }}</td>
-                </tr>
-                
-                <tr>
-                    <td>Lunch Allowance</td>
-                    <td class="amount">{{ number_format($payslip->other_allowances ?? 0, 2) }}</td>
-                    <td>Other Deductions</td>
-                    <td class="amount">{{ number_format($payslip->other_deductions ?? 0, 2) }}</td>
-                </tr>
-                
-                <!-- Conditional Income -->
-                @if($payslip->overtime_hours > 0)
-                <tr>
-                    <td>Overtime Pay ({{ $payslip->overtime_hours }} hrs @ K{{ number_format($payslip->overtime_rate ?? 0, 2) }})</td>
-                    <td class="amount">{{ number_format($payslip->overtime_pay ?? 0, 2) }}</td>
-                    <td></td>
-                    <td class="amount"></td>
-                </tr>
-                @endif
-                
+                @endforeach
+
                 <!-- Totals Row -->
-                <tr class="total-row">
-                    <td>GROSS SALARY</td>
-                    <td class="amount">{{ number_format($payslip->gross_salary ?? 0, 2) }}</td>
-                    <td>TOTAL DEDUCTIONS</td>
-                    <td class="amount">{{ number_format($payslip->total_deductions ?? 0, 2) }}</td>
+                <tr>
+                    <td class="total-wrapper">
+                        <div class="item-row" style="border: none;">
+                            <div class="item-name">Total Earnings</div>
+                            <div class="item-amt">{{ number_format($payslip->gross_salary, 2) }}</div>
+                        </div>
+                    </td>
+                    <td class="total-wrapper">
+                        <div class="item-row" style="border: none;">
+                            <div class="item-name">Total Deductions</div>
+                            <div class="item-amt">{{ number_format($payslip->total_deductions, 2) }}</div>
+                        </div>
+                    </td>
                 </tr>
             </tbody>
         </table>
-        
-        <!-- Net Pay Highlight -->
-        <div class="net-pay">
-            NET PAY: K{{ number_format($payslip->net_pay ?? 0, 2) }}
+
+        <!-- Net Pay -->
+        <div class="net-pay-container">
+            <div class="net-pay">
+                <span>NET SALARY PAYABLE</span>
+                K{{ number_format($payslip->net_pay, 2) }}
+            </div>
         </div>
-        
-        <!-- Breakdown Section (if available) - Uses info-table for clean label/value pairing -->
-        @if(isset($breakdown) && !empty($breakdown))
-        <div class="section-title">CALCULATION BREAKDOWN</div>
-        <table class="info-table">
-            <tr>
-                <td class="label">Basic Salary</td>
-                <td class="value">K{{ number_format($breakdown['basic_salary'] ?? 0, 2) }}</td>
-                <td class="label">PAYE Tax</td>
-                <td class="value">K{{ number_format($breakdown['paye_tax'] ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Housing Allowance</td>
-                <td class="value">K{{ number_format($breakdown['housing_allowance'] ?? 0, 2) }}</td>
-                <td class="label">NAPSA Deduction</td>
-                <td class="value">K{{ number_format($breakdown['napsa_deduction'] ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Transport Allowance</td>
-                <td class="value">K{{ number_format($breakdown['transport_allowance'] ?? 0, 2) }}</td>
-                <td class="label">NHIMA Deduction</td>
-                <td class="value">K{{ number_format($breakdown['nhima_deduction'] ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Lunch Allowance</td>
-                <td class="value">K{{ number_format($breakdown['lunch_allowance'] ?? 0, 2) }}</td>
-                <td class="label">Total Deductions</td>
-                <td class="value">K{{ number_format($breakdown['total_deductions'] ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Total Allowances</td>
-                <td class="value">K{{ number_format($breakdown['total_allowances'] ?? 0, 2) }}</td>
-                <td class="label">Net Salary</td>
-                <td class="value">K{{ number_format($breakdown['net_salary'] ?? 0, 2) }}</td>
-            </tr>
-            <tr>
-                <td class="label">Gross Salary</td>
-                <td class="value">K{{ number_format($breakdown['gross_salary'] ?? 0, 2) }}</td>
-                <td class="label"></td>
-                <td class="value"></td>
-            </tr>
-        </table>
-        
-        <!-- Calculation Notes -->
-        @if(isset($breakdown['calculation_notes']))
-        <div class="section-title">CALCULATION NOTES</div>
-        <table class="info-table">
-            @foreach($breakdown['calculation_notes'] as $key => $note)
-            <tr>
-                <td class="label">{{ ucwords(str_replace('_', ' ', $key)) }}</td>
-                <td class="value" colspan="3">{{ $note }}</td>
-            </tr>
-            @endforeach
-        </table>
-        @endif
-        
-        <!-- Tax Configuration Used -->
-        @if(isset($breakdown['tax_config_used']))
-        <div class="section-title">TAX CONFIGURATION</div>
-        <table class="info-table">
-            @foreach($breakdown['tax_config_used'] as $key => $config)
-            <tr>
-                <td class="label">{{ ucwords(str_replace('_', ' ', $key)) }}</td>
-                <td class="value" colspan="3">{{ $config }}</td>
-            </tr>
-            @endforeach
-        </table>
-        @endif
-        @endif <!-- End of main @if(isset($breakdown)) block -->
-        
-        <!-- Bonuses (if any) -->
-        @if(isset($payslip->bonuses) && is_array($payslip->bonuses) && count($payslip->bonuses) > 0)
-        <div class="section-title">BONUSES</div>
-        <table class="summary-table">
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th style="text-align: right;">Amount (K)</th>
-                    <th>Date</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($payslip->bonuses as $bonus)
-                <tr>
-                    <td>{{ $bonus['description'] ?? 'Bonus' }}</td>
-                    <td style="text-align: right;">{{ number_format($bonus['amount'] ?? 0, 2) }}</td>
-                    <td>{{ $bonus['date'] ?? 'N/A' }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-        @endif
-        
-        <!-- Additional Deductions (if any) -->
-        @if(isset($payslip->deductions) && is_array($payslip->deductions) && count($payslip->deductions) > 0)
-        <div class="section-title">ADDITIONAL DEDUCTIONS</div>
-        <table class="summary-table">
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th style="text-align: right;">Amount (K)</th>
-                    <th>Type</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($payslip->deductions as $deduction)
-                <tr>
-                    <td>{{ $deduction['description'] ?? 'Deduction' }}</td>
-                    <td style="text-align: right;">{{ number_format($deduction['amount'] ?? 0, 2) }}</td>
-                    <td>{{ $deduction['type'] ?? 'N/A' }}</td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-        @endif
-        
+
         <!-- Footer -->
         <div class="footer">
-            <p><strong>Generated on:</strong> {{ now()->format('d/m/Y H:i:s') }}</p>
-            <p>This payslip is computer generated and does not require a signature.</p>
-            <p>Confidential - For Employee Use Only</p>
-            <p><em>Castle Holdings Ltd - 54 Seble Road, Lusaka, Zambia</em></p>
+            <p>Generated on {{ now()->format('d M Y H:i') }}</p>
+            <p>This is a computer-generated document and needs no signature.</p>
         </div>
     </div>
 </body>

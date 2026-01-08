@@ -1,4 +1,3 @@
-{{-- resources/views/reports/payroll.blade.php --}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,293 +7,357 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            font-size: 12px;
+            font-size: 10px;
             color: #333;
             margin: 0;
             padding: 20px;
             line-height: 1.4;
         }
+        
         .header {
             text-align: center;
             margin-bottom: 30px;
             border-bottom: 2px solid #eee;
             padding-bottom: 20px;
         }
+        
         .header h1 {
             margin: 0;
             color: #1f2937;
             font-size: 24px;
         }
-        .header p {
-            margin: 5px 0;
-            color: #666;
-        }
+        
         .summary {
-            background: #f9fafb;
+            background: #f0f9ff;
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 30px;
+            border-left: 4px solid #3b82f6;
         }
+        
         .summary h2 {
-            color: #1f2937;
+            color: #1e40af;
             margin-top: 0;
-            font-size: 18px;
         }
+        
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
             margin-top: 15px;
         }
+        
         .summary-item {
             background: white;
             padding: 15px;
             border-radius: 6px;
-            border-left: 4px solid #3b82f6;
+            border: 1px solid #dbeafe;
         }
+        
         .summary-item label {
             display: block;
-            font-size: 11px;
-            color: #9ca3af;
-            text-transform: uppercase;
+            font-size: 9px;
+            color: #6b7280;
             margin-bottom: 5px;
         }
+        
         .summary-item value {
-            font-size: 16px;
-            font-weight: bold;
-            color: #1f2937;
-        }
-        .deductions-breakdown {
-            background: #fff7ed;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #ea580c;
-        }
-        .deductions-breakdown h3 {
-            color: #9a3412;
-            margin-top: 0;
-            font-size: 16px;
-        }
-        .deductions-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 12px;
-            margin-top: 12px;
-        }
-        .deduction-item {
-            background: white;
-            padding: 12px;
-            border-radius: 6px;
-            border: 1px solid #fed7aa;
-        }
-        .deduction-item label {
             display: block;
-            font-size: 10px;
-            color: #92400e;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-        .deduction-item value {
             font-size: 14px;
             font-weight: bold;
-            color: #c2410c;
-        }
-        .details {
-            margin-top: 30px;
-        }
-        .details h2 {
             color: #1f2937;
-            font-size: 18px;
-            margin-bottom: 15px;
         }
+        
+        .breakdown-section {
+            margin-top: 30px;
+            page-break-inside: avoid;
+        }
+        
+        .breakdown-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #1f2937;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            margin-top: 20px;
+            font-size: 9px;
         }
-        th, td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
+        
         th {
-            background: #f9fafb;
+            background: #f8fafc;
             font-weight: bold;
             color: #374151;
             text-transform: uppercase;
-            font-size: 10px;
+            font-size: 8px;
+            padding: 8px 4px;
+            text-align: left;
+            border-bottom: 2px solid #e5e7eb;
         }
-        tr:hover {
-            background: #f9fafb;
+        
+        td {
+            padding: 6px 4px;
+            border-bottom: 1px solid #f3f4f6;
         }
-        .footer {
-            margin-top: 40px;
-            text-align: center;
-            font-size: 10px;
-            color: #9ca3af;
-            border-top: 1px solid #eee;
-            padding-top: 20px;
+        
+        tr:nth-child(even) {
+            background-color: #f9fafb;
         }
+        
         .currency {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
         }
+        
         .text-right {
             text-align: right;
         }
-        .section-title {
-            color: #1f2937;
-            font-size: 16px;
-            margin: 25px 0 15px 0;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e5e7eb;
+        
+        .type-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 8px;
+            font-weight: bold;
         }
-        @media print {
-            body { margin: 0; }
-            .header { page-break-after: avoid; }
-            .summary { page-break-inside: avoid; }
-            .deductions-breakdown { page-break-inside: avoid; }
-            table { page-break-inside: avoid; }
+        
+        .type-basic { background: #dbeafe; color: #1e40af; }
+        .type-allowance { background: #d1fae5; color: #065f46; }
+        .type-overtime { background: #fef3c7; color: #92400e; }
+        .type-bonus { background: #fce7f3; color: #9f1239; }
+        .type-tax { background: #fee2e2; color: #991b1b; }
+        .type-statutory { background: #fef3c7; color: #92400e; }
+        .type-pension { background: #e0e7ff; color: #4f46e5; }
+        .type-health { background: #d1fae5; color: #065f46; }
+        .type-voluntary { background: #fce7f3; color: #9f1239; }
+        
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 8px;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 20px;
         }
     </style>
 </head>
 <body>
+    @php
+        $currency = $report['currency'] ?? ($report['filters']['currency'] ?? 'KES');
+        $currencySymbol = $report['currency_symbol'] ?? ($report['filters']['currency_symbol'] ?? 'KES');
+    @endphp
+
     <div class="header">
-        <h1>Payroll Report</h1>
-        <p>Generated on: {{ now()->format('F d, Y - H:i') }}</p>
-        <p>Period: {{ \Carbon\Carbon::parse($report['period_start'])->format('F d, Y') }} to {{ \Carbon\Carbon::parse($report['period_end'])->format('F d, Y') }}</p>
+        <h1>💼 Comprehensive Payroll Report</h1>
+        <p><strong>Generated:</strong> {{ now()->format('F d, Y - H:i') }}</p>
+        <p><strong>Period:</strong> {{ \Carbon\Carbon::parse($report['period_start'] ?? now())->format('F d, Y') }} to {{ \Carbon\Carbon::parse($report['period_end'] ?? now())->format('F d, Y') }}</p>
+        @if(isset($report['department']) && $report['department'] !== 'All Departments')
+            <p><strong>Department:</strong> {{ $report['department'] }}</p>
+        @endif
+        @if(isset($report['filters']['business']))
+            <p><strong>Business:</strong> {{ $report['filters']['business'] }}</p>
+        @endif
+        @if(isset($report['filters']['country']))
+            <p><strong>Country:</strong> {{ $report['filters']['country'] }}</p>
+        @endif
+        <p><strong>Currency:</strong> {{ $currency }}</p>
     </div>
 
     <div class="summary">
-        <h2>Summary</h2>
+        <h2>Summary Overview</h2>
         <div class="summary-grid">
             <div class="summary-item">
-                <label>Total Payroll Amount</label>
-                <value class="currency">ZMW {{ number_format($report['total_net_salary'], 2) }}</value>
-            </div>
-            <div class="summary-item">
-                <label>Employees Processed</label>
-                <value>{{ $report['processed_employees'] }}</value>
-            </div>
-            <div class="summary-item">
-                <label>Average Net Salary</label>
-                <value class="currency">ZMW {{ number_format($report['average_net_salary'], 2) }}</value>
-            </div>
-            <div class="summary-item">
-                <label>Total Tax Withheld</label>
-                <value class="currency">ZMW {{ number_format($report['total_tax_amount'], 2) }}</value>
-            </div>
-            <div class="summary-item">
-                <label>Total Other Deductions</label>
-                <value class="currency">ZMW {{ number_format($report['total_other_deductions'] ?? 0, 2) }}</value>
+                <label>Total Employees</label>
+                <value>{{ $report['processed_employees'] ?? 0 }}</value>
             </div>
             <div class="summary-item">
                 <label>Total Gross Salary</label>
-                <value class="currency">ZMW {{ number_format($report['total_gross_salary'] ?? 0, 2) }}</value>
+                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_gross_salary'] ?? 0, 2) }}</value>
             </div>
-        </div>
-    </div>
-
-    <!-- Deductions Breakdown Section -->
-    <div class="deductions-breakdown">
-        <h3>Deductions Breakdown</h3>
-        <div class="deductions-grid">
-            <div class="deduction-item">
+            <div class="summary-item">
+                <label>Total Earnings</label>
+                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_earnings'] ?? 0, 2) }}</value>
+            </div>
+            <div class="summary-item">
+                <label>Total Deductions</label>
+                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_all_deductions'] ?? $report['total_deductions'] ?? 0, 2) }}</value>
+            </div>
+            <div class="summary-item">
                 <label>Total PAYE Tax</label>
-                <value class="currency">ZMW {{ number_format($report['total_paye_tax'] ?? $report['total_tax_amount'], 2) }}</value>
+                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_paye_tax'] ?? 0, 2) }}</value>
             </div>
-            <div class="deduction-item">
-                <label>Total NAPSA</label>
-                <value class="currency">ZMW {{ number_format($report['total_napsa'] ?? 0, 2) }}</value>
-            </div>
-            <div class="deduction-item">
-                <label>Total NHIMA</label>
-                <value class="currency">ZMW {{ number_format($report['total_nhima'] ?? 0, 2) }}</value>
-            </div>
-            <div class="deduction-item">
-                <label>Total Other Deductions</label>
-                <value class="currency">ZMW {{ number_format($report['total_other_deductions'] ?? 0, 2) }}</value>
-            </div>
-            <div class="deduction-item">
-                <label>Total All Deductions</label>
-                <value class="currency">ZMW {{ number_format($report['total_all_deductions'] ?? 0, 2) }}</value>
+            <div class="summary-item">
+                <label>Total Net Salary</label>
+                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_net_salary'] ?? 0, 2) }}</value>
             </div>
         </div>
     </div>
 
-    <!-- Detailed Payslip Table -->
-    <div class="details">
-        <h2 class="section-title">Payslip Details</h2>
+    <!-- Earnings Breakdown -->
+    @if(isset($report['earning_breakdown']) && count($report['earning_breakdown']) > 0)
+    <div class="breakdown-section">
+        <div class="breakdown-title">📈 Earnings Breakdown by Type</div>
         <table>
             <thead>
                 <tr>
-                    <th>Employee Name</th>
-                    <th class="text-right">Gross Salary</th>
-                    <th class="text-right">PAYE Tax</th>
-                    <th class="text-right">NAPSA</th>
-                    <th class="text-right">NHIMA</th>
-                    <th class="text-right">Other Deductions</th>
-                    <th class="text-right">Total Deductions</th>
-                    <th class="text-right">Net Salary</th>
-                    <th>Pay Period</th>
+                    <th>Earning Type</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th class="text-right">Total Amount</th>
+                    <th class="text-right">Employees</th>
+                    <th class="text-right">Average</th>
                 </tr>
             </thead>
             <tbody>
-                @forelse($report['payslip_details'] as $detail)
-                    <tr>
-                        <td>{{ $detail['employee_name'] }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['gross_salary'], 2) }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['paye_tax'] ?? $detail['tax_amount'] ?? 0, 2) }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['napsa'] ?? 0, 2) }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['nhima'] ?? 0, 2) }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['other_deductions'] ?? 0, 2) }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['total_deductions'] ?? $detail['deductions'], 2) }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($detail['net_salary'], 2) }}</td>
-                        <td>{{ $detail['pay_period'] }}</td>
-                    </tr>
-                @empty
-                    <tr>
-                        <td colspan="9" style="text-align: center; color: #9ca3af;">No payslip details available for this period.</td>
-                    </tr>
-                @endforelse
-            </tbody>
-            <tfoot>
-                <tr style="background: #f3f4f6; font-weight: bold;">
-                    <td>Totals</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_gross_salary'] ?? array_sum(array_column($report['payslip_details'], 'gross_salary')), 2) }}</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_paye_tax'] ?? $report['total_tax_amount'] ?? 0, 2) }}</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_napsa'] ?? 0, 2) }}</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_nhima'] ?? 0, 2) }}</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_other_deductions'] ?? 0, 2) }}</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_all_deductions'] ?? array_sum(array_column($report['payslip_details'], 'deductions')), 2) }}</td>
-                    <td class="currency text-right">ZMW {{ number_format($report['total_net_salary'], 2) }}</td>
-                    <td></td>
+                @foreach($report['earning_breakdown'] as $earning)
+                <tr>
+                    <td><strong>{{ $earning['name'] ?? 'N/A' }}</strong></td>
+                    <td>{{ $earning['description'] ?? 'N/A' }}</td>
+                    <td><span class="type-badge type-{{ $earning['type'] ?? 'basic' }}">{{ $earning['type'] ?? 'basic' }}</span></td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($earning['total_amount'] ?? 0, 2) }}</td>
+                    <td class="text-right">{{ $earning['employee_count'] ?? 0 }}</td>
+                    <td class="text-right currency">
+                        {{ $currencySymbol }} {{ number_format(($earning['employee_count'] ?? 0) > 0 ? ($earning['total_amount'] ?? 0) / $earning['employee_count'] : 0, 2) }}
+                    </td>
                 </tr>
-            </tfoot>
+                @endforeach
+            </tbody>
         </table>
     </div>
+    @endif
 
-    <!-- Other Deductions Breakdown (if available) -->
-    @if(isset($report['other_deductions_breakdown']) && count($report['other_deductions_breakdown']) > 0)
-    <div class="details">
-        <h2 class="section-title">Other Deductions Breakdown</h2>
+    <!-- Deductions Breakdown -->
+    @if(isset($report['deduction_breakdown']) && count($report['deduction_breakdown']) > 0)
+    <div class="breakdown-section">
+        <div class="breakdown-title">📉 Deductions Breakdown by Type</div>
         <table>
             <thead>
                 <tr>
                     <th>Deduction Type</th>
-                    <th class="text-right">Amount</th>
-                    <th class="text-right">Number of Employees</th>
                     <th>Description</th>
+                    <th>Category</th>
+                    <th class="text-right">Total Amount</th>
+                    <th class="text-right">Employees</th>
+                    <th class="text-right">Average</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach($report['other_deductions_breakdown'] as $deduction)
-                    <tr>
-                        <td>{{ $deduction['type'] ?? 'Other' }}</td>
-                        <td class="currency text-right">ZMW {{ number_format($deduction['amount'] ?? 0, 2) }}</td>
-                        <td class="text-right">{{ $deduction['employee_count'] ?? 1 }}</td>
-                        <td>{{ $deduction['description'] ?? 'Additional deductions' }}</td>
-                    </tr>
+                @foreach($report['deduction_breakdown'] as $deduction)
+                <tr>
+                    <td><strong>{{ $deduction['name'] ?? 'N/A' }}</strong></td>
+                    <td>{{ $deduction['description'] ?? 'N/A' }}</td>
+                    <td><span class="type-badge type-{{ $deduction['type'] ?? 'statutory' }}">{{ $deduction['type'] ?? 'statutory' }}</span></td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($deduction['total_amount'] ?? 0, 2) }}</td>
+                    <td class="text-right">{{ $deduction['employee_count'] ?? 0 }}</td>
+                    <td class="text-right currency">
+                        {{ $currencySymbol }} {{ number_format(($deduction['employee_count'] ?? 0) > 0 ? ($deduction['total_amount'] ?? 0) / $deduction['employee_count'] : 0, 2) }}
+                    </td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    @endif
+
+    <!-- Employee Payroll Details with Dynamic Columns -->
+    @if(isset($report['payslip_details']) && count($report['payslip_details']) > 0)
+    <div class="breakdown-section" style="page-break-before: always;">
+        <div class="breakdown-title">👥 Detailed Employee Payroll</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Department</th>
+                    <th>Pay Period</th>
+                    <th class="text-right">Gross</th>
+                    
+                    @if(isset($report['earning_headers']))
+                        @foreach($report['earning_headers'] as $header)
+                        <th class="text-right">{{ $header }}</th>
+                        @endforeach
+                    @endif
+                    
+                    <th class="text-right">Total Earnings</th>
+                    
+                    @if(isset($report['deduction_headers']))
+                        @foreach($report['deduction_headers'] as $header)
+                        <th class="text-right">{{ $header }}</th>
+                        @endforeach
+                    @endif
+                    
+                    <th class="text-right">Total Deductions</th>
+                    <th class="text-right">Net Pay</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($report['payslip_details'] as $payslip)
+                <tr>
+                    <td><strong>{{ $payslip['employee_name'] ?? 'N/A' }}</strong></td>
+                    <td>{{ $payslip['department'] ?? 'N/A' }}</td>
+                    <td>{{ $payslip['pay_period'] ?? 'N/A' }}</td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($payslip['gross_salary'] ?? 0, 2) }}</td>
+                    
+                    @if(isset($report['earning_headers']))
+                        @foreach($report['earning_headers'] as $header)
+                        <td class="text-right currency">
+                            {{ $currencySymbol }} {{ number_format($payslip['earnings_breakdown'][$header] ?? 0, 2) }}
+                        </td>
+                        @endforeach
+                    @endif
+                    
+                    <td class="text-right currency"><strong>{{ $currencySymbol }} {{ number_format($payslip['total_earnings'] ?? 0, 2) }}</strong></td>
+                    
+                    @if(isset($report['deduction_headers']))
+                        @foreach($report['deduction_headers'] as $header)
+                        <td class="text-right currency">
+                            {{ $currencySymbol }} {{ number_format($payslip['deductions_breakdown'][$header] ?? 0, 2) }}
+                        </td>
+                        @endforeach
+                    @endif
+                    
+                    <td class="text-right currency"><strong>{{ $currencySymbol }} {{ number_format($payslip['total_deductions'] ?? 0, 2) }}</strong></td>
+                    <td class="text-right currency"><strong>{{ $currencySymbol }} {{ number_format($payslip['net_salary'] ?? 0, 2) }}</strong></td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    @endif
+
+    <!-- Department Breakdown -->
+    @if(isset($report['department_breakdown']) && count($report['department_breakdown']) > 0)
+    <div class="breakdown-section" style="page-break-before: always;">
+        <div class="breakdown-title">🏢 Department Summary</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th class="text-right">Employees</th>
+                    <th class="text-right">Total Gross</th>
+                    <th class="text-right">Total Earnings</th>
+                    <th class="text-right">Total Deductions</th>
+                    <th class="text-right">Total Net</th>
+                    <th class="text-right">Avg Net Salary</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($report['department_breakdown'] as $dept => $data)
+                <tr>
+                    <td><strong>{{ $dept }}</strong></td>
+                    <td class="text-right">{{ $data['employee_count'] ?? 0 }}</td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_gross_salary'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_earnings'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_deductions'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_net_salary'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">
+                        {{ $currencySymbol }} {{ number_format(($data['employee_count'] ?? 0) > 0 ? ($data['total_net_salary'] ?? 0) / $data['employee_count'] : 0, 2) }}
+                    </td>
+                </tr>
                 @endforeach
             </tbody>
         </table>
@@ -302,11 +365,8 @@
     @endif
 
     <div class="footer">
-        <p>This report was generated by the HR Management System. For questions, contact HR Department.</p>
-        <p style="margin-top: 10px;">All amounts are in Zambian Kwacha (ZMW)</p>
-        <p style="margin-top: 5px; font-size: 9px;">
-            Other deductions include: Loan deductions, advance repayments, insurance premiums, union dues, and other voluntary deductions.
-        </p>
+        <p>This is a computer-generated report. Generated on {{ now()->format('F d, Y \a\t h:i A') }}</p>
+        <p>Report includes {{ $report['processed_employees'] ?? 0 }} employees with {{ count($report['earning_headers'] ?? []) }} earning types and {{ count($report['deduction_headers'] ?? []) }} deduction types</p>
     </div>
 </body>
 </html>

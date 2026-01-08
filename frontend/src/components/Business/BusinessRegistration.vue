@@ -7,6 +7,7 @@
       
       <form @submit.prevent="registerBusiness" class="space-y-10">
         
+        <!-- 1. Business Details -->
         <div class="space-y-6 pb-6 border-b border-gray-200">
           <h3 class="text-xl font-semibold text-indigo-600 flex items-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5M12 7h.01"></path></svg>
@@ -85,6 +86,8 @@
             </div>
           </div>
         </div>
+
+        <!-- 2. Location & Finance -->
         <div class="space-y-6 pb-6 border-b border-gray-200">
           <h3 class="text-xl font-semibold text-indigo-600 flex items-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
@@ -168,89 +171,41 @@
                   required
                 >
                   <option value="">Select Currency</option>
-                  <optgroup label="Global Currencies">
-                    <option value="USD">USD - US Dollar</option>
-                    <option value="EUR">EUR - Euro</option>
-                    <option value="GBP">GBP - British Pound</option>
-                    <option value="JPY">JPY - Japanese Yen</option>
-                    <option value="CNY">CNY - Chinese Yuan</option>
-                    <option value="CAD">CAD - Canadian Dollar</option>
-                    <option value="AUD">AUD - Australian Dollar</option>
-                    <option value="CHF">CHF - Swiss Franc</option>
+                  
+                  <!-- Popular Group -->
+                  <optgroup label="Popular Currencies" v-if="popularCurrencies.length > 0">
+                    <option v-for="currency in popularCurrencies" :key="currency.code" :value="currency.code">
+                      {{ currency.code }} - {{ currency.name }} ({{ currency.symbol }})
+                    </option>
                   </optgroup>
-                  <optgroup label="African Currencies">
-                    <option value="ZMW">ZMW - Zambian Kwacha</option>
-                    <option value="ZAR">ZAR - South African Rand</option>
-                    <option value="NGN">NGN - Nigerian Naira</option>
-                    <option value="KES">KES - Kenyan Shilling</option>
-                    <option value="GHS">GHS - Ghanaian Cedi</option>
-                    <option value="EGP">EGP - Egyptian Pound</option>
-                    <option value="ETB">ETB - Ethiopian Birr</option>
-                    <option value="DZD">DZD - Algerian Dinar</option>
-                    <option value="MAD">MAD - Moroccan Dirham</option>
-                    <option value="TZS">TZS - Tanzanian Shilling</option>
-                    <option value="UGX">UGX - Ugandan Shilling</option>
-                    <option value="XOF">XOF - West African CFA Franc</option>
-                    <option value="XAF">XAF - Central African CFA Franc</option>
-                    <option value="MZN">MZN - Mozambican Metical</option>
-                    <option value="MWK">MWK - Malawian Kwacha</option>
-                    <option value="RWF">RWF - Rwandan Franc</option>
-                    <option value="BWP">BWP - Botswana Pula</option>
-                    <option value="NAD">NAD - Namibian Dollar</option>
-                    <option value="LSL">LSL - Lesotho Loti</option>
-                    <option value="SZL">SZL - Swazi Lilangeni</option>
-                    <option value="SDG">SDG - Sudanese Pound</option>
-                    <option value="TND">TND - Tunisian Dinar</option>
-                    <option value="LYD">LYD - Libyan Dinar</option>
-                    <option value="DJF">DJF - Djiboutian Franc</option>
-                    <option value="MUR">MUR - Mauritian Rupee</option>
-                    <option value="SCR">SCR - Seychellois Rupee</option>
-                    <option value="BIF">BIF - Burundian Franc</option>
-                    <option value="CDF">CDF - Congolese Franc</option>
-                    <option value="GMD">GMD - Gambian Dalasi</option>
-                    <option value="SLL">SLL - Sierra Leonean Leone</option>
-                    <option value="LRD">LRD - Liberian Dollar</option>
-                    <option value="GNF">GNF - Guinean Franc</option>
-                    <option value="SSP">SSP - South Sudanese Pound</option>
-                    <option value="MRU">MRU - Mauritanian Ouguiya</option>
-                    <option value="STN">STN - São Tomé and Príncipe Dobra</option>
-                    <option value="AOA">AOA - Angolan Kwanza</option>
-                    <option value="ZWL">ZWL - Zimbabwean Dollar</option>
-                    <option value="SOS">SOS - Somali Shilling</option>
-                    <option value="KMF">KMF - Comorian Franc</option>
-                    <option value="ERN">ERN - Eritrean Nakfa</option>
-                    <option value="MGA">MGA - Malagasy Ariary</option>
-                  </optgroup>
-                  <optgroup label="Other Currencies">
-                    <option value="INR">INR - Indian Rupee</option>
-                    <option value="PKR">PKR - Pakistani Rupee</option>
-                    <option value="BDT">BDT - Bangladeshi Taka</option>
-                    <option value="THB">THB - Thai Baht</option>
-                    <option value="IDR">IDR - Indonesian Rupiah</option>
-                    <option value="PHP">PHP - Philippine Peso</option>
-                    <option value="VND">VND - Vietnamese Dong</option>
-                    <option value="KRW">KRW - South Korean Won</option>
-                    <option value="SGD">SGD - Singapore Dollar</option>
-                    <option value="MYR">MYR - Malaysian Ringgit</option>
-                    <option value="NZD">NZD - New Zealand Dollar</option>
-                    <option value="BRL">BRL - Brazilian Real</option>
-                    <option value="MXN">MXN - Mexican Peso</option>
-                    <option value="ARS">ARS - Argentine Peso</option>
-                    <option value="CLP">CLP - Chilean Peso</option>
-                    <option value="COP">COP - Colombian Peso</option>
-                    <option value="PEN">PEN - Peruvian Sol</option>
-                    <option value="UYU">UYU - Uruguayan Peso</option>
-                    <option value="BOB">BOB - Bolivian Boliviano</option>
+                  
+                  <!-- All Others Group -->
+                  <optgroup label="All Currencies" v-if="allCurrencies.length > 0">
+                    <option v-for="currency in allCurrencies" :key="currency.code" :value="currency.code">
+                      {{ currency.code }} - {{ currency.name }}
+                    </option>
                   </optgroup>
                 </select>
+                
+                <!-- Loading Indicator -->
+                <div v-if="loadingCurrencies" class="text-xs text-gray-500 mt-1 flex items-center">
+                   <svg class="animate-spin h-3 w-3 mr-1 text-indigo-500" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Syncing rates...
+                </div>
+                
                 <p v-if="selectedCurrency" class="text-xs text-gray-500 mt-1">
                   <span class="font-medium">{{ selectedCurrency.name }}</span> 
-                  <span v-if="selectedCurrency.symbol">(Symbol: {{ selectedCurrency.symbol }})</span>
+                  <span v-if="selectedCurrency.symbol"> (Symbol: {{ selectedCurrency.symbol }})</span>
                 </p>
               </div>
             </div>
           </div>
         </div>
+
+        <!-- 3. Registration & Tax -->
         <div class="space-y-6 pb-6 border-b border-gray-200">
           <h3 class="text-xl font-semibold text-indigo-600 flex items-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -296,6 +251,7 @@
           </div>
         </div>
         
+        <!-- 4. Primary Administrator -->
         <div class="space-y-6">
           <h3 class="text-xl font-semibold text-indigo-600 flex items-center">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.935 13.935 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -365,6 +321,7 @@
             </div>
           </div>
         </div>
+        
         <div class="flex justify-end space-x-4 pt-6">
           <button
             type="button"
@@ -392,6 +349,162 @@
 
 <script>
 import axios from 'axios';
+
+// Static comprehensive list to ensure dropdown is never empty
+const WORLD_CURRENCIES = [
+  // Majors
+  { code: 'USD', name: 'US Dollar', symbol: '$' },
+  { code: 'EUR', name: 'Euro', symbol: '€' },
+  { code: 'GBP', name: 'British Pound', symbol: '£' },
+  { code: 'JPY', name: 'Japanese Yen', symbol: '¥' },
+  { code: 'CNY', name: 'Chinese Yuan', symbol: '¥' },
+  { code: 'CAD', name: 'Canadian Dollar', symbol: '$' },
+  { code: 'AUD', name: 'Australian Dollar', symbol: '$' },
+  { code: 'CHF', name: 'Swiss Franc', symbol: 'Fr' },
+  
+  // Africa
+  { code: 'ZMW', name: 'Zambian Kwacha', symbol: 'K' },
+  { code: 'ZAR', name: 'South African Rand', symbol: 'R' },
+  { code: 'NGN', name: 'Nigerian Naira', symbol: '₦' },
+  { code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh' },
+  { code: 'GHS', name: 'Ghanaian Cedi', symbol: 'GH₵' },
+  { code: 'EGP', name: 'Egyptian Pound', symbol: 'E£' },
+  { code: 'ETB', name: 'Ethiopian Birr', symbol: 'Br' },
+  { code: 'DZD', name: 'Algerian Dinar', symbol: 'د.ج' },
+  { code: 'MAD', name: 'Moroccan Dirham', symbol: 'د.م.' },
+  { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TSh' },
+  { code: 'UGX', name: 'Ugandan Shilling', symbol: 'USh' },
+  { code: 'XOF', name: 'West African CFA Franc', symbol: 'CFA' },
+  { code: 'XAF', name: 'Central African CFA Franc', symbol: 'FCFA' },
+  { code: 'MZN', name: 'Mozambican Metical', symbol: 'MT' },
+  { code: 'MWK', name: 'Malawian Kwacha', symbol: 'MK' },
+  { code: 'RWF', name: 'Rwandan Franc', symbol: 'RF' },
+  { code: 'BWP', name: 'Botswana Pula', symbol: 'P' },
+  { code: 'NAD', name: 'Namibian Dollar', symbol: '$' },
+  { code: 'LSL', name: 'Lesotho Loti', symbol: 'L' },
+  { code: 'SZL', name: 'Swazi Lilangeni', symbol: 'E' },
+  { code: 'SDG', name: 'Sudanese Pound', symbol: 'SDG' },
+  { code: 'TND', name: 'Tunisian Dinar', symbol: 'د.ت' },
+  { code: 'LYD', name: 'Libyan Dinar', symbol: 'ل.د' },
+  { code: 'DJF', name: 'Djiboutian Franc', symbol: 'Fdj' },
+  { code: 'MUR', name: 'Mauritian Rupee', symbol: '₨' },
+  { code: 'SCR', name: 'Seychellois Rupee', symbol: '₨' },
+  { code: 'BIF', name: 'Burundian Franc', symbol: 'FBu' },
+  { code: 'CDF', name: 'Congolese Franc', symbol: 'FC' },
+  { code: 'GMD', name: 'Gambian Dalasi', symbol: 'D' },
+  { code: 'SLL', name: 'Sierra Leonean Leone', symbol: 'Le' },
+  { code: 'LRD', name: 'Liberian Dollar', symbol: '$' },
+  { code: 'GNF', name: 'Guinean Franc', symbol: 'FG' },
+  { code: 'SSP', name: 'South Sudanese Pound', symbol: '£' },
+  { code: 'MRU', name: 'Mauritanian Ouguiya', symbol: 'UM' },
+  { code: 'STN', name: 'São Tomé and Príncipe Dobra', symbol: 'Db' },
+  { code: 'AOA', name: 'Angolan Kwanza', symbol: 'Kz' },
+  { code: 'ZWL', name: 'Zimbabwean Dollar', symbol: '$' },
+  { code: 'SOS', name: 'Somali Shilling', symbol: 'Sh.So.' },
+  { code: 'KMF', name: 'Comorian Franc', symbol: 'CF' },
+  { code: 'ERN', name: 'Eritrean Nakfa', symbol: 'Nfk' },
+  { code: 'MGA', name: 'Malagasy Ariary', symbol: 'Ar' },
+  { code: 'CVE', name: 'Cape Verdean Escudo', symbol: '$' },
+  
+  // Asia & Pacific
+  { code: 'INR', name: 'Indian Rupee', symbol: '₹' },
+  { code: 'PKR', name: 'Pakistani Rupee', symbol: '₨' },
+  { code: 'BDT', name: 'Bangladeshi Taka', symbol: '৳' },
+  { code: 'THB', name: 'Thai Baht', symbol: '฿' },
+  { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp' },
+  { code: 'PHP', name: 'Philippine Peso', symbol: '₱' },
+  { code: 'VND', name: 'Vietnamese Dong', symbol: '₫' },
+  { code: 'KRW', name: 'South Korean Won', symbol: '₩' },
+  { code: 'SGD', name: 'Singapore Dollar', symbol: '$' },
+  { code: 'MYR', name: 'Malaysian Ringgit', symbol: 'RM' },
+  { code: 'NZD', name: 'New Zealand Dollar', symbol: '$' },
+  { code: 'HKD', name: 'Hong Kong Dollar', symbol: '$' },
+  { code: 'TWD', name: 'New Taiwan Dollar', symbol: 'NT$' },
+  { code: 'AFN', name: 'Afghan Afghani', symbol: '؋' },
+  { code: 'LKR', name: 'Sri Lankan Rupee', symbol: 'Rs' },
+  { code: 'MMK', name: 'Burmese Kyat', symbol: 'K' },
+  { code: 'NPR', name: 'Nepalese Rupee', symbol: 'Rs' },
+  { code: 'KHR', name: 'Cambodian Riel', symbol: '៛' },
+  { code: 'LAK', name: 'Lao Kip', symbol: '₭' },
+  { code: 'MNT', name: 'Mongolian Tögrög', symbol: '₮' },
+  { code: 'FJD', name: 'Fijian Dollar', symbol: '$' },
+  { code: 'PGK', name: 'Papua New Guinean Kina', symbol: 'K' },
+  { code: 'WST', name: 'Samoan Tālā', symbol: 'T' },
+  { code: 'VUV', name: 'Vanuatu Vatu', symbol: 'VT' },
+  { code: 'TOP', name: 'Tongan Paʻanga', symbol: 'T$' },
+  { code: 'SBD', name: 'Solomon Islands Dollar', symbol: '$' },
+  
+  // Middle East & Central Asia
+  { code: 'AED', name: 'UAE Dirham', symbol: 'د.إ' },
+  { code: 'SAR', name: 'Saudi Riyal', symbol: '﷼' },
+  { code: 'QAR', name: 'Qatari Riyal', symbol: '﷼' },
+  { code: 'KWD', name: 'Kuwaiti Dinar', symbol: 'د.ك' },
+  { code: 'BHD', name: 'Bahraini Dinar', symbol: '.د.ب' },
+  { code: 'OMR', name: 'Omani Rial', symbol: '﷼' },
+  { code: 'JOD', name: 'Jordanian Dinar', symbol: 'د.ا' },
+  { code: 'ILS', name: 'Israeli New Shekel', symbol: '₪' },
+  { code: 'TRY', name: 'Turkish Lira', symbol: '₺' },
+  { code: 'IRR', name: 'Iranian Rial', symbol: '﷼' },
+  { code: 'IQD', name: 'Iraqi Dinar', symbol: 'ع.د' },
+  { code: 'LBP', name: 'Lebanese Pound', symbol: 'ل.ل' },
+  { code: 'YER', name: 'Yemeni Rial', symbol: '﷼' },
+  { code: 'SYP', name: 'Syrian Pound', symbol: '£' },
+  { code: 'AZN', name: 'Azerbaijani Manat', symbol: '₼' },
+  { code: 'KZT', name: 'Kazakhstani Tenge', symbol: '₸' },
+  { code: 'UZS', name: 'Uzbekistani Soʻm', symbol: 'лв' },
+  { code: 'TMT', name: 'Turkmenistan Manat', symbol: 'm' },
+  { code: 'KGS', name: 'Kyrgyzstani Som', symbol: 'с' },
+  { code: 'TJS', name: 'Tajikistani Somoni', symbol: 'SM' },
+  { code: 'GEL', name: 'Georgian Lari', symbol: '₾' },
+  { code: 'AMD', name: 'Armenian Dram', symbol: '֏' },
+  
+  // Americas
+  { code: 'BRL', name: 'Brazilian Real', symbol: 'R$' },
+  { code: 'MXN', name: 'Mexican Peso', symbol: '$' },
+  { code: 'ARS', name: 'Argentine Peso', symbol: '$' },
+  { code: 'CLP', name: 'Chilean Peso', symbol: '$' },
+  { code: 'COP', name: 'Colombian Peso', symbol: '$' },
+  { code: 'PEN', name: 'Peruvian Sol', symbol: 'S/' },
+  { code: 'UYU', name: 'Uruguayan Peso', symbol: '$' },
+  { code: 'BOB', name: 'Bolivian Boliviano', symbol: 'Bs' },
+  { code: 'VES', name: 'Venezuelan Bolívar', symbol: 'Bs' },
+  { code: 'PYG', name: 'Paraguayan Guaraní', symbol: '₲' },
+  { code: 'CRC', name: 'Costa Rican Colón', symbol: '₡' },
+  { code: 'DOP', name: 'Dominican Peso', symbol: 'RD$' },
+  { code: 'GTQ', name: 'Guatemalan Quetzal', symbol: 'Q' },
+  { code: 'HNL', name: 'Honduran Lempira', symbol: 'L' },
+  { code: 'NIO', name: 'Nicaraguan Córdoba', symbol: 'C$' },
+  { code: 'PAB', name: 'Panamanian Balboa', symbol: 'B/.' },
+  { code: 'CUP', name: 'Cuban Peso', symbol: '$' },
+  { code: 'JMD', name: 'Jamaican Dollar', symbol: 'J$' },
+  { code: 'TTD', name: 'Trinidad and Tobago Dollar', symbol: 'TT$' },
+  { code: 'BSD', name: 'Bahamian Dollar', symbol: '$' },
+  { code: 'BBD', name: 'Barbadian Dollar', symbol: '$' },
+  { code: 'HTG', name: 'Haitian Gourde', symbol: 'G' },
+  { code: 'XCD', name: 'East Caribbean Dollar', symbol: '$' },
+  { code: 'GYD', name: 'Guyanese Dollar', symbol: '$' },
+  { code: 'SRD', name: 'Surinamese Dollar', symbol: '$' },
+  { code: 'BZD', name: 'Belize Dollar', symbol: 'BZ$' },
+  
+  // Europe Non-Euro
+  { code: 'RUB', name: 'Russian Ruble', symbol: '₽' },
+  { code: 'SEK', name: 'Swedish Krona', symbol: 'kr' },
+  { code: 'NOK', name: 'Norwegian Krone', symbol: 'kr' },
+  { code: 'DKK', name: 'Danish Krone', symbol: 'kr' },
+  { code: 'PLN', name: 'Polish Złoty', symbol: 'zł' },
+  { code: 'CZK', name: 'Czech Koruna', symbol: 'Kč' },
+  { code: 'HUF', name: 'Hungarian Forint', symbol: 'Ft' },
+  { code: 'ISK', name: 'Icelandic Króna', symbol: 'kr' },
+  { code: 'RON', name: 'Romanian Leu', symbol: 'lei' },
+  { code: 'BGN', name: 'Bulgarian Lev', symbol: 'лв' },
+  { code: 'RSD', name: 'Serbian Dinar', symbol: 'дин.' },
+  { code: 'UAH', name: 'Ukrainian Hryvnia', symbol: '₴' },
+  { code: 'BYN', name: 'Belarusian Ruble', symbol: 'Br' },
+  { code: 'MDL', name: 'Moldovan Leu', symbol: 'L' },
+  { code: 'ALL', name: 'Albanian Lek', symbol: 'L' },
+  { code: 'BAM', name: 'Bosnia-Herzegovina Mark', symbol: 'KM' },
+  { code: 'MKD', name: 'Macedonian Denar', symbol: 'ден' },
+];
 
 export default {
   name: 'BusinessRegistration',
@@ -424,82 +537,10 @@ export default {
         admin_phone: ''
       },
       countries: [],
-      currencies: [
-        // Global Currencies
-        { code: 'USD', name: 'US Dollar', symbol: '$', group: 'global' },
-        { code: 'EUR', name: 'Euro', symbol: '€', group: 'global' },
-        { code: 'GBP', name: 'British Pound', symbol: '£', group: 'global' },
-        { code: 'JPY', name: 'Japanese Yen', symbol: '¥', group: 'global' },
-        { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', group: 'global' },
-        { code: 'CAD', name: 'Canadian Dollar', symbol: '$', group: 'global' },
-        { code: 'AUD', name: 'Australian Dollar', symbol: '$', group: 'global' },
-        { code: 'CHF', name: 'Swiss Franc', symbol: 'CHF', group: 'global' },
-        
-        // African Currencies
-        { code: 'ZMW', name: 'Zambian Kwacha', symbol: 'K', group: 'africa' },
-        { code: 'ZAR', name: 'South African Rand', symbol: 'R', group: 'africa' },
-        { code: 'NGN', name: 'Nigerian Naira', symbol: '₦', group: 'africa' },
-        { code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh', group: 'africa' },
-        { code: 'GHS', name: 'Ghanaian Cedi', symbol: 'GH₵', group: 'africa' },
-        { code: 'EGP', name: 'Egyptian Pound', symbol: 'E£', group: 'africa' },
-        { code: 'ETB', name: 'Ethiopian Birr', symbol: 'Br', group: 'africa' },
-        { code: 'DZD', name: 'Algerian Dinar', symbol: 'د.ج', group: 'africa' },
-        { code: 'MAD', name: 'Moroccan Dirham', symbol: 'د.م.', group: 'africa' },
-        { code: 'TZS', name: 'Tanzanian Shilling', symbol: 'TSh', group: 'africa' },
-        { code: 'UGX', name: 'Ugandan Shilling', symbol: 'USh', group: 'africa' },
-        { code: 'XOF', name: 'West African CFA Franc', symbol: 'CFA', group: 'africa' },
-        { code: 'XAF', name: 'Central African CFA Franc', symbol: 'FCFA', group: 'africa' },
-        { code: 'MZN', name: 'Mozambican Metical', symbol: 'MT', group: 'africa' },
-        { code: 'MWK', name: 'Malawian Kwacha', symbol: 'MK', group: 'africa' },
-        { code: 'RWF', name: 'Rwandan Franc', symbol: 'RF', group: 'africa' },
-        { code: 'BWP', name: 'Botswana Pula', symbol: 'P', group: 'africa' },
-        { code: 'NAD', name: 'Namibian Dollar', symbol: '$', group: 'africa' },
-        { code: 'LSL', name: 'Lesotho Loti', symbol: 'L', group: 'africa' },
-        { code: 'SZL', name: 'Swazi Lilangeni', symbol: 'E', group: 'africa' },
-        { code: 'SDG', name: 'Sudanese Pound', symbol: 'SDG', group: 'africa' },
-        { code: 'TND', name: 'Tunisian Dinar', symbol: 'د.ت', group: 'africa' },
-        { code: 'LYD', name: 'Libyan Dinar', symbol: 'ل.د', group: 'africa' },
-        { code: 'DJF', name: 'Djiboutian Franc', symbol: 'Fdj', group: 'africa' },
-        { code: 'MUR', name: 'Mauritian Rupee', symbol: '₨', group: 'africa' },
-        { code: 'SCR', name: 'Seychellois Rupee', symbol: '₨', group: 'africa' },
-        { code: 'BIF', name: 'Burundian Franc', symbol: 'FBu', group: 'africa' },
-        { code: 'CDF', name: 'Congolese Franc', symbol: 'FC', group: 'africa' },
-        { code: 'GMD', name: 'Gambian Dalasi', symbol: 'D', group: 'africa' },
-        { code: 'SLL', name: 'Sierra Leonean Leone', symbol: 'Le', group: 'africa' },
-        { code: 'LRD', name: 'Liberian Dollar', symbol: '$', group: 'africa' },
-        { code: 'GNF', name: 'Guinean Franc', symbol: 'FG', group: 'africa' },
-        { code: 'SSP', name: 'South Sudanese Pound', symbol: '£', group: 'africa' },
-        { code: 'MRU', name: 'Mauritanian Ouguiya', symbol: 'UM', group: 'africa' },
-        { code: 'STN', name: 'São Tomé and Príncipe Dobra', symbol: 'Db', group: 'africa' },
-        { code: 'AOA', name: 'Angolan Kwanza', symbol: 'Kz', group: 'africa' },
-        { code: 'ZWL', name: 'Zimbabwean Dollar', symbol: '$', group: 'africa' },
-        { code: 'SOS', name: 'Somali Shilling', symbol: 'Sh.So.', group: 'africa' },
-        { code: 'KMF', name: 'Comorian Franc', symbol: 'CF', group: 'africa' },
-        { code: 'ERN', name: 'Eritrean Nakfa', symbol: 'Nfk', group: 'africa' },
-        { code: 'MGA', name: 'Malagasy Ariary', symbol: 'Ar', group: 'africa' },
-        
-        // Other Currencies
-        { code: 'INR', name: 'Indian Rupee', symbol: '₹', group: 'other' },
-        { code: 'PKR', name: 'Pakistani Rupee', symbol: '₨', group: 'other' },
-        { code: 'BDT', name: 'Bangladeshi Taka', symbol: '৳', group: 'other' },
-        { code: 'THB', name: 'Thai Baht', symbol: '฿', group: 'other' },
-        { code: 'IDR', name: 'Indonesian Rupiah', symbol: 'Rp', group: 'other' },
-        { code: 'PHP', name: 'Philippine Peso', symbol: '₱', group: 'other' },
-        { code: 'VND', name: 'Vietnamese Dong', symbol: '₫', group: 'other' },
-        { code: 'KRW', name: 'South Korean Won', symbol: '₩', group: 'other' },
-        { code: 'SGD', name: 'Singapore Dollar', symbol: '$', group: 'other' },
-        { code: 'MYR', name: 'Malaysian Ringgit', symbol: 'RM', group: 'other' },
-        { code: 'NZD', name: 'New Zealand Dollar', symbol: '$', group: 'other' },
-        { code: 'BRL', name: 'Brazilian Real', symbol: 'R$', group: 'other' },
-        { code: 'MXN', name: 'Mexican Peso', symbol: '$', group: 'other' },
-        { code: 'ARS', name: 'Argentine Peso', symbol: '$', group: 'other' },
-        { code: 'CLP', name: 'Chilean Peso', symbol: '$', group: 'other' },
-        { code: 'COP', name: 'Colombian Peso', symbol: '$', group: 'other' },
-        { code: 'PEN', name: 'Peruvian Sol', symbol: 'S/', group: 'other' },
-        { code: 'UYU', name: 'Uruguayan Peso', symbol: '$', group: 'other' },
-        { code: 'BOB', name: 'Bolivian Boliviano', symbol: 'Bs', group: 'other' }
-      ],
+      // Initialize with full list immediately so dropdown is never empty
+      currencies: [...WORLD_CURRENCIES], 
       loading: false,
+      loadingCurrencies: false,
       errors: {},
       useCurrentUserAsAdmin: true
     }
@@ -507,31 +548,89 @@ export default {
   computed: {
     selectedCurrency() {
       return this.currencies.find(c => c.code === this.form.currency_code);
+    },
+    popularCurrencies() {
+      // Define popular currency codes
+      const popularCodes = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'ZMW', 'ZAR', 'NGN', 'KES', 'GHS'];
+      return this.currencies.filter(currency => 
+        currency.code && popularCodes.includes(currency.code.toUpperCase())
+      );
+    },
+    allCurrencies() {
+      const popularCodes = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'ZMW', 'ZAR', 'NGN', 'KES', 'GHS'];
+      return this.currencies.filter(currency => 
+        currency.code && !popularCodes.includes(currency.code.toUpperCase())
+      );
     }
   },
   async mounted() {
-    await this.fetchCountries();
-    this.prefillCurrentUserInfo();
+    // Parallel fetch
+    await Promise.all([
+      this.fetchCountries(),
+      this.fetchCurrencies() // This now only UPDATES/MERGES, never deletes
+    ]);
     
-    // Set default currency based on user's location or default to USD
+    this.prefillCurrentUserInfo();
     this.setDefaultCurrency();
   },
   watch: {
-    // Watch country_id to suggest a default currency
     'form.country_id'(newCountryId) {
       this.suggestCurrencyForCountry(newCountryId);
     }
   },
   methods: {
+    async fetchCurrencies() {
+      this.loadingCurrencies = true;
+      try {
+        // Fetch known currencies from API (e.g., active ones or ones with specific settings)
+        const response = await axios.get('/api/admin/currencies');
+        
+        if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          const apiData = response.data.data;
+          
+          // Create a map of existing currencies for O(1) lookup
+          // We map strictly by UpperCase Code to avoid duplicates
+          const currencyMap = new Map(this.currencies.map(c => [c.code.toUpperCase(), c]));
+          
+          apiData.forEach(apiCurrency => {
+            if (!apiCurrency.code) return;
+            const code = apiCurrency.code.toUpperCase();
+            
+            if (currencyMap.has(code)) {
+              // MERGE: Update existing currency with API data (e.g. latest rates, ID)
+              const existing = currencyMap.get(code);
+              currencyMap.set(code, { ...existing, ...apiCurrency });
+            } else {
+              // ADD: If API has a currency we somehow missed, add it
+              currencyMap.set(code, {
+                code: code,
+                name: apiCurrency.name || code,
+                symbol: apiCurrency.symbol || code,
+                decimal_places: apiCurrency.decimal_places || 2
+              });
+            }
+          });
+          
+          // Convert back to array
+          this.currencies = Array.from(currencyMap.values());
+        }
+      } catch (error) {
+        console.warn('Currency sync failed, using built-in global list:', error);
+        // Do nothing else - the hardcoded list is already there and safe.
+      } finally {
+        this.loadingCurrencies = false;
+      }
+    },
+    
     setDefaultCurrency() {
-      // Try to get user's preferred currency from localStorage or user profile
       const userCurrency = localStorage.getItem('preferred_currency') || 
                           this.$store?.state?.auth?.user?.currency_code;
       
-      if (userCurrency && this.currencies.find(c => c.code === userCurrency)) {
+      // Only set if it exists in our list
+      if (userCurrency && this.currencies.some(c => c.code === userCurrency)) {
         this.form.currency_code = userCurrency;
       } else {
-        this.form.currency_code = 'USD'; // Default fallback
+        this.form.currency_code = 'USD';
       }
     },
     
@@ -540,16 +639,16 @@ export default {
       
       const selectedCountry = this.countries.find(c => c.id === countryId);
       if (selectedCountry && selectedCountry.currency_code) {
-        // Find if the country's currency exists in our list
         const suggestedCurrency = this.currencies.find(c => c.code === selectedCountry.currency_code);
+        
         if (suggestedCurrency) {
-          // Only suggest if the current currency is USD (default) or empty
+          // Suggest if currently unset or default
           if (this.form.currency_code === 'USD' || !this.form.currency_code) {
             this.form.currency_code = suggestedCurrency.code;
             this.$notify({
               type: 'info',
               title: 'Currency Suggested',
-              text: `Suggested currency for ${selectedCountry.name}: ${suggestedCurrency.code} - ${suggestedCurrency.name}`,
+              text: `Currency set to ${suggestedCurrency.code} for ${selectedCountry.name}`,
               duration: 3000
             });
           }
@@ -561,84 +660,39 @@ export default {
       try {
         const response = await axios.get('/api/admin/countries');
         this.countries = response.data.data;
-        
-        // Enrich countries with currency codes if not provided by API
         this.enrichCountriesWithCurrencies();
-        
       } catch (error) {
         console.error('Failed to fetch countries:', error);
-        this.$notify({
-          type: 'error',
-          title: 'Error',
-          text: 'Failed to load countries list'
-        });
       }
     },
     
     enrichCountriesWithCurrencies() {
-      // Common country-currency mappings
+      // Map country codes (ISO 3166-1 alpha-2) to currency codes
+      // This helps auto-select currency when user picks a country
       const countryCurrencyMap = {
-        'US': 'USD',
-        'GB': 'GBP',
-        'EU': 'EUR',
-        'ZA': 'ZAR',
-        'NG': 'NGN',
-        'KE': 'KES',
-        'GH': 'GHS',
-        'EG': 'EGP',
-        'ZM': 'ZMW',
-        'TZ': 'TZS',
-        'UG': 'UGX',
-        'ET': 'ETB',
-        'MW': 'MWK',
-        'RW': 'RWF',
-        'BW': 'BWP',
-        'NA': 'NAD',
-        'LS': 'LSL',
-        'SZ': 'SZL',
-        'SD': 'SDG',
-        'TN': 'TND',
-        'LY': 'LYD',
-        'DJ': 'DJF',
-        'MU': 'MUR',
-        'SC': 'SCR',
-        'BI': 'BIF',
-        'CD': 'CDF',
-        'GM': 'GMD',
-        'SL': 'SLL',
-        'LR': 'LRD',
-        'GN': 'GNF',
-        'SS': 'SSP',
-        'MR': 'MRU',
-        'ST': 'STN',
-        'AO': 'AOA',
-        'ZW': 'ZWL',
-        'SO': 'SOS',
-        'KM': 'KMF',
-        'ER': 'ERN',
-        'MG': 'MGA',
-        'DZ': 'DZD',
-        'MA': 'MAD',
-        'MZ': 'MZN'
+        'US': 'USD', 'GB': 'GBP', 'EU': 'EUR', 'DE': 'EUR', 'FR': 'EUR', 'IT': 'EUR', 'ES': 'EUR',
+        'ZA': 'ZAR', 'NG': 'NGN', 'KE': 'KES', 'GH': 'GHS', 'ZM': 'ZMW', 'TZ': 'TZS', 'UG': 'UGX',
+        'IN': 'INR', 'CN': 'CNY', 'JP': 'JPY', 'AU': 'AUD', 'CA': 'CAD', 'CH': 'CHF', 'AE': 'AED',
+        'RW': 'RWF', 'MW': 'MWK', 'BW': 'BWP', 'NA': 'NAD', 'ZW': 'ZWL', 'MZ': 'MZN', 'AO': 'AOA',
+        'ET': 'ETB', 'EG': 'EGP', 'DZ': 'DZD', 'MA': 'MAD', 'SD': 'SDG', 'TN': 'TND', 'LY': 'LYD',
+        'SA': 'SAR', 'QA': 'QAR', 'KW': 'KWD', 'BH': 'BHD', 'OM': 'OMR', 'JO': 'JOD', 'LB': 'LBP',
+        'TR': 'TRY', 'RU': 'RUB', 'KR': 'KRW', 'TH': 'THB', 'ID': 'IDR', 'VN': 'VND', 'PH': 'PHP',
+        'MY': 'MYR', 'SG': 'SGD', 'HK': 'HKD', 'TW': 'TWD', 'NZ': 'NZD', 'BR': 'BRL', 'MX': 'MXN',
+        'AR': 'ARS', 'CL': 'CLP', 'CO': 'COP', 'PE': 'PEN', 'SE': 'SEK', 'NO': 'NOK', 'DK': 'DKK'
       };
       
-      // Add currency_code to countries if not present
       this.countries = this.countries.map(country => {
         if (!country.currency_code && country.code) {
-          const currencyCode = countryCurrencyMap[country.code] || null;
-          if (currencyCode) {
-            return { ...country, currency_code: currencyCode };
-          }
+          const code = countryCurrencyMap[country.code];
+          if (code) return { ...country, currency_code: code };
         }
         return country;
       });
     },
     
     prefillCurrentUserInfo() {
-      // Get current user from your auth system
       const currentUser = this.$store?.state?.auth?.user ||
-                         JSON.parse(localStorage.getItem('user')) ||
-                         { first_name: 'Current', last_name: 'User', email: 'current.user@example.com', phone: '123-456-7890' };
+                         JSON.parse(localStorage.getItem('user'));
       
       if (currentUser && this.useCurrentUserAsAdmin) {
         this.form.admin_first_name = currentUser.first_name || '';
@@ -652,7 +706,6 @@ export default {
       if (this.useCurrentUserAsAdmin) {
         this.prefillCurrentUserInfo();
       } else {
-        // Clear admin fields
         this.form.admin_first_name = '';
         this.form.admin_last_name = '';
         this.form.admin_email = '';
@@ -665,30 +718,15 @@ export default {
       this.errors = {};
       try {
         const response = await axios.post('/api/admin/businesses', this.form);
-        
         this.$emit('success', response.data.data);
-        
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Business registered successfully!'
-        });
+        this.$notify({ type: 'success', title: 'Success', text: 'Business registered successfully!' });
       } catch (error) {
-        console.error('Business registration error:', error);
-        
+        console.error('Registration error:', error);
         if (error.response?.status === 422) {
           this.errors = error.response.data.errors;
-          this.$notify({
-            type: 'error',
-            title: 'Validation Error',
-            text: 'Please check the form for errors'
-          });
+          this.$notify({ type: 'error', title: 'Validation Error', text: 'Please check the form for errors' });
         } else {
-          this.$notify({
-            type: 'error',
-            title: 'Error',
-            text: error.response?.data?.message || 'Failed to register business'
-          });
+          this.$notify({ type: 'error', title: 'Error', text: error.response?.data?.message || 'Failed to register business' });
         }
       } finally {
         this.loading = false;

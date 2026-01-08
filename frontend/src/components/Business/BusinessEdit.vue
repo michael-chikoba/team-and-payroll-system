@@ -211,11 +211,56 @@
                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
-                  <option value="USD">USD - US Dollar</option>
-                  <option value="EUR">EUR - Euro</option>
-                  <option value="GBP">GBP - British Pound</option>
-                  <option value="ZMW">ZMW - Zambian Kwacha</option>
-                  <!-- Add more currencies as needed -->
+                  <option value="">Select Currency</option>
+                  <optgroup label="Major International Currencies">
+                    <option value="USD">USD - US Dollar</option>
+                    <option value="EUR">EUR - Euro</option>
+                    <option value="GBP">GBP - British Pound</option>
+                  </optgroup>
+                  <optgroup label="African Currencies">
+                    <option value="DZD">DZD - Algerian Dinar</option>
+                    <option value="AOA">AOA - Angolan Kwanza</option>
+                    <option value="XOF">XOF - West African CFA Franc</option>
+                    <option value="BWP">BWP - Botswana Pula</option>
+                    <option value="BIF">BIF - Burundian Franc</option>
+                    <option value="XAF">XAF - Central African CFA Franc</option>
+                    <option value="CVE">CVE - Cape Verdean Escudo</option>
+                    <option value="KMF">KMF - Comorian Franc</option>
+                    <option value="CDF">CDF - Congolese Franc</option>
+                    <option value="DJF">DJF - Djiboutian Franc</option>
+                    <option value="EGP">EGP - Egyptian Pound</option>
+                    <option value="ERN">ERN - Eritrean Nakfa</option>
+                    <option value="SZL">SZL - Eswatini Lilangeni</option>
+                    <option value="ETB">ETB - Ethiopian Birr</option>
+                    <option value="GMD">GMD - Gambian Dalasi</option>
+                    <option value="GHS">GHS - Ghanaian Cedi</option>
+                    <option value="GNF">GNF - Guinean Franc</option>
+                    <option value="KES">KES - Kenyan Shilling</option>
+                    <option value="LSL">LSL - Lesotho Loti</option>
+                    <option value="LRD">LRD - Liberian Dollar</option>
+                    <option value="LYD">LYD - Libyan Dinar</option>
+                    <option value="MGA">MGA - Malagasy Ariary</option>
+                    <option value="MWK">MWK - Malawian Kwacha</option>
+                    <option value="MRU">MRU - Mauritanian Ouguiya</option>
+                    <option value="MUR">MUR - Mauritian Rupee</option>
+                    <option value="MAD">MAD - Moroccan Dirham</option>
+                    <option value="MZN">MZN - Mozambican Metical</option>
+                    <option value="NAD">NAD - Namibian Dollar</option>
+                    <option value="NGN">NGN - Nigerian Naira</option>
+                    <option value="RWF">RWF - Rwandan Franc</option>
+                    <option value="STN">STN - São Tomé and Príncipe Dobra</option>
+                    <option value="SCR">SCR - Seychellois Rupee</option>
+                    <option value="SLL">SLL - Sierra Leonean Leone</option>
+                    <option value="SOS">SOS - Somali Shilling</option>
+                    <option value="ZAR">ZAR - South African Rand</option>
+                    <option value="SSP">SSP - South Sudanese Pound</option>
+                    <option value="SDG">SDG - Sudanese Pound</option>
+                    <option value="TZS">TZS - Tanzanian Shilling</option>
+                    <option value="TND">TND - Tunisian Dinar</option>
+                    <option value="UGX">UGX - Ugandan Shilling</option>
+                    <option value="ZMW">ZMW - Zambian Kwacha</option>
+                    <option value="ZWL">ZWL - Zimbabwean Dollar</option>
+                  </optgroup>
                 </select>
                 <div v-if="errors.currency_code" class="text-red-500 text-sm mt-1">{{ errors.currency_code[0] }}</div>
               </div>

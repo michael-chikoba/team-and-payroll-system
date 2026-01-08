@@ -10,6 +10,7 @@ use App\Models\Attendance;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Log;
 
 class ManagerController extends Controller
 {
@@ -69,40 +70,182 @@ class ManagerController extends Controller
         ]);
     }
 
-    public function attendanceReport(Request $request): JsonResponse
-    {
-        $managerProfile = $this->getManagerProfile($request);
-
-        if (!$managerProfile) {
-             return response()->json([
+   public function attendanceReport(Request $request): JsonResponse
+{
+    try {
+        $user = $request->user();
+        
+        if (!$user) {
+            return response()->json([
+                'message' => 'Unauthenticated',
                 'attendances' => [],
                 'summary' => $this->getEmptySummary(),
+            ], 401);
+        }
+
+        // Get manager's employee profile
+        $managerProfile = $user->employee;
+
+        if (!$managerProfile) {
+            Log::warning('Manager profile not found', [
+                'user_id' => $user->id,
+                'role' => $user->role
+            ]);
+            
+            return response()->json([
+                'message' => 'Manager profile not found',
+                'attendances' => [],
+                'summary' => $this->getEmptySummary(),
+            ], 404);
+        }
+
+        $managerId = $user->id;
+        $month = $request->get('month', now()->format('m'));
+        $year = $request->get('year', now()->format('Y'));
+        $businessId = $managerProfile->business_id;
+
+        Log::info('Processing attendance report', [
+            'manager_id' => $managerId,
+            'business_id' => $businessId,
+            'month' => $month,
+            'year' => $year
+        ]);
+
+        // Get team employees with their users loaded
+        $teamEmployees = Employee::with('user')
+            ->where('manager_id', $managerId)
+            ->where('business_id', $businessId)
+            ->get();
+
+        $teamEmployeeIds = $teamEmployees->pluck('id')->toArray();
+
+        if (empty($teamEmployeeIds)) {
+            Log::info('No team members found for manager', [
+                'manager_id' => $managerId,
+                'business_id' => $businessId
+            ]);
+            
+            return response()->json([
+                'attendances' => [],
+                'summary' => $this->getEmptySummary(),
+                'message' => 'No team members found'
             ]);
         }
 
-        $managerId = $request->user()->id;
-        $month = $request->get('month', date('m'));
-        $year = $request->get('year', date('Y'));
-
-        // Query Attendances where the related Employee is managed by current user
-        // AND belongs to the same Business/Country
+        // Query attendances for team members
         $attendances = Attendance::with(['employee.user'])
-            ->whereHas('employee', function ($query) use ($managerId, $managerProfile) {
-                $query->where('manager_id', $managerId)
-                      ->sameContext($managerProfile); // Apply strict context scope
-            })
+            ->whereIn('employee_id', $teamEmployeeIds)
             ->whereYear('date', $year)
             ->whereMonth('date', $month)
             ->orderBy('date', 'desc')
+            ->orderBy('employee_id', 'asc')
             ->get();
 
-        $summary = $this->getTeamAttendanceSummary($managerId, $managerProfile, $month, $year);
+        Log::info('Attendances retrieved', [
+            'count' => $attendances->count(),
+            'team_size' => count($teamEmployeeIds)
+        ]);
+
+        // Calculate summary
+        $summary = $this->getTeamAttendanceSummary($teamEmployeeIds, $month, $year);
 
         return response()->json([
             'attendances' => AttendanceResource::collection($attendances),
             'summary' => $summary,
+            'period' => [
+                'month' => $month,
+                'year' => $year,
+                'team_size' => count($teamEmployeeIds)
+            ]
         ]);
+
+    } catch (\Exception $e) {
+        Log::error('Attendance report error: ' . $e->getMessage(), [
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'message' => 'Failed to generate attendance report',
+            'error' => env('APP_DEBUG') ? $e->getMessage() : 'Internal server error',
+            'attendances' => [],
+            'summary' => $this->getEmptySummary(),
+        ], 500);
     }
+}
+
+/**
+ * Get team attendance summary for the specified period
+ * Updated to match the existing method signature in ManagerController
+ */
+private function getTeamAttendanceSummary($employeeIdsOrManagerId, $monthOrManagerProfile, $year = null, $actualMonth = null): array
+{
+    try {
+        // Handle both old signature (int $managerId, Employee $managerProfile, int $month, int $year)
+        // and new signature (array $employeeIds, string $month, string $year)
+        
+        if (is_array($employeeIdsOrManagerId)) {
+            // New signature: array $employeeIds, string $month, string $year
+            $employeeIds = $employeeIdsOrManagerId;
+            $month = $monthOrManagerProfile;
+            $yearValue = $year;
+        } else {
+            // Old signature: int $managerId, Employee $managerProfile, int $month, int $year
+            $managerId = $employeeIdsOrManagerId;
+            $managerProfile = $monthOrManagerProfile;
+            $month = $year;
+            $yearValue = $actualMonth;
+            
+            // Fetch employees with strict context check
+            $employees = Employee::where('manager_id', $managerId)
+                ->sameContext($managerProfile)
+                ->get();
+                
+            $employeeIds = $employees->pluck('id')->toArray();
+        }
+
+        if (empty($employeeIds)) {
+            return $this->getEmptySummary();
+        }
+
+        $attendances = Attendance::whereIn('employee_id', $employeeIds)
+            ->whereYear('date', $yearValue)
+            ->whereMonth('date', $month)
+            ->get();
+
+        $totalRecords = $attendances->count();
+        $presentDays = $attendances->where('status', 'present')->count();
+        $absentDays = $attendances->where('status', 'absent')->count();
+        $lateDays = $attendances->where('status', 'late')->count();
+        $totalHours = $attendances->sum('total_hours');
+        
+        // Calculate overtime hours (assuming 8-hour workday)
+        $overtimeHours = $attendances->sum(function ($attendance) {
+            return max(0, ($attendance->total_hours ?? 0) - 8);
+        });
+
+        // Calculate attendance rate
+        $workingDays = $totalRecords;
+        $attendanceRate = $workingDays > 0 ? ($presentDays / $workingDays) * 100 : 0;
+
+        return [
+            'total_employees' => count($employeeIds),
+            'avg_attendance_rate' => round($attendanceRate, 2),
+            'total_present_days' => $presentDays,
+            'total_absent_days' => $absentDays,
+            'total_late_days' => $lateDays,
+            'total_records' => $totalRecords,
+            'total_hours' => round((float) $totalHours, 2),
+            'overtime_hours' => round((float) $overtimeHours, 2),
+            'average_hours_per_day' => $presentDays > 0 ? round($totalHours / $presentDays, 2) : 0,
+        ];
+
+    } catch (\Exception $e) {
+        Log::error('Error calculating team attendance summary: ' . $e->getMessage());
+        return $this->getEmptySummary();
+    }
+}
+
+
 
     private function getEmployeeAttendanceSummary(Employee $employee, Request $request): array
     {
@@ -133,47 +276,7 @@ class ManagerController extends Controller
         })->toArray();
     }
 
-    private function getTeamAttendanceSummary(int $managerId, Employee $managerProfile, int $month, int $year): array
-    {
-        // Fetch employees with strict context check
-        $employees = Employee::where('manager_id', $managerId)
-            ->sameContext($managerProfile)
-            ->get();
-            
-        $totalEmployees = $employees->count();
-
-        if ($totalEmployees === 0) {
-            return $this->getEmptySummary();
-        }
-
-        $totalPresent = 0;
-        $totalAbsent = 0;
-        $totalLate = 0;
-        $totalWorkingDays = 0;
-
-        foreach ($employees as $employee) {
-            $attendances = $employee->attendances()
-                ->whereYear('date', $year)
-                ->whereMonth('date', $month)
-                ->get();
-
-            $totalPresent += $attendances->where('status', 'present')->count();
-            $totalAbsent += $attendances->where('status', 'absent')->count();
-            $totalLate += $attendances->where('status', 'late')->count();
-            $totalWorkingDays += $attendances->count();
-        }
-
-        $avgAttendanceRate = $totalWorkingDays > 0 ? ($totalPresent / $totalWorkingDays) * 100 : 0;
-
-        return [
-            'total_employees' => $totalEmployees,
-            'avg_attendance_rate' => round($avgAttendanceRate, 2),
-            'total_present_days' => $totalPresent,
-            'total_absent_days' => $totalAbsent,
-            'total_late_days' => $totalLate,
-        ];
-    }
-
+  
     private function getEmptySummary(): array
     {
         return [

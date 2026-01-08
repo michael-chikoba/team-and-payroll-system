@@ -12,6 +12,7 @@ use App\Models\Business; // Add this import
 use App\Models\User; // Add this import
 use App\Services\AttendanceService;
 use Carbon\Carbon;
+use App\Models\ShiftAssignment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -27,7 +28,539 @@ class AttendanceController extends Controller
     public function __construct(private AttendanceService $attendanceService)
     {
     }
+/**
+ * Get team attendance status for manager
+ * GET /api/manager/attendance?date=2025-12-23
+ */
+public function getManagerTeamAttendance(Request $request): JsonResponse
+{
+    try {
+        $manager = $request->user();
+        $managerEmployee = $manager->employee;
 
+        if (!$managerEmployee) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Manager profile not found.'
+            ], 404);
+        }
+
+        $date = $request->input('date', now()->toDateString());
+        $targetDate = Carbon::parse($date)->startOfDay();
+
+        Log::info('=== Manager Team Attendance Request ===', [
+            'manager_id' => $manager->id,
+            'manager_employee_id' => $managerEmployee->id,
+            'business_id' => $managerEmployee->business_id,
+            'department_id' => $managerEmployee->department_id,
+            'date' => $targetDate->toDateString()
+        ]);
+
+        // Get all employees in manager's department/business
+        $employeesQuery = Employee::with(['user'])
+            ->where('business_id', $managerEmployee->business_id);
+
+        // If manager has a department, filter by that department
+        if ($managerEmployee->department_id) {
+            $employeesQuery->where('department_id', $managerEmployee->department_id);
+        }
+
+        $employees = $employeesQuery->get();
+
+        Log::info('=== Manager Team Employees Found ===', [
+            'total_employees' => $employees->count(),
+            'employee_ids' => $employees->pluck('id')->toArray()
+        ]);
+
+        // Get attendance records for these employees on the target date
+        $employeeIds = $employees->pluck('id');
+        
+        $attendances = Attendance::whereIn('employee_id', $employeeIds)
+            ->whereDate('date', $targetDate)
+            ->get()
+            ->keyBy('employee_id');
+
+        Log::info('=== Attendance Records Found ===', [
+            'total_records' => $attendances->count(),
+            'employee_ids_with_attendance' => $attendances->keys()->toArray()
+        ]);
+
+        // Build attendance data
+        $attendanceData = [];
+        $summary = [
+            'present' => 0,
+            'absent' => 0,
+            'late' => 0,
+            'onLeave' => 0,
+            'total_employees' => $employees->count()
+        ];
+
+        foreach ($employees as $employee) {
+            $attendance = $attendances->get($employee->id);
+            
+            $status = 'absent';
+            $clockIn = null;
+            $clockOut = null;
+            $totalHours = 0;
+            
+            if ($attendance) {
+                $status = $attendance->status ?? 'present';
+                $clockIn = $attendance->clock_in;
+                $clockOut = $attendance->clock_out;
+                $totalHours = $attendance->total_hours ?? 0;
+            }
+
+            // Count for summary
+            switch ($status) {
+                case 'present':
+                case 'completed':
+                    $summary['present']++;
+                    break;
+                case 'late':
+                    $summary['late']++;
+                    break;
+                case 'on_leave':
+                    $summary['onLeave']++;
+                    break;
+                case 'absent':
+                default:
+                    $summary['absent']++;
+                    break;
+            }
+
+            $attendanceData[] = [
+                'employee_id' => $employee->id,
+                'employee_name' => $employee->full_name,
+                'employee_number' => $employee->employee_id ?? 'EMP' . str_pad($employee->id, 4, '0', STR_PAD_LEFT),
+                'department' => $employee->department ?? 'Unassigned',
+                'position' => $employee->position ?? 'N/A',
+                'status' => $status,
+                'clock_in' => $clockIn,
+                'clock_out' => $clockOut,
+                'total_hours' => round($totalHours, 2),
+                'date' => $targetDate->toDateString(),
+            ];
+        }
+
+        Log::info('=== Manager Team Attendance Summary ===', [
+            'summary' => $summary,
+            'attendance_data_count' => count($attendanceData)
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'attendances' => $attendanceData,
+            'summary' => $summary,
+            'date' => $targetDate->toDateString()
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('=== Manager Team Attendance Failed ===', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch team attendance',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * Manager clock out an employee
+ * POST /api/manager/attendance/{employee}/clock-out
+ */
+public function managerClockOut(Request $request, Employee $employee): JsonResponse
+{
+    try {
+        $manager = $request->user()->employee;
+
+        if (!$manager) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Manager profile not found.'
+            ], 404);
+        }
+
+        // Verify manager has authority (same business/department)
+        if ($employee->business_id !== $manager->business_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to clock out this employee.'
+            ], 403);
+        }
+
+        // If manager has department, verify same department
+        if ($manager->department_id && $employee->department_id !== $manager->department_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized to clock out employee from different department.'
+            ], 403);
+        }
+
+        $today = now()->toDateString();
+        
+        $attendance = Attendance::where('employee_id', $employee->id)
+            ->whereDate('date', $today)
+            ->whereNotNull('clock_in')
+            ->whereNull('clock_out')
+            ->first();
+
+        if (!$attendance) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No active clock-in found for this employee today.'
+            ], 404);
+        }
+
+        // Clock out with current time
+        $attendance->clock_out = now()->format('H:i:s');
+        $attendance->total_hours = $attendance->calculateTotalHours();
+        $attendance->status = 'completed';
+        $attendance->notes = ($attendance->notes ? $attendance->notes . ' | ' : '') 
+            . "Clocked out by manager ({$manager->full_name}) at " . now()->toDateTimeString();
+        $attendance->save();
+
+        Log::info('Manager clocked out employee', [
+            'manager_id' => $manager->id,
+            'employee_id' => $employee->id,
+            'clock_out' => $attendance->clock_out,
+            'total_hours' => $attendance->total_hours
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "{$employee->full_name} clocked out successfully",
+            'attendance' => [
+                'id' => $attendance->id,
+                'employee_id' => $employee->id,
+                'clock_in' => $attendance->clock_in,
+                'clock_out' => $attendance->clock_out,
+                'total_hours' => round($attendance->total_hours, 2),
+                'status' => $attendance->status
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Manager clock out failed', [
+            'manager_id' => $request->user()->id,
+            'employee_id' => $employee->id,
+            'error' => $e->getMessage()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to clock out employee',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * Get team attendance status for manager
+ * GET /api/manager/team-status?date=2025-01-08
+ */
+public function getTeamStatus(Request $request): JsonResponse
+{
+    $startTime = microtime(true);
+    
+    try {
+        $manager = $request->user();
+        $managerEmployee = $manager->employee;
+
+        Log::info('=== TEAM STATUS REQUEST START ===', [
+            'timestamp' => now()->toDateTimeString(),
+            'manager_user_id' => $manager->id,
+            'manager_email' => $manager->email,
+            'manager_role' => $manager->role,
+        ]);
+
+        // Validate manager has employee profile
+        if (!$managerEmployee) {
+            Log::error('Manager employee profile not found', [
+                'user_id' => $manager->id
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'attendances' => [],
+                'summary' => [
+                    'total_employees' => 0,
+                    'present' => 0,
+                    'absent' => 0,
+                    'late' => 0,
+                    'on_leave' => 0,
+                    'completed' => 0,
+                ],
+                'message' => 'Manager profile not found.'
+            ]);
+        }
+
+        // Validate manager has business assigned
+        if (!$managerEmployee->business_id) {
+            Log::error('Manager has no business assigned', [
+                'manager_employee_id' => $managerEmployee->id
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'attendances' => [],
+                'summary' => [
+                    'total_employees' => 0,
+                    'present' => 0,
+                    'absent' => 0,
+                    'late' => 0,
+                    'on_leave' => 0,
+                    'completed' => 0,
+                ],
+                'message' => 'No business assigned.'
+            ]);
+        }
+
+        // Parse and validate date
+        $date = $request->input('date', now()->toDateString());
+        
+        try {
+            $targetDate = Carbon::parse($date)->startOfDay();
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid date format. Use YYYY-MM-DD format.'
+            ], 422);
+        }
+
+        Log::info('=== MANAGER DETAILS ===', [
+            'manager_employee_id' => $managerEmployee->id,
+            'business_id' => $managerEmployee->business_id,
+            'department_id' => $managerEmployee->department_id,
+            'target_date' => $targetDate->toDateString(),
+        ]);
+
+        // Step 1: Get ALL team employees based on business context
+        $employeesQuery = Employee::with(['user'])
+            ->where('business_id', $managerEmployee->business_id);
+        
+        // If manager has a department, filter by department
+        if ($managerEmployee->department_id) {
+            $employeesQuery->where('department_id', $managerEmployee->department_id);
+        }
+        
+        $allEmployees = $employeesQuery->get();
+        $totalEmployees = $allEmployees->count();
+        $allEmployeeIds = $allEmployees->pluck('id')->toArray();
+
+        Log::info('=== TOTAL EMPLOYEES IN SCOPE ===', [
+            'total_employees' => $totalEmployees,
+            'employee_ids' => $allEmployeeIds,
+            'filtered_by_department' => $managerEmployee->department_id ? 'yes' : 'no'
+        ]);
+
+        // Validate we have employees
+        if ($totalEmployees === 0) {
+            return response()->json([
+                'success' => true,
+                'attendances' => [],
+                'summary' => [
+                    'total_employees' => 0,
+                    'present' => 0,
+                    'absent' => 0,
+                    'late' => 0,
+                    'on_leave' => 0,
+                    'completed' => 0,
+                ],
+                'date' => $targetDate->toDateString(),
+                'message' => 'No team members found.'
+            ]);
+        }
+
+        // Step 2: Get attendance records for the target date
+        $attendances = Attendance::with(['employee.user', 'shiftAssignment'])
+            ->whereIn('employee_id', $allEmployeeIds)
+            ->whereDate('date', $targetDate)
+            ->get()
+            ->keyBy('employee_id'); // Key by employee_id for easy lookup
+
+        Log::info('=== ATTENDANCE RECORDS FOUND ===', [
+            'total_records' => $attendances->count(),
+            'employee_ids_with_records' => $attendances->keys()->toArray()
+        ]);
+
+        // Step 3: Build attendance data and calculate summary
+        $attendanceData = [];
+        $summary = [
+            'total_employees' => $totalEmployees,
+            'present' => 0,
+            'absent' => 0,
+            'late' => 0,
+            'on_leave' => 0,
+            'completed' => 0,
+            'with_shifts' => 0,
+            'without_shifts' => 0,
+        ];
+
+        // Process each employee
+        foreach ($allEmployees as $employee) {
+            // Check if user exists
+            if (!$employee->user) {
+                Log::warning('Employee missing user relationship', [
+                    'employee_id' => $employee->id
+                ]);
+                continue;
+            }
+
+            // Get attendance record if exists
+            $attendance = $attendances->get($employee->id);
+            
+            // Initialize default values
+            $status = 'absent';
+            $clockIn = null;
+            $clockOut = null;
+            $totalHours = 0;
+            $attendanceId = null;
+            $shift = null;
+            $hasShift = false;
+            $expectedTime = '08:30:00'; // Default
+            $isLate = false;
+            $minutesLate = 0;
+
+            if ($attendance) {
+                // Employee has attendance record
+                $attendanceId = $attendance->id;
+                $status = $attendance->status ?? 'present';
+                $clockIn = $attendance->clock_in;
+                $clockOut = $attendance->clock_out;
+                $totalHours = $attendance->total_hours ?? 0;
+                
+                // Get shift information
+                $shift = $attendance->shiftAssignment;
+                $hasShift = $shift !== null;
+                
+                if ($hasShift) {
+                    $summary['with_shifts']++;
+                    $expectedTime = $shift->start_time;
+                    
+                    // Calculate if late based on shift
+                    if ($clockIn) {
+                        $shiftStart = Carbon::parse($targetDate->toDateString() . ' ' . $shift->start_time);
+                        $actualClockIn = Carbon::parse($targetDate->toDateString() . ' ' . $clockIn);
+                        $gracePeriod = config('attendance.grace_period_minutes', 15);
+                        $lateThreshold = $shiftStart->copy()->addMinutes($gracePeriod);
+
+                        if ($actualClockIn->greaterThan($lateThreshold)) {
+                            $isLate = true;
+                            $minutesLate = $actualClockIn->diffInMinutes($shiftStart);
+                        }
+                    }
+                } else {
+                    $summary['without_shifts']++;
+                }
+
+                // Update summary counts based on status
+                switch ($status) {
+                    case 'completed':
+                        $summary['completed']++;
+                        $summary['present']++;
+                        break;
+                    case 'present':
+                        $summary['present']++;
+                        break;
+                    case 'late':
+                        $summary['late']++;
+                        $summary['present']++; // Late is still present
+                        break;
+                    case 'on_leave':
+                        $summary['on_leave']++;
+                        break;
+                    case 'absent':
+                    default:
+                        $summary['absent']++;
+                        break;
+                }
+            } else {
+                // No attendance record = absent
+                $summary['absent']++;
+            }
+
+            // Build shift info for response
+            $shiftInfo = null;
+            if ($shift) {
+                $shiftInfo = [
+                    'id' => $shift->id,
+                    'type' => $shift->shift_type,
+                    'start_time' => $shift->start_time,
+                    'end_time' => $shift->end_time,
+                    'status' => $shift->status
+                ];
+            }
+
+            // Add to attendance data
+            $attendanceData[] = [
+                'id' => $attendanceId,
+                'employee_id' => $employee->id,
+                'full_name' => trim($employee->user->first_name . ' ' . $employee->user->last_name),
+                'employee_number' => $employee->employee_id ?? 'EMP' . str_pad($employee->id, 4, '0', STR_PAD_LEFT),
+                'department' => $employee->department ?? 'Unassigned',
+                'position' => $employee->position ?? 'N/A',
+                'status' => $status,
+                'clock_in' => $clockIn,
+                'clock_out' => $clockOut,
+                'total_hours' => round($totalHours, 2),
+                'date' => $targetDate->toDateString(),
+                'has_shift' => $hasShift,
+                'shift' => $shiftInfo,
+                'expected_time' => $expectedTime,
+                'is_late' => $isLate,
+                'minutes_late' => $minutesLate,
+            ];
+        }
+
+        // Sort attendance data by employee name
+        usort($attendanceData, function($a, $b) {
+            return strcmp($a['full_name'], $b['full_name']);
+        });
+
+        $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+
+        Log::info('=== TEAM STATUS SUCCESS ===', [
+            'summary' => $summary,
+            'attendance_data_count' => count($attendanceData),
+            'execution_time_ms' => $executionTime
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'attendances' => $attendanceData,
+            'summary' => $summary,
+            'date' => $targetDate->toDateString(),
+            'debug' => [
+                'execution_time_ms' => $executionTime,
+                'total_employees_in_scope' => $totalEmployees,
+                'employees_with_attendance' => $attendances->count(),
+                'employees_without_attendance' => $totalEmployees - $attendances->count(),
+                'total_records_returned' => count($attendanceData),
+                'filtered_by_department' => $managerEmployee->department_id ? true : false,
+                'department_id' => $managerEmployee->department_id,
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('=== TEAM STATUS FAILED ===', [
+            'timestamp' => now()->toDateTimeString(),
+            'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch team status',
+            'error' => env('APP_DEBUG') ? $e->getMessage() : 'Internal server error'
+        ], 500);
+    }
+}
     /**
      * Clock in
      */
@@ -46,7 +579,7 @@ class AttendanceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'attendance' => new AttendanceResource($attendance),
+                'attendance' => $attendance,
                 'message' => 'Clocked in successfully at ' . $attendance->clock_in
             ]);
         } catch (\Exception $e) {
@@ -81,7 +614,7 @@ class AttendanceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'attendance' => new AttendanceResource($attendance),
+                'attendance' => $attendance,
                 'message' => 'Clocked out successfully. Total hours: ' . round($attendance->total_hours, 2)
             ]);
         } catch (\Exception $e) {
@@ -113,16 +646,29 @@ class AttendanceController extends Controller
             }
 
             $status = $this->attendanceService->getTodayStatus($employee);
-
-            // Get today's attendance details
             $today = now()->timezone('Africa/Lusaka')->toDateString();
-            $attendance = Attendance::where('employee_id', $employee->id)
+            
+            $attendance = Attendance::with('shiftAssignment')
+                ->where('employee_id', $employee->id)
                 ->whereDate('date', $today)
+                ->first();
+
+            // Get today's shift if any
+            $shift = ShiftAssignment::where('employee_id', $employee->id)
+                ->whereDate('shift_date', $today)
+                ->whereIn('status', ['accepted', 'pending'])
                 ->first();
 
             return response()->json([
                 'status' => $status,
-                'attendance' => $attendance ? new AttendanceResource($attendance) : null
+                'attendance' => $attendance,
+                'shift' => $shift ? [
+                    'id' => $shift->id,
+                    'type' => $shift->shift_type,
+                    'start_time' => $shift->start_time,
+                    'end_time' => $shift->end_time,
+                    'status' => $shift->status
+                ] : null
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to get today status', [
@@ -136,6 +682,51 @@ class AttendanceController extends Controller
             ]);
         }
     }
+
+    /**
+     * Get attendance history for a specific employee (Manager access)
+     */
+    public function employeeHistory(Request $request, Employee $employee): JsonResponse
+    {
+        try {
+            $month = $request->get('month', date('m'));
+            $year = $request->get('year', date('Y'));
+
+            $query = Attendance::with('shiftAssignment')
+                ->where('employee_id', $employee->id)
+                ->whereYear('date', $year)
+                ->whereMonth('date', $month)
+                ->orderBy('date', 'desc');
+
+            $attendances = $query->get();
+
+            // Calculate summary
+            $summary = [
+                'total_records' => $attendances->count(),
+                'total_hours' => round($attendances->sum('total_hours'), 2),
+                'present_days' => $attendances->whereIn('status', ['present', 'completed'])->count(),
+                'absent_days' => 0, // Calculate based on working days
+                'late_days' => $attendances->where('status', 'late')->count(),
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data' => $attendances,
+                'summary' => $summary
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch employee history', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch history'
+            ], 500);
+        }
+    }
+
 
     /**
      * Force reset attendance status (closes all open records)
@@ -304,116 +895,7 @@ public function adminHistory(Request $request): JsonResponse
         ], 500);
     }
 }
-/**
- * Get attendance history for a specific employee (Manager access)
- */
-public function employeeHistory(Request $request, Employee $employee): JsonResponse
-{
-    try {
-        $month = $request->get('month', date('m'));
-        $year = $request->get('year', date('Y'));
-        $perPage = $request->get('per_page', 31);
-        $status = $request->get('status');
-        $startDate = $request->get('start_date');
-        $endDate = $request->get('end_date');
 
-        Log::info('Manager fetching employee attendance history', [
-            'manager_user_id' => $request->user()->id,
-            'employee_id' => $employee->id,
-            'month' => $month,
-            'year' => $year
-        ]);
-
-        // Build the query
-        $query = Attendance::where('employee_id', $employee->id);
-
-        // Apply filters
-        if ($startDate && $endDate) {
-            $query->whereBetween('date', [
-                Carbon::parse($startDate)->startOfDay(),
-                Carbon::parse($endDate)->endOfDay()
-            ]);
-        } else {
-            $query->whereYear('date', $year)
-                  ->whereMonth('date', $month);
-        }
-
-        if ($status) {
-            $query->where('status', $status);
-        }
-
-        $query->orderBy('date', 'desc')
-              ->orderBy('clock_in', 'desc');
-
-        // Get paginated results
-        $attendances = $query->paginate($perPage);
-
-        // Get employee with user relationship
-        $employee->load('user');
-        
-        // Get full name from user relationship or use the employee's full_name attribute
-        $fullName = $employee->full_name;
-
-        // Calculate summary
-        $allRecords = $query->get();
-        $summary = [
-            'employee_name' => $fullName,
-            'employee_id' => $employee->employee_id ?? 'EMP' . str_pad($employee->id, 4, '0', STR_PAD_LEFT),
-            'department' => $employee->department ?? 'Unassigned',
-            'position' => $employee->position ?? 'N/A',
-            'total_records' => $allRecords->count(),
-            'total_hours' => round($allRecords->sum('total_hours'), 2),
-            'present_days' => $allRecords->whereIn('status', ['present', 'completed'])->count(),
-            'absent_days' => $allRecords->where('status', 'absent')->count(),
-            'late_days' => $allRecords->where('status', 'late')->count(),
-            'average_hours_per_day' => $allRecords->count() > 0 
-                ? round($allRecords->avg('total_hours'), 2) 
-                : 0
-        ];
-
-        return response()->json([
-            'success' => true,
-            'data' => AttendanceResource::collection($attendances->items()),
-            'pagination' => [
-                'current_page' => $attendances->currentPage(),
-                'per_page' => $attendances->perPage(),
-                'total' => $attendances->total(),
-                'last_page' => $attendances->lastPage(),
-                'from' => $attendances->firstItem(),
-                'to' => $attendances->lastItem(),
-            ],
-            'employee' => [
-                'id' => $employee->id,
-                'name' => $summary['employee_name'],
-                'employee_id' => $summary['employee_id'],
-                'department' => $summary['department'],
-                'position' => $summary['position']
-            ],
-            'summary' => $summary,
-            'filters' => [
-                'month' => (int) $month,
-                'year' => (int) $year,
-                'status' => $status,
-                'start_date' => $startDate,
-                'end_date' => $endDate
-            ]
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Failed to fetch employee attendance history for manager', [
-            'manager_user_id' => $request->user()->id,
-            'employee_id' => $employee->id,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to fetch employee attendance history',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
 
 /**
  * Get manager's team attendance history (all team members)

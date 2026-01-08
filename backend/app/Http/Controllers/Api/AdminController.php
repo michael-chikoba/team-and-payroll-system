@@ -19,97 +19,182 @@ use Illuminate\Support\Facades\DB;
 class AdminController extends Controller
 {
     private const SETTINGS_FILE = 'settings.json';
+    
+    // Comprehensive list of world currencies with focus on all African currencies
+    private const VALID_CURRENCIES = [
+        // Major International Currencies
+        'USD', 'EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD', 'NZD', 'CNY', 'INR',
+        
+        // African Currencies (Complete List)
+        'DZD', // Algeria - Algerian Dinar
+        'AOA', // Angola - Angolan Kwanza
+        'BWP', // Botswana - Botswana Pula
+        'BIF', // Burundi - Burundian Franc
+        'CVE', // Cape Verde - Cape Verdean Escudo
+        'XAF', // Central African CFA Franc (Cameroon, CAR, Chad, Congo, Equatorial Guinea, Gabon)
+        'KMF', // Comoros - Comorian Franc
+        'CDF', // Congo (DRC) - Congolese Franc
+        'DJF', // Djibouti - Djiboutian Franc
+        'EGP', // Egypt - Egyptian Pound
+        'ERN', // Eritrea - Eritrean Nakfa
+        'SZL', // Eswatini - Eswatini Lilangeni
+        'ETB', // Ethiopia - Ethiopian Birr
+        'GMD', // Gambia - Gambian Dalasi
+        'GHS', // Ghana - Ghanaian Cedi
+        'GNF', // Guinea - Guinean Franc
+        'KES', // Kenya - Kenyan Shilling
+        'LSL', // Lesotho - Lesotho Loti
+        'LRD', // Liberia - Liberian Dollar
+        'LYD', // Libya - Libyan Dinar
+        'MGA', // Madagascar - Malagasy Ariary
+        'MWK', // Malawi - Malawian Kwacha
+        'MRU', // Mauritania - Mauritanian Ouguiya
+        'MUR', // Mauritius - Mauritian Rupee
+        'MAD', // Morocco - Moroccan Dirham
+        'MZN', // Mozambique - Mozambican Metical
+        'NAD', // Namibia - Namibian Dollar
+        'NGN', // Nigeria - Nigerian Naira
+        'RWF', // Rwanda - Rwandan Franc
+        'STN', // São Tomé and Príncipe - São Tomé and Príncipe Dobra
+        'SCR', // Seychelles - Seychellois Rupee
+        'SLL', // Sierra Leone - Sierra Leonean Leone
+        'SOS', // Somalia - Somali Shilling
+        'ZAR', // South Africa - South African Rand
+        'SSP', // South Sudan - South Sudanese Pound
+        'SDG', // Sudan - Sudanese Pound
+        'TZS', // Tanzania - Tanzanian Shilling
+        'TND', // Tunisia - Tunisian Dinar
+        'UGX', // Uganda - Ugandan Shilling
+        'XOF', // West African CFA Franc (Benin, Burkina Faso, Côte d'Ivoire, Guinea-Bissau, Mali, Niger, Senegal, Togo)
+        'ZMW', // Zambia - Zambian Kwacha
+        'ZWL', // Zimbabwe - Zimbabwean Dollar
+        
+        // Additional African currencies and variations
+        'SLE', // Sierra Leone - New Leone (introduced 2022)
+        'VES', // Venezuela - For reference in some African regions
+    ];
+    
     public function __construct(private LeaveBalanceService $leaveBalanceService)
     {
     }
 
-        public function systemStats(Request $request): JsonResponse
-    {
-        $currentUser = $request->user();
+   public function systemStats(Request $request): JsonResponse
+{
+    $currentUser = $request->user();
+    
+    // Build base queries with business scoping
+    $employeeQuery = \App\Models\Employee::query();
+    $managerQuery = \App\Models\User::where('role', 'manager');
+    $leaveQuery = \App\Models\Leave::where('status', 'pending');
+    $attendanceQuery = \App\Models\Attendance::query();
+    
+    // Get today's date for attendance
+    $today = now()->toDateString();
+    
+    // Get current month for payroll
+    $currentMonth = now()->month;
+    $currentYear = now()->year;
+    
+    // Apply business scoping if admin has business
+    if ($currentUser->role === 'admin' && $currentUser->current_business_id) {
+        $businessId = $currentUser->current_business_id;
         
-        // Build base queries with business scoping
-        $employeeQuery = \App\Models\Employee::query();
-        $managerQuery = \App\Models\User::where('role', 'manager');
-        $payrollQuery = \App\Models\Payroll::where('status', 'completed');
-        $leaveQuery = \App\Models\Leave::where('status', 'pending');
-        $attendanceQuery = \App\Models\Attendance::query();
+        // Scope employees to business
+        $employeeQuery->whereHas('user', function($q) use ($businessId) {
+            $q->where('current_business_id', $businessId);
+        });
         
-        // Apply business scoping if admin has business
-        if ($currentUser->role === 'admin' && $currentUser->current_business_id) {
-            $businessId = $currentUser->current_business_id;
-            
-            // Scope employees to business
-            $employeeQuery->whereHas('user', function($q) use ($businessId) {
-                $q->where('current_business_id', $businessId);
-            });
-            
-            // Scope managers to business
-            $managerQuery->where('current_business_id', $businessId);
-            
-            // Scope payrolls to business employees
-            $payrollQuery->whereHas('employee.user', function($q) use ($businessId) {
-                $q->where('current_business_id', $businessId);
-            });
-            
-            // Scope leaves to business employees
-            $leaveQuery->whereHas('employee.user', function($q) use ($businessId) {
-                $q->where('current_business_id', $businessId);
-            });
-            
-            // Scope attendance to business employees
-            $attendanceQuery->whereHas('employee.user', function($q) use ($businessId) {
-                $q->where('current_business_id', $businessId);
-            });
-            
-            Log::info('ADMIN_CONTROLLER: Stats scoped to business', [
-                'business_id' => $businessId,
-                'admin_id' => $currentUser->id
-            ]);
-        } 
-        // If admin without business, show only non-business data
-        elseif ($currentUser->role === 'admin' && !$currentUser->current_business_id) {
-            $employeeQuery->whereHas('user', function($q) {
-                $q->whereNull('current_business_id');
-            });
-            
-            $managerQuery->whereNull('current_business_id');
-            
-            $payrollQuery->whereHas('employee.user', function($q) {
-                $q->whereNull('current_business_id');
-            });
-            
-            $leaveQuery->whereHas('employee.user', function($q) {
-                $q->whereNull('current_business_id');
-            });
-            
-            $attendanceQuery->whereHas('employee.user', function($q) {
-                $q->whereNull('current_business_id');
-            });
-            
-            Log::info('ADMIN_CONTROLLER: Stats scoped to non-business data', [
-                'admin_id' => $currentUser->id
-            ]);
-        }
+        // Scope managers to business
+        $managerQuery->where('current_business_id', $businessId);
         
-        $stats = [
-            'total_employees' => $employeeQuery->count(),
-            'total_managers' => $managerQuery->count(),
-            'total_payrolls_processed' => $payrollQuery->count(),
-            'pending_leave_requests' => $leaveQuery->count(),
-            'total_attendance_records' => $attendanceQuery->count(),
-            'system_uptime' => $this->getSystemUptime(),
-            'business_id' => $currentUser->current_business_id,
-            'business_name' => $currentUser->current_business_id 
-                ? $currentUser->currentBusiness->name ?? 'Unknown' 
-                : 'No Business',
-        ];
+        // Scope leaves to business employees
+        $leaveQuery->whereHas('employee.user', function($q) use ($businessId) {
+            $q->where('current_business_id', $businessId);
+        });
         
-        return response()->json(['stats' => $stats]);
+        // Scope attendance to business employees and today's date
+        $attendanceQuery->whereHas('employee.user', function($q) use ($businessId) {
+            $q->where('current_business_id', $businessId);
+        })->whereDate('date', $today);
+        
+        Log::info('ADMIN_CONTROLLER: Stats scoped to business', [
+            'business_id' => $businessId,
+            'admin_id' => $currentUser->id
+        ]);
+    } 
+    // If admin without business, show only non-business data
+    elseif ($currentUser->role === 'admin' && !$currentUser->current_business_id) {
+        $employeeQuery->whereHas('user', function($q) {
+            $q->whereNull('current_business_id');
+        });
+        
+        $managerQuery->whereNull('current_business_id');
+        
+        $leaveQuery->whereHas('employee.user', function($q) {
+            $q->whereNull('current_business_id');
+        });
+        
+        $attendanceQuery->whereHas('employee.user', function($q) {
+            $q->whereNull('current_business_id');
+        })->whereDate('date', $today);
+        
+        Log::info('ADMIN_CONTROLLER: Stats scoped to non-business data', [
+            'admin_id' => $currentUser->id
+        ]);
     }
-      /**
+    
+    // Count today's attendance with proper status
+    $presentToday = (clone $attendanceQuery)
+        ->whereIn('status', ['present', 'completed'])
+        ->count();
+    
+    // Get employee IDs for payroll calculation
+    $employeeIds = $employeeQuery->pluck('id')->toArray();
+    
+    // Calculate current month payroll via payslips
+    // Note: Using 'payment_date' field from Payslip model
+    $currentMonthPayroll = \App\Models\Payslip::whereIn('employee_id', $employeeIds)
+        ->whereMonth('payment_date', $currentMonth)
+        ->whereYear('payment_date', $currentYear)
+        ->whereNotNull('net_pay')
+        ->sum('net_pay');
+    
+    // Count completed payroll batches via payslips
+    $payrollBatchCount = \App\Models\Payroll::where('status', 'completed')
+        ->whereHas('payslips', function($q) use ($employeeIds) {
+            if (!empty($employeeIds)) {
+                $q->whereIn('employee_id', $employeeIds);
+            }
+        })
+        ->count();
+    
+    $stats = [
+        'total_employees' => $employeeQuery->count(),
+        'total_managers' => $managerQuery->count(),
+        'total_payrolls_processed' => $payrollBatchCount,
+        'current_month_payroll_amount' => round($currentMonthPayroll, 2),
+        'pending_leave_requests' => $leaveQuery->count(),
+        'total_attendance_records' => (clone $attendanceQuery)->count(),
+        'present_today' => $presentToday,
+        'system_uptime' => $this->getSystemUptime(),
+        'business_id' => $currentUser->current_business_id,
+        'business_name' => $currentUser->current_business_id 
+            ? ($currentUser->currentBusiness->name ?? 'Unknown')
+            : 'No Business',
+    ];
+    
+    Log::info('ADMIN_CONTROLLER: System stats calculated', [
+        'stats' => $stats,
+        'employee_count' => count($employeeIds),
+        'employee_ids_sample' => array_slice($employeeIds, 0, 5)
+    ]);
+    
+    return response()->json(['stats' => $stats]);
+}
+    /**
      * Get active tax configuration
      */
-        public function getTaxConfiguration(Request $request): JsonResponse
+    public function getTaxConfiguration(Request $request): JsonResponse
     {
         $currentUser = $request->user();
         $countryCode = $request->query('country_code');
@@ -119,9 +204,9 @@ class AdminController extends Controller
             // Try to get from user's business
             if ($currentUser->current_business_id) {
                 $business = $currentUser->currentBusiness;
-                $countryCode = $business->country_code ?? 'ZM'; // Default to Zambia
+                $countryCode = $business->country_code ?? 'ZM';
             } else {
-                $countryCode = 'ZM'; // Default fallback
+                $countryCode = 'ZM';
             }
         }
         
@@ -192,33 +277,27 @@ class AdminController extends Controller
         return response()->json(['tax_configurations' => $configs]);
     }
 
-   /**
+    /**
      * Save or update tax configuration
      */
     public function updateTaxConfiguration(Request $request): JsonResponse
     {
-        // 1. LOG THE INCOMING DATA (For Debugging)
-        \Log::info('Tax Update Request Payload:', $request->all());
+        Log::info('Tax Update Request Payload:', $request->all());
 
         try {
-            // 2. NEW VALIDATION RULES (Dynamic Statutory Deductions)
             $validated = $request->validate([
                 'taxConfig' => 'required|array',
                 'taxConfig.taxYear' => 'required|string',
-                'taxConfig.currency' => 'required|string|size:3',
+                'taxConfig.currency' => ['required', 'string', 'size:3', Rule::in(self::VALID_CURRENCIES)],
                 
-                // Allow these to be nullable if your frontend sends them as null
                 'taxConfig.taxFreeThreshold' => 'nullable|numeric|min:0',
                 'taxConfig.annualTaxFree' => 'nullable|numeric|min:0',
                 
-                // Tax Bands
                 'taxConfig.taxBands' => 'required|array|min:1',
                 'taxConfig.taxBands.*.lowerLimit' => 'required|numeric|min:0',
                 'taxConfig.taxBands.*.upperLimit' => 'nullable|numeric|min:0',
                 'taxConfig.taxBands.*.rate' => 'required|numeric|min:0|max:100',
 
-                // *** CRITICAL CHANGE: Dynamic Deductions ***
-                // We REMOVED nhimaEmployeeRate, napsaRate, etc.
                 'taxConfig.statutory_deductions' => 'nullable|array',
                 'taxConfig.statutory_deductions.*.name' => 'required|string|max:100',
                 'taxConfig.statutory_deductions.*.type' => 'required|string',
@@ -227,19 +306,16 @@ class AdminController extends Controller
                 'taxConfig.statutory_deductions.*.employer_rate' => 'required|numeric|min:0',
                 'taxConfig.statutory_deductions.*.ceiling' => 'nullable|numeric',
 
-                // General Flags
                 'taxConfig.taxCalculationMethod' => 'required|string',
                 'taxConfig.roundingMethod' => 'required|string',
                 'taxConfig.includeHousingAllowance' => 'boolean',
                 'taxConfig.includeTransportAllowance' => 'boolean',
                 
-                // Scope
                 'country_code' => 'nullable|string',
                 'apply_to_business' => 'boolean',
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            // Log the validation errors if it fails
-            \Log::error('Tax Update Validation Failed:', $e->errors());
+            Log::error('Tax Update Validation Failed:', $e->errors());
             throw $e;
         }
 
@@ -271,28 +347,25 @@ class AdminController extends Controller
             $business = $currentUser->currentBusiness;
             $scopeName = $business ? "{$business->name} ({$countryName})" : "{$countryName} - Business #{$businessId}";
         } elseif ($countryCode === null) {
-             $scopeName = "Global Fallback";
+            $scopeName = "Global Fallback";
         }
 
         try {
             DB::beginTransaction();
 
-            // Create/Update Logic
             $taxConfig = TaxConfiguration::create([
                 'business_id' => $businessId,
                 'country_code' => $countryCode,
                 'country_name' => $countryName,
                 'state' => null,
-                'config_data' => $taxConfigData, // This saves the array structure exactly as received
+                'config_data' => $taxConfigData,
                 'is_active' => true,
             ]);
 
-            // Update Business Link
             if ($businessId && isset($business)) {
                 $business->update(['tax_configuration_id' => $taxConfig->id]);
             }
 
-            // Deactivate old configs in this scope
             $query = TaxConfiguration::where('id', '!=', $taxConfig->id);
             
             if ($businessId) {
@@ -304,12 +377,10 @@ class AdminController extends Controller
             }
             $query->update(['is_active' => false]);
 
-            // Clear Cache
             Cache::forget('tax_configuration_active');
             if ($countryCode) Cache::forget("tax_config_{$countryCode}");
             if ($businessId) Cache::forget("tax_config_business_{$businessId}_{$countryCode}");
 
-            // Log Audit
             AuditLog::log(
                 'UPDATE_TAX_CONFIG',
                 "Tax configuration updated for {$scopeName}",
@@ -329,10 +400,11 @@ class AdminController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Error saving tax config: ' . $e->getMessage());
+            Log::error('Error saving tax config: ' . $e->getMessage());
             return response()->json(['message' => 'Save failed', 'error' => $e->getMessage()], 500);
         }
     }
+    
     /**
      * Delete a tax configuration
      */
@@ -343,7 +415,6 @@ class AdminController extends Controller
         try {
             $taxConfig = TaxConfiguration::findOrFail($id);
             
-            // Check permissions
             if ($taxConfig->business_id && $taxConfig->business_id !== $currentUser->current_business_id) {
                 return response()->json([
                     'message' => 'You do not have permission to delete this tax configuration'
@@ -356,14 +427,12 @@ class AdminController extends Controller
             
             $taxConfig->delete();
             
-            // Clear caches
             Cache::forget('tax_configuration_active');
             Cache::forget("tax_config_{$taxConfig->country_code}");
             if ($taxConfig->business_id) {
                 Cache::forget("tax_config_business_{$taxConfig->business_id}_{$taxConfig->country_code}");
             }
             
-            // Log audit
             AuditLog::log(
                 'DELETE_TAX_CONFIG',
                 "Tax configuration deleted for {$scopeName}",
@@ -391,19 +460,16 @@ class AdminController extends Controller
         }
     }
    
-       public function auditLogs(Request $request): AnonymousResourceCollection
+    public function auditLogs(Request $request): AnonymousResourceCollection
     {
         $currentUser = $request->user();
         $query = AuditLog::with('user')->orderBy('created_at', 'desc');
         
-        // If admin has business, show only logs related to their business
         if ($currentUser->current_business_id) {
             $query->where(function($q) use ($currentUser) {
-                // Show logs by users in same business
                 $q->whereHas('user', function($subQ) use ($currentUser) {
                     $subQ->where('current_business_id', $currentUser->current_business_id);
                 })
-                // Or logs without user (system logs) that mention the business
                 ->orWhere('metadata->business_id', $currentUser->current_business_id);
             });
             
@@ -416,7 +482,7 @@ class AdminController extends Controller
         return \App\Http\Resources\AuditLogResource::collection($logs);
     }
    
-     public function getCountries(Request $request): JsonResponse
+    public function getCountries(Request $request): JsonResponse
     {
         Log::info('ADMIN_CONTROLLER: getCountries called', [
             'user_id' => auth()->id(),
@@ -424,7 +490,6 @@ class AdminController extends Controller
         ]);
         
         try {
-            // Get distinct country codes that have settings
             $countryCodes = SystemSetting::whereNotNull('country_code')
                 ->where('country_code', '!=', 'global')
                 ->distinct()
@@ -435,7 +500,6 @@ class AdminController extends Controller
                 'count' => $countryCodes->count()
             ]);
             
-            // Get country details for those codes
             $countries = Country::whereIn('code', $countryCodes)
                 ->where('is_active', true)
                 ->orderBy('name')
@@ -478,9 +542,6 @@ class AdminController extends Controller
         }
     }
 
-    /**
-     * Get countries that have settings configured
-     */
     public function getCountriesWithSettings(Request $request): JsonResponse
     {
         Log::info('ADMIN_CONTROLLER: getCountriesWithSettings called', [
@@ -551,9 +612,6 @@ class AdminController extends Controller
         }
     }
 
-    /**
-     * Get all available countries
-     */
     public function getAllCountries(Request $request): JsonResponse
     {
         Log::info('ADMIN_CONTROLLER: getAllCountries called', [
@@ -612,9 +670,6 @@ class AdminController extends Controller
         }
     }
 
-    /**
-     * Get available countries
-     */
     public function getAvailableCountries(Request $request): JsonResponse
     {
         Log::info('ADMIN_CONTROLLER: getAvailableCountries called', [
@@ -675,9 +730,6 @@ class AdminController extends Controller
         }
     }
 
-    /**
-     * Get user's accessible businesses with their countries
-     */
     public function getBusinessesWithCountries(Request $request): JsonResponse
     {
         $currentUser = $request->user();
@@ -692,7 +744,6 @@ class AdminController extends Controller
             $query = Business::with('country')
                 ->where('status', 'active');
             
-            // Super admin and admin can see all businesses
             $isAdminRole = in_array($currentUser->role, ['super_admin', 'admin']);
             
             if (!$isAdminRole) {
@@ -740,53 +791,264 @@ class AdminController extends Controller
             ], 500);
         }
     }
-    /**
- * Get settings for a specific business and country
- */
-public function getSettings(Request $request): JsonResponse
-{
-    $currentUser = $request->user();
-    $businessId = $request->query('business_id');
-    $countryCode = $request->query('country_code');
-    
-    Log::info('ADMIN: getSettings called', [
-        'user_id' => $currentUser->id,
-        'user_role' => $currentUser->role,
-        'requested_business_id' => $businessId,
-        'user_current_business_id' => $currentUser->current_business_id,
-        'requested_country_code' => $countryCode
-    ]);
-    
-    // Determine business and country
-    if (!$businessId && $currentUser->current_business_id) {
-        $businessId = $currentUser->current_business_id;
-        Log::info('ADMIN: Using user current business', ['business_id' => $businessId]);
-    }
-    
-    if ($businessId) {
-        $business = Business::with('country')->find($businessId);
-        if (!$business) {
-            Log::warning('ADMIN: Business not found', [
-                'business_id' => $businessId
-            ]);
-            return response()->json([
-                'message' => 'Business not found'
-            ], 404);
-        }
+
+    public function getSettings(Request $request): JsonResponse
+    {
+        $currentUser = $request->user();
+        $businessId = $request->query('business_id');
+        $countryCode = $request->query('country_code');
         
-        // Check access - super_admin and admin roles can access
-        $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
-        $ownsBusinessOrAdmin = $isSuperAdmin || ($currentUser->current_business_id == $businessId);
-        
-        Log::info('ADMIN: Access check', [
+        Log::info('ADMIN: getSettings called', [
+            'user_id' => $currentUser->id,
             'user_role' => $currentUser->role,
-            'is_super_admin' => $isSuperAdmin,
-            'owns_business' => $currentUser->current_business_id == $businessId,
-            'access_granted' => $ownsBusinessOrAdmin
+            'requested_business_id' => $businessId,
+            'user_current_business_id' => $currentUser->current_business_id,
+            'requested_country_code' => $countryCode
         ]);
         
-        if (!$ownsBusinessOrAdmin) {
-            Log::warning('ADMIN: Access denied', [
+        if (!$businessId && $currentUser->current_business_id) {
+            $businessId = $currentUser->current_business_id;
+            Log::info('ADMIN: Using user current business', ['business_id' => $businessId]);
+        }
+        
+        if ($businessId) {
+            $business = Business::with('country')->find($businessId);
+            if (!$business) {
+                Log::warning('ADMIN: Business not found', [
+                    'business_id' => $businessId
+                ]);
+                return response()->json([
+                    'message' => 'Business not found'
+                ], 404);
+            }
+            
+            $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
+            $ownsBusinessOrAdmin = $isSuperAdmin || ($currentUser->current_business_id == $businessId);
+            
+            Log::info('ADMIN: Access check', [
+                'user_role' => $currentUser->role,
+                'is_super_admin' => $isSuperAdmin,
+                'owns_business' => $currentUser->current_business_id == $businessId,
+                'access_granted' => $ownsBusinessOrAdmin
+            ]);
+            
+            if (!$ownsBusinessOrAdmin) {
+                Log::warning('ADMIN: Access denied', [
+                    'user_id' => $currentUser->id,
+                    'user_role' => $currentUser->role,
+                    'business_id' => $businessId
+                ]);
+                return response()->json([
+                    'message' => 'You do not have access to this business'
+                ], 403);
+            }
+            
+            if (!$countryCode && $business->country) {
+                $countryCode = $business->country->code;
+                Log::info('ADMIN: Using business country', ['country_code' => $countryCode]);
+            }
+        }
+        
+        Log::info('ADMIN: Getting settings', [
+            'user_id' => $currentUser->id,
+            'business_id' => $businessId,
+            'country_code' => $countryCode
+        ]);
+        
+        try {
+            $cacheKey = $businessId 
+                ? "system_settings_{$businessId}_{$countryCode}" 
+                : "system_settings_{$countryCode}";
+            
+            $settings = Cache::remember($cacheKey, 300, function () use ($businessId, $countryCode) {
+                return SystemSetting::getAllSettings($businessId, $countryCode);
+            });
+            
+            $response = [
+                'settings' => $settings,
+                'business_id' => $businessId,
+                'country_code' => $countryCode
+            ];
+            
+            if ($businessId) {
+                $business = Business::with('country')->find($businessId);
+                $response['business_info'] = [
+                    'id' => $business->id,
+                    'name' => $business->name,
+                    'legal_name' => $business->legal_name,
+                    'country_code' => $business->country->code ?? null,
+                    'country_name' => $business->country->name ?? 'Unknown',
+                    'flag_emoji' => $business->country->flag_emoji ?? '🏳️',
+                    'currency_code' => $business->currency_code,
+                    'tax_identification_number' => $business->tax_identification_number
+                ];
+            }
+            
+            if ($countryCode) {
+                $country = Country::where('code', $countryCode)->first();
+                if ($country) {
+                    $response['country_info'] = [
+                        'code' => $country->code,
+                        'name' => $country->name,
+                        'flag_emoji' => $country->flag_emoji,
+                        'currency' => $country->currency,
+                        'currency_symbol' => $country->currency_symbol,
+                        'timezone' => $country->timezone,
+                        'date_format' => $country->date_format
+                    ];
+                }
+            }
+            
+            Log::info('ADMIN: Settings retrieved successfully', [
+                'business_id' => $businessId,
+                'country_code' => $countryCode,
+                'settings_count' => count($settings)
+            ]);
+            
+            return response()->json($response);
+        } catch (\Exception $e) {
+            Log::error('ADMIN: Error fetching settings', [
+                'error' => $e->getMessage(),
+                'business_id' => $businessId,
+                'country_code' => $countryCode,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Error fetching settings',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function initializeBusinessSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'business_id' => 'required|exists:businesses,id',
+            'company_name' => 'required|string|max:255',
+            'company_address' => 'nullable|string|max:500',
+            'tax_id' => 'nullable|string|max:50',
+            'currency' => ['required', 'string', Rule::in(self::VALID_CURRENCIES)],
+            'annual_leave_days' => 'required|integer|min:0|max:365',
+            'sick_leave_days' => 'required|integer|min:0|max:365',
+            'maternity_leave_days' => 'required|integer|min:0|max:365',
+            'paternity_leave_days' => 'required|integer|min:0|max:365',
+            'date_format' => 'required|string|in:d/m/Y,m/d/Y,Y-m-d,d M Y',
+            'default_password' => 'required|string|min:6',
+            'max_login_attempts' => 'required|integer|min:1|max:10',
+            'session_timeout' => 'required|integer|min:1|max:480',
+            'departments' => 'required|array',
+            'departments.*.name' => 'required|string|max:100'
+        ]);
+
+        $currentUser = $request->user();
+        $businessId = $validated['business_id'];
+        
+        $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
+        if (!$isSuperAdmin && $currentUser->current_business_id != $businessId) {
+            return response()->json([
+                'message' => 'You do not have access to this business'
+            ], 403);
+        }
+        
+        $business = Business::with('country')->findOrFail($businessId);
+        $countryCode = $business->country->code ?? 'ZM';
+        
+        Log::info('ADMIN: Initializing business settings', [
+            'business_id' => $businessId,
+            'country_code' => $countryCode
+        ]);
+
+        try {
+            DB::beginTransaction();
+            
+            $existingSettings = SystemSetting::where('business_id', $businessId)
+                ->where('country_code', $countryCode)
+                ->exists();
+            
+            if ($existingSettings) {
+                return response()->json([
+                    'message' => 'Settings already exist for this business',
+                    'error' => 'Business settings already initialized'
+                ], 409);
+            }
+
+            foreach ($validated as $key => $value) {
+                if ($key === 'business_id') continue;
+                
+                SystemSetting::setSetting($key, $value, $businessId, $countryCode);
+            }
+
+            DB::commit();
+            
+            Cache::forget("system_settings_{$businessId}_{$countryCode}");
+            
+            AuditLog::log(
+                'INITIALIZE_BUSINESS_SETTINGS',
+                "Settings initialized for {$business->name}",
+                [
+                    'business_id' => $businessId,
+                    'country_code' => $countryCode
+                ],
+                auth()->id()
+            );
+
+            return response()->json([
+                'message' => "Settings initialized successfully for {$business->name}",
+                'business' => [
+                    'id' => $business->id,
+                    'name' => $business->name,
+                    'country_code' => $countryCode
+                ]
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('ADMIN: Error initializing business settings', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to initialize settings',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'business_id' => 'required|exists:businesses,id',
+            'company_name' => 'required|string|max:255',
+            'company_address' => 'nullable|string|max:500',
+            'tax_id' => 'nullable|string|max:50',
+            'currency' => ['required', 'string', Rule::in(self::VALID_CURRENCIES)],
+            'annual_leave_days' => 'required|integer|min:0|max:365',
+            'sick_leave_days' => 'required|integer|min:0|max:365',
+            'maternity_leave_days' => 'required|integer|min:0|max:365',
+            'paternity_leave_days' => 'required|integer|min:0|max:365',
+            'default_password' => 'required|string|min:6',
+            'max_login_attempts' => 'required|integer|min:1|max:10',
+            'session_timeout' => 'required|integer|min:1|max:480',
+            'date_format' => 'required|string|in:d/m/Y,m/d/Y,Y-m-d,d M Y',
+            'departments' => 'required|array',
+            'departments.*.name' => 'required|string|max:100'
+        ]);
+
+        $currentUser = $request->user();
+        $businessId = $validated['business_id'];
+        
+        Log::info('ADMIN: updateSettings called', [
+            'user_id' => $currentUser->id,
+            'user_role' => $currentUser->role,
+            'business_id' => $businessId,
+            'user_current_business_id' => $currentUser->current_business_id
+        ]);
+        
+        $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
+        if (!$isSuperAdmin && $currentUser->current_business_id != $businessId) {
+            Log::warning('ADMIN: Access denied for updateSettings', [
                 'user_id' => $currentUser->id,
                 'user_role' => $currentUser->role,
                 'business_id' => $businessId
@@ -796,571 +1058,314 @@ public function getSettings(Request $request): JsonResponse
             ], 403);
         }
         
-        // Get country code from business if not provided
-        if (!$countryCode && $business->country) {
-            $countryCode = $business->country->code;
-            Log::info('ADMIN: Using business country', ['country_code' => $countryCode]);
-        }
-    }
-    
-    Log::info('ADMIN: Getting settings', [
-        'user_id' => $currentUser->id,
-        'business_id' => $businessId,
-        'country_code' => $countryCode
-    ]);
-    
-    try {
-        $cacheKey = $businessId 
-            ? "system_settings_{$businessId}_{$countryCode}" 
-            : "system_settings_{$countryCode}";
-        
-        $settings = Cache::remember($cacheKey, 300, function () use ($businessId, $countryCode) {
-            return SystemSetting::getAllSettings($businessId, $countryCode);
-        });
-        
-        // Add context information
-        $response = [
-            'settings' => $settings,
-            'business_id' => $businessId,
-            'country_code' => $countryCode
-        ];
-        
-        if ($businessId) {
-            $business = Business::with('country')->find($businessId);
-            $response['business_info'] = [
-                'id' => $business->id,
-                'name' => $business->name,
-                'legal_name' => $business->legal_name,
-                'country_code' => $business->country->code ?? null,
-                'country_name' => $business->country->name ?? 'Unknown',
-                'flag_emoji' => $business->country->flag_emoji ?? '🏳️',
-                'currency_code' => $business->currency_code,
-                'tax_identification_number' => $business->tax_identification_number
-            ];
-        }
-        
-        if ($countryCode) {
-            $country = Country::where('code', $countryCode)->first();
-            if ($country) {
-                $response['country_info'] = [
-                    'code' => $country->code,
-                    'name' => $country->name,
-                    'flag_emoji' => $country->flag_emoji,
-                    'currency' => $country->currency,
-                    'currency_symbol' => $country->currency_symbol,
-                    'timezone' => $country->timezone,
-                    'date_format' => $country->date_format
-                ];
-            }
-        }
-        
-        Log::info('ADMIN: Settings retrieved successfully', [
-            'business_id' => $businessId,
-            'country_code' => $countryCode,
-            'settings_count' => count($settings)
-        ]);
-        
-        return response()->json($response);
-    } catch (\Exception $e) {
-        Log::error('ADMIN: Error fetching settings', [
-            'error' => $e->getMessage(),
-            'business_id' => $businessId,
-            'country_code' => $countryCode,
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'message' => 'Error fetching settings',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Initialize settings for a business
- */
-public function initializeBusinessSettings(Request $request): JsonResponse
-{
-    $validated = $request->validate([
-        'business_id' => 'required|exists:businesses,id',
-        'company_name' => 'required|string|max:255',
-        'company_address' => 'nullable|string|max:500',
-        'tax_id' => 'nullable|string|max:50',
-        'currency' => 'required|string|in:USD,ZMW,EUR,GBP,ZAR',
-        'annual_leave_days' => 'required|integer|min:0|max:365',
-        'sick_leave_days' => 'required|integer|min:0|max:365',
-        'maternity_leave_days' => 'required|integer|min:0|max:365',
-        'paternity_leave_days' => 'required|integer|min:0|max:365',
-        'date_format' => 'required|string|in:d/m/Y,m/d/Y,Y-m-d,d M Y',
-        'default_password' => 'required|string|min:6',
-        'max_login_attempts' => 'required|integer|min:1|max:10',
-        'session_timeout' => 'required|integer|min:1|max:480',
-        'departments' => 'required|array',
-        'departments.*.name' => 'required|string|max:100'
-    ]);
-
-    $currentUser = $request->user();
-    $businessId = $validated['business_id'];
-    
-    // Check access - super_admin and admin can access
-    $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
-    if (!$isSuperAdmin && $currentUser->current_business_id != $businessId) {
-        return response()->json([
-            'message' => 'You do not have access to this business'
-        ], 403);
-    }
-    
-    $business = Business::with('country')->findOrFail($businessId);
-    $countryCode = $business->country->code ?? 'ZM';
-    
-    Log::info('ADMIN: Initializing business settings', [
-        'business_id' => $businessId,
-        'country_code' => $countryCode
-    ]);
-
-    try {
-        DB::beginTransaction();
-        
-        // Check if settings already exist
-        $existingSettings = SystemSetting::where('business_id', $businessId)
-            ->where('country_code', $countryCode)
-            ->exists();
-        
-        if ($existingSettings) {
-            return response()->json([
-                'message' => 'Settings already exist for this business',
-                'error' => 'Business settings already initialized'
-            ], 409);
-        }
-
-        // Create settings
-        foreach ($validated as $key => $value) {
-            if ($key === 'business_id') continue;
-            
-            SystemSetting::setSetting($key, $value, $businessId, $countryCode);
-        }
-
-        DB::commit();
-        
-        // Clear cache
-        Cache::forget("system_settings_{$businessId}_{$countryCode}");
-        
-        // Log audit
-        AuditLog::log(
-            'INITIALIZE_BUSINESS_SETTINGS',
-            "Settings initialized for {$business->name}",
-            [
-                'business_id' => $businessId,
-                'country_code' => $countryCode
-            ],
-            auth()->id()
-        );
-
-        return response()->json([
-            'message' => "Settings initialized successfully for {$business->name}",
-            'business' => [
-                'id' => $business->id,
-                'name' => $business->name,
-                'country_code' => $countryCode
-            ]
-        ]);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        
-        Log::error('ADMIN: Error initializing business settings', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'message' => 'Failed to initialize settings',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Update settings for a business
- */
-public function updateSettings(Request $request): JsonResponse
-{
-    $validated = $request->validate([
-        'business_id' => 'required|exists:businesses,id',
-        'company_name' => 'required|string|max:255',
-        'company_address' => 'nullable|string|max:500',
-        'tax_id' => 'nullable|string|max:50',
-        'currency' => 'required|string|in:USD,ZMW,EUR,GBP,ZAR',
-        'annual_leave_days' => 'required|integer|min:0|max:365',
-        'sick_leave_days' => 'required|integer|min:0|max:365',
-        'maternity_leave_days' => 'required|integer|min:0|max:365',
-        'paternity_leave_days' => 'required|integer|min:0|max:365',
-        'default_password' => 'required|string|min:6',
-        'max_login_attempts' => 'required|integer|min:1|max:10',
-        'session_timeout' => 'required|integer|min:1|max:480',
-        'date_format' => 'required|string|in:d/m/Y,m/d/Y,Y-m-d,d M Y',
-        'departments' => 'required|array',
-        'departments.*.name' => 'required|string|max:100'
-    ]);
-
-    $currentUser = $request->user();
-    $businessId = $validated['business_id'];
-    
-    Log::info('ADMIN: updateSettings called', [
-        'user_id' => $currentUser->id,
-        'user_role' => $currentUser->role,
-        'business_id' => $businessId,
-        'user_current_business_id' => $currentUser->current_business_id
-    ]);
-    
-    // Check access - super_admin and admin can access
-    $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
-    if (!$isSuperAdmin && $currentUser->current_business_id != $businessId) {
-        Log::warning('ADMIN: Access denied for updateSettings', [
-            'user_id' => $currentUser->id,
-            'user_role' => $currentUser->role,
-            'business_id' => $businessId
-        ]);
-        return response()->json([
-            'message' => 'You do not have access to this business'
-        ], 403);
-    }
-    
-    $business = Business::with('country')->findOrFail($businessId);
-    $countryCode = $business->country->code ?? 'ZM';
-
-    try {
-        DB::beginTransaction();
-        
-        // Track leave settings changes
-        $leaveSettingsChanged = false;
-        $leaveKeys = ['annual_leave_days', 'sick_leave_days', 'maternity_leave_days', 'paternity_leave_days'];
-        
-        foreach ($leaveKeys as $key) {
-            $currentValue = SystemSetting::getSetting($key, $businessId, $countryCode);
-            if ($currentValue != $validated[$key]) {
-                $leaveSettingsChanged = true;
-                Log::info('ADMIN: Leave setting changed', [
-                    'key' => $key,
-                    'old_value' => $currentValue,
-                    'new_value' => $validated[$key]
-                ]);
-                break;
-            }
-        }
-
-        // Update settings
-        foreach ($validated as $key => $value) {
-            if ($key === 'business_id') continue;
-            
-            SystemSetting::setSetting($key, $value, $businessId, $countryCode);
-        }
-
-        DB::commit();
-
-        // Clear cache
-        Cache::forget("system_settings_{$businessId}_{$countryCode}");
-
-        // Update leave balances if needed
-        $updatedCount = 0;
-        if ($leaveSettingsChanged) {
-            $newLeaveSettings = array_intersect_key($validated, array_flip($leaveKeys));
-            Log::info('ADMIN: Syncing leave balances', [
-                'business_id' => $businessId,
-                'new_settings' => $newLeaveSettings
-            ]);
-            
-            $updatedCount = $this->leaveBalanceService->syncEmployeeBalancesForBusiness(
-                $businessId,
-                $newLeaveSettings
-            );
-        }
-
-        // Log audit
-        AuditLog::log(
-            'UPDATE_BUSINESS_SETTINGS',
-            "Settings updated for {$business->name}" . 
-            ($leaveSettingsChanged ? " (synced {$updatedCount} leave balances)" : ''),
-            [
-                'business_id' => $businessId,
-                'updated_fields' => array_keys($validated),
-                'leave_settings_changed' => $leaveSettingsChanged,
-                'balances_updated' => $updatedCount
-            ],
-            auth()->id()
-        );
-
-        $message = 'Settings updated successfully';
-        if ($leaveSettingsChanged) {
-            $employeeCount = $updatedCount / count($leaveKeys);
-            $message .= ". Leave balances for {$employeeCount} employees have been adjusted.";
-        }
-
-        return response()->json([
-            'message' => $message,
-            'settings' => $validated,
-            'leave_balances_updated' => $leaveSettingsChanged,
-            'updated_count' => $updatedCount
-        ]);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        
-        Log::error('ADMIN: Error updating settings', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'message' => 'Failed to update settings',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Delete business settings
- */
-public function deleteBusinessSettings(Request $request, int $businessId): JsonResponse
-{
-    $currentUser = $request->user();
-    
-    Log::info('ADMIN: deleteBusinessSettings called', [
-        'user_id' => $currentUser->id,
-        'user_role' => $currentUser->role,
-        'business_id' => $businessId,
-        'user_current_business_id' => $currentUser->current_business_id
-    ]);
-    
-    // Check access - super_admin and admin can access
-    $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
-    if (!$isSuperAdmin && $currentUser->current_business_id != $businessId) {
-        Log::warning('ADMIN: Access denied for deleteBusinessSettings', [
-            'user_id' => $currentUser->id,
-            'user_role' => $currentUser->role,
-            'business_id' => $businessId
-        ]);
-        return response()->json([
-            'message' => 'You do not have access to this business'
-        ], 403);
-    }
-    
-    try {
         $business = Business::with('country')->findOrFail($businessId);
         $countryCode = $business->country->code ?? 'ZM';
-        
-        $deletedCount = SystemSetting::where('business_id', $businessId)
-            ->where('country_code', $countryCode)
-            ->delete();
 
-        Cache::forget("system_settings_{$businessId}_{$countryCode}");
-
-        AuditLog::log(
-            'DELETE_BUSINESS_SETTINGS',
-            "Settings deleted for {$business->name}",
-            [
-                'business_id' => $businessId,
-                'deleted_count' => $deletedCount
-            ],
-            auth()->id()
-        );
-
-        return response()->json([
-            'message' => "Settings deleted successfully for {$business->name}",
-            'deleted_count' => $deletedCount
-        ]);
-    } catch (\Exception $e) {
-        Log::error('ADMIN: Error deleting business settings', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'message' => 'Failed to delete settings',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Initialize settings for a new country
- */
-public function initializeCountrySettings(Request $request): JsonResponse
-{
-    Log::info('ADMIN_CONTROLLER: initializeCountrySettings called', [
-        'user_id' => auth()->id(),
-        'request_data' => $request->all()
-    ]);
-    
-    $validated = $request->validate([
-        'country_code' => 'required|string|max:10|exists:countries,code',
-        'company_name' => 'required|string|max:255',
-        'company_address' => 'nullable|string|max:500',
-        'tax_id' => 'nullable|string|max:50',
-        'currency' => 'required|string|in:USD,ZMW,EUR,GBP,ZAR',
-        'annual_leave_days' => 'required|integer|min:0|max:365',
-        'sick_leave_days' => 'required|integer|min:0|max:365',
-        'maternity_leave_days' => 'required|integer|min:0|max:365',
-        'paternity_leave_days' => 'required|integer|min:0|max:365',
-        'date_format' => 'required|string|in:d/m/Y,m/d/Y,Y-m-d,d M Y',
-        'default_password' => 'required|string|min:6',
-        'max_login_attempts' => 'required|integer|min:1|max:10',
-        'session_timeout' => 'required|integer|min:1|max:480',
-        'departments' => 'required|array',
-        'departments.*.name' => 'required|string|max:100'
-    ]);
-
-    try {
-        DB::beginTransaction();
-        
-        $countryCode = $validated['country_code'];
-        
-        Log::info('ADMIN_CONTROLLER: Checking for existing settings', [
-            'country_code' => $countryCode
-        ]);
-        
-        // Check if settings already exist for this country
-        $existingSettings = SystemSetting::where('country_code', $countryCode)
-            ->whereNull('business_id')
-            ->exists();
+        try {
+            DB::beginTransaction();
             
-        if ($existingSettings) {
-            Log::warning('ADMIN_CONTROLLER: Settings already exist', [
-                'country_code' => $countryCode
+            $leaveSettingsChanged = false;
+            $leaveKeys = ['annual_leave_days', 'sick_leave_days', 'maternity_leave_days', 'paternity_leave_days'];
+            
+            foreach ($leaveKeys as $key) {
+                $currentValue = SystemSetting::getSetting($key, $businessId, $countryCode);
+                if ($currentValue != $validated[$key]) {
+                    $leaveSettingsChanged = true;
+                    Log::info('ADMIN: Leave setting changed', [
+                        'key' => $key,
+                        'old_value' => $currentValue,
+                        'new_value' => $validated[$key]
+                    ]);
+                    break;
+                }
+            }
+
+            foreach ($validated as $key => $value) {
+                if ($key === 'business_id') continue;
+                
+                SystemSetting::setSetting($key, $value, $businessId, $countryCode);
+            }
+
+            DB::commit();
+
+            Cache::forget("system_settings_{$businessId}_{$countryCode}");
+
+            $updatedCount = 0;
+            if ($leaveSettingsChanged) {
+                $newLeaveSettings = array_intersect_key($validated, array_flip($leaveKeys));
+                Log::info('ADMIN: Syncing leave balances', [
+                    'business_id' => $businessId,
+                    'new_settings' => $newLeaveSettings
+                ]);
+                
+                $updatedCount = $this->leaveBalanceService->syncEmployeeBalancesForBusiness(
+                    $businessId,
+                    $newLeaveSettings
+                );
+            }
+
+            AuditLog::log(
+                'UPDATE_BUSINESS_SETTINGS',
+                "Settings updated for {$business->name}" . 
+                ($leaveSettingsChanged ? " (synced {$updatedCount} leave balances)" : ''),
+                [
+                    'business_id' => $businessId,
+                    'updated_fields' => array_keys($validated),
+                    'leave_settings_changed' => $leaveSettingsChanged,
+                    'balances_updated' => $updatedCount
+                ],
+                auth()->id()
+            );
+
+            $message = 'Settings updated successfully';
+            if ($leaveSettingsChanged) {
+                $employeeCount = $updatedCount / count($leaveKeys);
+                $message .= ". Leave balances for {$employeeCount} employees have been adjusted.";
+            }
+
+            return response()->json([
+                'message' => $message,
+                'settings' => $validated,
+                'leave_balances_updated' => $leaveSettingsChanged,
+                'updated_count' => $updatedCount
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('ADMIN: Error updating settings', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             
             return response()->json([
-                'message' => 'Settings already exist for this country',
-                'error' => 'Country settings already initialized'
-            ], 409);
+                'message' => 'Failed to update settings',
+                'error' => $e->getMessage()
+            ], 500);
         }
+    }
 
-        // Get country info
-        $country = Country::where('code', $countryCode)->firstOrFail();
+    public function deleteBusinessSettings(Request $request, int $businessId): JsonResponse
+    {
+        $currentUser = $request->user();
         
-        Log::info('ADMIN_CONTROLLER: Country found', [
-            'country_code' => $countryCode,
-            'country_name' => $country->name
+        Log::info('ADMIN: deleteBusinessSettings called', [
+            'user_id' => $currentUser->id,
+            'user_role' => $currentUser->role,
+            'business_id' => $businessId,
+            'user_current_business_id' => $currentUser->current_business_id
         ]);
-
-        // Create settings
-        foreach ($validated as $key => $value) {
-            if ($key === 'country_code') continue;
+        
+        $isSuperAdmin = in_array($currentUser->role, ['super_admin', 'admin']);
+        if (!$isSuperAdmin && $currentUser->current_business_id != $businessId) {
+            Log::warning('ADMIN: Access denied for deleteBusinessSettings', [
+                'user_id' => $currentUser->id,
+                'user_role' => $currentUser->role,
+                'business_id' => $businessId
+            ]);
+            return response()->json([
+                'message' => 'You do not have access to this business'
+            ], 403);
+        }
+        
+        try {
+            $business = Business::with('country')->findOrFail($businessId);
+            $countryCode = $business->country->code ?? 'ZM';
             
-            SystemSetting::setSetting($key, $value, null, $countryCode);
-        }
+            $deletedCount = SystemSetting::where('business_id', $businessId)
+                ->where('country_code', $countryCode)
+                ->delete();
 
-        DB::commit();
+            Cache::forget("system_settings_{$businessId}_{$countryCode}");
+
+            AuditLog::log(
+                'DELETE_BUSINESS_SETTINGS',
+                "Settings deleted for {$business->name}",
+                [
+                    'business_id' => $businessId,
+                    'deleted_count' => $deletedCount
+                ],
+                auth()->id()
+            );
+
+            return response()->json([
+                'message' => "Settings deleted successfully for {$business->name}",
+                'deleted_count' => $deletedCount
+            ]);
+        } catch (\Exception $e) {
+            Log::error('ADMIN: Error deleting business settings', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to delete settings',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function initializeCountrySettings(Request $request): JsonResponse
+    {
+        Log::info('ADMIN_CONTROLLER: initializeCountrySettings called', [
+            'user_id' => auth()->id(),
+            'request_data' => $request->all()
+        ]);
         
-        Log::info('ADMIN_CONTROLLER: Settings initialized successfully', [
-            'country_code' => $countryCode,
-            'country_name' => $country->name
+        $validated = $request->validate([
+            'country_code' => 'required|string|max:10|exists:countries,code',
+            'company_name' => 'required|string|max:255',
+            'company_address' => 'nullable|string|max:500',
+            'tax_id' => 'nullable|string|max:50',
+            'currency' => ['required', 'string', Rule::in(self::VALID_CURRENCIES)],
+            'annual_leave_days' => 'required|integer|min:0|max:365',
+            'sick_leave_days' => 'required|integer|min:0|max:365',
+            'maternity_leave_days' => 'required|integer|min:0|max:365',
+            'paternity_leave_days' => 'required|integer|min:0|max:365',
+            'date_format' => 'required|string|in:d/m/Y,m/d/Y,Y-m-d,d M Y',
+            'default_password' => 'required|string|min:6',
+            'max_login_attempts' => 'required|integer|min:1|max:10',
+            'session_timeout' => 'required|integer|min:1|max:480',
+            'departments' => 'required|array',
+            'departments.*.name' => 'required|string|max:100'
         ]);
 
-        // Clear cache
-        Cache::forget("system_settings_{$countryCode}");
+        try {
+            DB::beginTransaction();
+            
+            $countryCode = $validated['country_code'];
+            
+            Log::info('ADMIN_CONTROLLER: Checking for existing settings', [
+                'country_code' => $countryCode
+            ]);
+            
+            $existingSettings = SystemSetting::where('country_code', $countryCode)
+                ->whereNull('business_id')
+                ->exists();
+                
+            if ($existingSettings) {
+                Log::warning('ADMIN_CONTROLLER: Settings already exist', [
+                    'country_code' => $countryCode
+                ]);
+                
+                return response()->json([
+                    'message' => 'Settings already exist for this country',
+                    'error' => 'Country settings already initialized'
+                ], 409);
+            }
 
-        // Log audit
-        AuditLog::log(
-            'INITIALIZE_COUNTRY_SETTINGS',
-            "Country settings initialized for {$country->name}",
-            [
+            $country = Country::where('code', $countryCode)->firstOrFail();
+            
+            Log::info('ADMIN_CONTROLLER: Country found', [
                 'country_code' => $countryCode,
                 'country_name' => $country->name
-            ],
-            auth()->id()
-        );
+            ]);
 
-        return response()->json([
-            'message' => "Settings initialized successfully for {$country->name}",
-            'country' => [
-                'code' => $country->code,
-                'name' => $country->name,
-                'flag_emoji' => $country->flag_emoji
-            ]
-        ]);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        
-        Log::error('ADMIN_CONTROLLER: Error initializing country settings', [
-            'error' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        
-        return response()->json([
-            'message' => 'Failed to initialize country settings',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
+            foreach ($validated as $key => $value) {
+                if ($key === 'country_code') continue;
+                
+                SystemSetting::setSetting($key, $value, null, $countryCode);
+            }
 
-/**
- * Delete country settings
- */
-public function deleteCountrySettings(Request $request, string $countryCode): JsonResponse
-{
-    try {
-        // Don't allow deletion of global settings
-        if ($countryCode === 'global') {
-            return response()->json([
-                'message' => 'Cannot delete global settings'
-            ], 400);
-        }
-
-        // Check if country exists
-        $country = Country::where('code', $countryCode)->first();
-        if (!$country) {
-            return response()->json([
-                'message' => 'Country not found'
-            ], 404);
-        }
-
-        // Delete all country settings (not business-specific)
-        $deletedCount = SystemSetting::where('country_code', $countryCode)
-            ->whereNull('business_id')
-            ->delete();
-
-        // Clear cache
-        Cache::forget("system_settings_{$countryCode}");
-
-        // Log audit
-        AuditLog::log(
-            'DELETE_COUNTRY_SETTINGS',
-            "Country settings deleted for {$country->name}",
-            [
+            DB::commit();
+            
+            Log::info('ADMIN_CONTROLLER: Settings initialized successfully', [
                 'country_code' => $countryCode,
-                'country_name' => $country->name,
-                'deleted_count' => $deletedCount
-            ],
-            auth()->id()
-        );
+                'country_name' => $country->name
+            ]);
 
-        return response()->json([
-            'message' => "Settings deleted successfully for {$country->name}",
-            'deleted_count' => $deletedCount
-        ]);
-    } catch (\Exception $e) {
-        Log::error('Error deleting country settings: ' . $e->getMessage());
-        return response()->json([
-            'message' => 'Failed to delete country settings',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
+            Cache::forget("system_settings_{$countryCode}");
 
-/**
- * Get system uptime
- */
-private function getSystemUptime(): string
-{
-    try {
-        if (function_exists('shell_exec')) {
-            $uptime = shell_exec('uptime -p');
-            return $uptime ? trim($uptime) : 'Unknown';
+            AuditLog::log(
+                'INITIALIZE_COUNTRY_SETTINGS',
+                "Country settings initialized for {$country->name}",
+                [
+                    'country_code' => $countryCode,
+                    'country_name' => $country->name
+                ],
+                auth()->id()
+            );
+
+            return response()->json([
+                'message' => "Settings initialized successfully for {$country->name}",
+                'country' => [
+                    'code' => $country->code,
+                    'name' => $country->name,
+                    'flag_emoji' => $country->flag_emoji
+                ]
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('ADMIN_CONTROLLER: Error initializing country settings', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to initialize country settings',
+                'error' => $e->getMessage()
+            ], 500);
         }
-        return 'Unknown';
-    } catch (\Exception $e) {
-        return 'Unknown';
     }
-}
+
+    public function deleteCountrySettings(Request $request, string $countryCode): JsonResponse
+    {
+        try {
+            if ($countryCode === 'global') {
+                return response()->json([
+                    'message' => 'Cannot delete global settings'
+                ], 400);
+            }
+
+            $country = Country::where('code', $countryCode)->first();
+            if (!$country) {
+                return response()->json([
+                    'message' => 'Country not found'
+                ], 404);
+            }
+
+            $deletedCount = SystemSetting::where('country_code', $countryCode)
+                ->whereNull('business_id')
+                ->delete();
+
+            Cache::forget("system_settings_{$countryCode}");
+
+            AuditLog::log(
+                'DELETE_COUNTRY_SETTINGS',
+                "Country settings deleted for {$country->name}",
+                [
+                    'country_code' => $countryCode,
+                    'country_name' => $country->name,
+                    'deleted_count' => $deletedCount
+                ],
+                auth()->id()
+            );
+
+            return response()->json([
+                'message' => "Settings deleted successfully for {$country->name}",
+                'deleted_count' => $deletedCount
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error deleting country settings: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Failed to delete country settings',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function getSystemUptime(): string
+    {
+        try {
+            if (function_exists('shell_exec')) {
+                $uptime = shell_exec('uptime -p');
+                return $uptime ? trim($uptime) : 'Unknown';
+            }
+            return 'Unknown';
+        } catch (\Exception $e) {
+            return 'Unknown';
+        }
+    }
 }

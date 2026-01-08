@@ -6,7 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Builder; // Import Builder
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Log;
 
 class Employee extends Model
 {
@@ -21,6 +22,8 @@ class Employee extends Model
         'position',
         'department',
         'base_salary',
+        'transport_allowance',  // ADDED
+        'lunch_allowance',      // ADDED
         'hire_date',
         'employment_type',
         'bank_details',
@@ -35,6 +38,8 @@ class Employee extends Model
 
     protected $casts = [
         'base_salary' => 'decimal:2',
+        'transport_allowance' => 'decimal:2',  // ADDED
+        'lunch_allowance' => 'decimal:2',      // ADDED
         'hire_date' => 'date',
         'date_of_birth' => 'date',
         'bank_details' => 'array',
@@ -55,17 +60,14 @@ class Employee extends Model
     {
         parent::boot();
 
-        // Automatically assign a manager if not provided during creation
         static::creating(function ($employee) {
             if (empty($employee->manager_id) && $employee->department) {
                 $query = Manager::where('department', $employee->department);
                 
-                // Filter by country if set
                 if ($employee->country_id) {
                     $query->where('country_id', $employee->country_id);
                 }
                 
-                // Filter by business if set
                 if ($employee->business_id) {
                     $query->where('business_id', $employee->business_id);
                 }
@@ -78,17 +80,14 @@ class Employee extends Model
             }
         });
 
-        // Update manager assignment when department changes
         static::updating(function ($employee) {
             if ($employee->isDirty('department') && empty($employee->manager_id) && $employee->department) {
                 $query = Manager::where('department', $employee->department);
                 
-                // Filter by country if set
                 if ($employee->country_id) {
                     $query->where('country_id', $employee->country_id);
                 }
                 
-                // Filter by business if set
                 if ($employee->business_id) {
                     $query->where('business_id', $employee->business_id);
                 }
@@ -193,10 +192,6 @@ class Employee extends Model
         return $query->where('country_id', $countryId);
     }
 
-    /**
-     * Scope to filter employees within the same context (Business & Country) as the Manager
-     * This fixes the "Call to undefined method" error.
-     */
     public function scopeSameContext(Builder $query, Employee $managerProfile)
     {
         return $query->where('business_id', $managerProfile->business_id)
@@ -283,7 +278,75 @@ class Employee extends Model
 
     /**
      * ========================================
-     * METHODS
+     * PAYROLL-SPECIFIC METHODS (ADDED)
+     * ========================================
+     */
+
+    /**
+     * Get country code for this employee
+     * Priority: Employee's country > Business's country
+     */
+   public function getCountryCode(): ?string
+    {
+        // Try employee's direct country first
+        if ($this->country_id && $this->country) {
+            return $this->country->code;
+        }
+
+        // Fall back to business country
+        if ($this->business && $this->business->country_code) {
+            return $this->business->country_code;
+        }
+
+        return null;
+    }
+    
+    // Helper to get the country model
+    public function resolveCountry()
+    {
+        if ($this->country_id) {
+            return $this->country;
+        }
+        
+        if ($this->business && $this->business->country) {
+            return $this->business->country;
+        }
+        
+        return Country::where('code', 'ZM')->first();
+    }
+    /**
+     * Get the appropriate tax configuration for this employee
+     */
+    /**
+     * Get the tax configuration for this employee
+     */
+    public function getTaxConfiguration(): ?TaxConfiguration
+    {
+        return TaxConfiguration::getForBusinessAndCountry(
+            $this->business_id,
+            $this->getCountryCode()
+        );
+    }
+
+    /**
+     * Get transport allowance with proper fallback
+     */
+    public function getTransportAllowance(): float
+    {
+        return (float) ($this->transport_allowance ?? 0.00);
+    }
+
+    /**
+     * Get lunch allowance with proper fallback
+     */
+    public function getLunchAllowance(): float
+    {
+        return (float) ($this->lunch_allowance ?? 0.00);
+    }
+
+    /**
+     * ========================================
+     * EXISTING METHODS
      * ========================================
      */
 
@@ -474,4 +537,5 @@ class Employee extends Model
             'branch' => $this->bank_details['branch'] ?? 'N/A',
         ];
     }
+    
 }

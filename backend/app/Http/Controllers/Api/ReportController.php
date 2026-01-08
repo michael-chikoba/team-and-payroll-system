@@ -3,28 +3,40 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\ReportGeneratorService;
+use App\Services\ReportExportService;
 use App\Models\Employee;
 use App\Models\Attendance;
 use App\Models\Leave;
-use App\Models\User;
 use App\Models\Payslip;
+use App\Models\Business;
+use App\Models\Country;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
-use App\Models\Payroll;
 
 class ReportController extends Controller
 {
-    public function __construct(private ReportGeneratorService $reportService)
-    {
+    private $reportGeneratorService;
+    private $reportExportService;
+
+    public function __construct(
+        ReportGeneratorService $reportGeneratorService,
+        ReportExportService $reportExportService
+    ) {
+        $this->reportGeneratorService = $reportGeneratorService;
+        $this->reportExportService = $reportExportService;
     }
- /**
-     * Get business-scoped employees query (following EmployeeController pattern)
-     */
+
     private function getBusinessScopedEmployees(Request $request)
     {
         $user = $request->user();
+        
+        if (!$user) {
+            Log::warning('REPORT_CONTROLLER: No authenticated user found');
+            return Employee::where('id', 0);
+        }
+
         $requestedBusinessId = $request->input('business_id');
         $requestedCountry = $request->input('country');
         
@@ -33,153 +45,667 @@ class ReportController extends Controller
         Log::info('REPORT_CONTROLLER: Getting business scoped employees', [
             'user_id' => $user->id,
             'user_role' => $user->role,
-            'user_business_id' => $user->current_business_id,
             'requested_business_id' => $requestedBusinessId,
             'requested_country' => $requestedCountry,
         ]);
 
-        // If user is admin
+        // Admin logic
         if ($user->role === 'admin') {
-            // If a specific business is requested via parameter, filter by that
             if ($requestedBusinessId) {
                 $businessId = (int)$requestedBusinessId;
                 
-                // Verify admin has access to this business
                 if ($user->current_business_id && $user->current_business_id !== $businessId) {
-                    // Admin has a current business set but is trying to access a different one
-                    // Check if they manage this business
                     if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
-                        Log::warning('REPORT_CONTROLLER: Admin attempting to access unauthorized business', [
-                            'admin_id' => $user->id,
-                            'admin_business_id' => $user->current_business_id,
-                            'requested_business_id' => $businessId,
-                        ]);
-                        // Return empty result
                         $query->where('business_id', 0);
                         return $query;
                     }
                 }
                 
                 $query->where('business_id', $businessId);
-                
-                Log::info('REPORT_CONTROLLER: Admin filtering by requested business', [
-                    'admin_id' => $user->id,
-                    'business_id' => $businessId,
-                ]);
-            }
-            // If admin has a current business, show only employees in that business
-            elseif ($user->current_business_id) {
+            } elseif ($user->current_business_id) {
                 $query->where('business_id', $user->current_business_id);
-                
-                Log::info('REPORT_CONTROLLER: Admin filtering by current business', [
-                    'admin_id' => $user->id,
-                    'business_id' => $user->current_business_id,
-                ]);
-            } 
-            // If admin doesn't have a current business BUT is a business admin (has business associations)
-            elseif ($user->businesses()->exists()) {
-                // Get all businesses this admin manages
+            } elseif ($user->businesses()->exists()) {
                 $businessIds = $user->businesses()->pluck('businesses.id');
                 $query->whereIn('business_id', $businessIds);
-                
-                Log::info('REPORT_CONTROLLER: Admin filtering by managed businesses', [
-                    'admin_id' => $user->id,
-                    'business_ids' => $businessIds->toArray(),
-                ]);
-            }
-            // If admin has no business association at all (super admin), show ALL employees
-            else {
-                // Don't apply any business filter - show all employees
-                Log::info('REPORT_CONTROLLER: Super admin - showing all employees', [
-                    'admin_id' => $user->id,
-                ]);
             }
         }
-        // For managers, show their team within the same business
+        // Manager logic
         elseif ($user->role === 'manager') {
             $managerEmployee = Employee::where('user_id', $user->id)->first();
             
             if ($managerEmployee && $managerEmployee->business_id) {
                 $query->where('business_id', $managerEmployee->business_id)
                       ->where('manager_id', $user->id);
-                      
-                Log::info('REPORT_CONTROLLER: Manager filtering by business and team', [
-                    'manager_id' => $user->id,
-                    'business_id' => $managerEmployee->business_id,
-                ]);
-            } elseif ($managerEmployee) {
-                $query->whereNull('business_id')
-                      ->where('manager_id', $user->id);
-                      
-                Log::info('REPORT_CONTROLLER: Manager without business filtering team', [
-                    'manager_id' => $user->id,
-                ]);
             } else {
-                $query->where('id', 0); // No employee record for this manager
-                
-                Log::info('REPORT_CONTROLLER: Manager has no employee record', [
-                    'manager_id' => $user->id,
-                ]);
+                $query->where('id', 0);
             }
         }
 
         // Apply country filter if provided
         if ($requestedCountry) {
-            $query->where('country_id', $requestedCountry);
-            
-            Log::info('REPORT_CONTROLLER: Applying country filter', [
-                'country_id' => $requestedCountry,
-            ]);
+            // Handle both country_id and country_code
+            if (is_numeric($requestedCountry)) {
+                $query->where('country_id', $requestedCountry);
+            } else {
+                // It's a country code, look up the country
+                $country = Country::where('code', $requestedCountry)->first();
+                if ($country) {
+                    $query->where('country_id', $country->id);
+                } else {
+                    // If country code not found, return no results
+                    $query->where('country_id', 0);
+                }
+            }
         }
 
         return $query;
     }
 
     /**
-     * Get business-scoped query for a specific model
-     */
-    private function getBusinessScopedQuery(Request $request, $model, $employeeRelation = 'employee')
-    {
+ * Generate payroll report with filters and sub-filters - FIXED
+ */
+public function generatePayrollReport(Request $request): JsonResponse
+{
+    try {
         $user = $request->user();
-        $query = $model::query();
-
-        Log::info('REPORT_CONTROLLER: Getting business scoped query', [
-            'model' => get_class($model),
-            'relation' => $employeeRelation,
-            'user_id' => $user->id,
-            'user_role' => $user->role,
-        ]);
-
-        if (in_array($user->role, ['admin', 'manager'])) {
-            // Get business-scoped employee IDs
-            $employeeQuery = $this->getBusinessScopedEmployees($request);
-            $employeeIds = $employeeQuery->pluck('id');
-            
-            Log::info('REPORT_CONTROLLER: Business scoped employee IDs', [
-                'count' => $employeeIds->count(),
-                'ids' => $employeeIds->toArray(),
-            ]);
-            
-            // Filter by employee IDs
-            if ($employeeIds->isNotEmpty()) {
-                $query->whereIn("{$employeeRelation}_id", $employeeIds);
-            } else {
-                // If no employees found, return empty query
-                $query->where("{$employeeRelation}_id", 0);
-                
-                Log::info('REPORT_CONTROLLER: No employees found for business scope', [
-                    'user_id' => $user->id,
-                ]);
-            }
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required'
+            ], 401);
         }
 
-        return $query;
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'department' => 'nullable|string',
+            'status' => 'sometimes|in:all,paid,pending',
+            'business_id' => 'sometimes|exists:businesses,id',
+            'country' => 'sometimes|string',
+            'deduction_type' => 'sometimes|in:all,tax,statutory,pension,health,levy,voluntary,other',
+        ]);
+
+        $startDate = Carbon::parse($validated['start_date']);
+        $endDate = Carbon::parse($validated['end_date']);
+        
+        Log::info('REPORT_CONTROLLER: Generating payroll report', [
+            'start_date' => $startDate->format('Y-m-d'),
+            'end_date' => $endDate->format('Y-m-d'),
+            'filters' => $validated
+        ]);
+        
+        // Get business-scoped employee IDs
+        $employeeQuery = $this->getBusinessScopedEmployees($request);
+        if (!empty($validated['department'])) {
+            $employeeQuery->where('department', $validated['department']);
+        }
+        $employeeIds = $employeeQuery->pluck('id');
+        
+        Log::info('REPORT_CONTROLLER: Business scoped employee IDs found', [
+            'count' => $employeeIds->count(),
+            'ids' => $employeeIds->toArray()
+        ]);
+        
+        if ($employeeIds->isEmpty()) {
+            return $this->emptyPayrollResponse($validated, $startDate, $endDate);
+        }
+        
+        // Prepare filters for the service
+        $filters = [
+            'start_date' => $startDate->format('Y-m-d'),
+            'end_date' => $endDate->format('Y-m-d'),
+            'employee_ids' => $employeeIds->toArray(),
+        ];
+        
+        // Add optional filters
+        foreach (['status', 'business_id', 'country', 'department', 'deduction_type'] as $key) {
+            if (!empty($validated[$key]) && $validated[$key] !== 'all') {
+                $filters[$key] = $validated[$key];
+            }
+        }
+        
+        // Generate the report using the service
+        $reportData = $this->reportGeneratorService->generatePayrollReport($filters);
+        
+        // CRITICAL FIX: Don't use number_format on totals - keep as raw numbers
+        // Format the response with ALL dynamic headers included
+        $response = [
+            'success' => true,
+            'message' => 'Payroll report generated successfully',
+            'data' => [
+                'department' => $validated['department'] ?? 'All Departments',
+                
+                // Keep as raw numbers (no number_format)
+                'total_gross_salary' => $reportData['summary']['total_gross_salary'] ?? 0,
+                'total_net_salary' => $reportData['summary']['total_net_salary'] ?? 0,
+                'total_earnings' => $reportData['summary']['total_earnings'] ?? 0,
+                'total_all_deductions' => $reportData['summary']['total_all_deductions'] ?? 0,
+                'total_paye_tax' => $reportData['summary']['total_paye_tax'] ?? 0,
+                'processed_employees' => $reportData['summary']['processed_employees'] ?? 0,
+                'average_gross_salary' => $reportData['summary']['average_gross_salary'] ?? 0,
+                'average_net_salary' => $reportData['summary']['average_net_salary'] ?? 0,
+                
+                // CRITICAL: Include earning headers and totals
+                'earning_headers' => $reportData['summary']['earning_headers'] ?? [],
+                'earning_totals' => $reportData['summary']['earning_totals'] ?? [],
+                'earning_breakdown' => $reportData['summary']['earning_breakdown'] ?? [],
+                
+                // CRITICAL: Include deduction headers and totals
+                'deduction_headers' => $reportData['summary']['deduction_headers'] ?? [],
+                'deduction_totals' => $reportData['summary']['deduction_totals'] ?? [],
+                'deduction_breakdown' => $reportData['summary']['deduction_breakdown'] ?? [],
+                
+                // Legacy support (keeping old names for backward compatibility)
+                'dynamic_headers' => array_merge(
+                    $reportData['summary']['earning_headers'] ?? [],
+                    $reportData['summary']['deduction_headers'] ?? []
+                ),
+                
+                'payslip_details' => $reportData['data'] ?? [],
+                'department_breakdown' => $reportData['summary']['department_breakdown'] ?? [],
+                
+                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+                'period_start' => $startDate->format('Y-m-d'),
+                'period_end' => $endDate->format('Y-m-d'),
+                'generated_at' => $reportData['generated_at']->toDateTimeString(),
+                'filters' => $reportData['summary']['filters'] ?? [],
+                
+                // Include currency info
+                'currency' => $reportData['summary']['currency'] ?? 'KES',
+                'currency_symbol' => $reportData['summary']['currency_symbol'] ?? 'KES',
+            ],
+            'type' => 'payroll'
+        ];
+        
+        Log::info('REPORT_CONTROLLER: Payroll report generated successfully', [
+            'processed_employees' => $reportData['summary']['processed_employees'] ?? 0,
+            'earning_types' => count($reportData['summary']['earning_headers'] ?? []),
+            'deduction_types' => count($reportData['summary']['deduction_headers'] ?? []),
+            'total_gross' => $reportData['summary']['total_gross_salary'] ?? 0,
+            'earning_headers' => $reportData['summary']['earning_headers'] ?? [],
+            'deduction_headers' => $reportData['summary']['deduction_headers'] ?? []
+        ]);
+        
+        return response()->json($response);
+
+    } catch (\Exception $e) {
+        Log::error('REPORT_CONTROLLER: Error generating payroll report', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to generate payroll report: ' . $e->getMessage()
+        ], 500);
     }
+}
+    
+/**
+     * Generate earnings-only report
+     */
+    public function generateEarningsReport(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Authentication required'
+                ], 401);
+            }
+
+            $validated = $request->validate([
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'department' => 'nullable|string',
+                'status' => 'sometimes|in:all,paid,pending',
+                'business_id' => 'sometimes|exists:businesses,id',
+                'country' => 'sometimes|string',
+            ]);
+
+            $startDate = Carbon::parse($validated['start_date']);
+            $endDate = Carbon::parse($validated['end_date']);
+            
+            Log::info('REPORT_CONTROLLER: Generating earnings report', [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'filters' => $validated
+            ]);
+            
+            // Get business-scoped employee IDs
+            $employeeQuery = $this->getBusinessScopedEmployees($request);
+            if (!empty($validated['department'])) {
+                $employeeQuery->where('department', $validated['department']);
+            }
+            $employeeIds = $employeeQuery->pluck('id');
+            
+            Log::info('REPORT_CONTROLLER: Business scoped employee IDs found', [
+                'count' => $employeeIds->count(),
+                'ids' => $employeeIds->toArray()
+            ]);
+            
+            if ($employeeIds->isEmpty()) {
+                return $this->emptyEarningsResponse($validated, $startDate, $endDate);
+            }
+            
+            // Prepare filters for the service
+            $filters = [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'employee_ids' => $employeeIds->toArray(),
+            ];
+            
+            // Add optional filters
+            foreach (['status', 'business_id', 'country', 'department'] as $key) {
+                if (!empty($validated[$key]) && $validated[$key] !== 'all') {
+                    $filters[$key] = $validated[$key];
+                }
+            }
+            
+            // Generate the earnings report
+            $reportData = $this->reportGeneratorService->generateEarningsReport($filters);
+            
+            // Format the response
+            $response = [
+                'success' => true,
+                'message' => 'Earnings report generated successfully',
+                'data' => [
+                     'department' => $validated['department'] ?? 'All Departments',
+        // REMOVE number_format() calls - send raw numbers
+        'total_earnings' => $reportData['summary']['total_earnings'] ?? 0,
+        'total_gross_salary' => $reportData['summary']['total_gross_salary'] ?? 0,
+        'processed_employees' => $reportData['summary']['processed_employees'] ?? 0,
+        'average_earnings' => $reportData['summary']['average_earnings'] ?? 0,
+                    
+                    // Dynamic earning information
+                    'earning_totals' => $reportData['summary']['earning_totals'] ?? [],
+                    'earning_breakdown' => $reportData['summary']['earning_breakdown'] ?? [],
+                    'earnings_by_type' => $reportData['summary']['earnings_by_type'] ?? [],
+                    'earning_headers' => $reportData['summary']['earning_headers'] ?? [],
+                    
+                    'employee_earnings' => $reportData['data'] ?? [],
+                    'department_breakdown' => $reportData['summary']['department_breakdown'] ?? [],
+                    
+                    'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+                    'generated_at' => $reportData['generated_at']->toDateTimeString(),
+                    'filters' => $reportData['summary']['filters'] ?? [],
+                ],
+                'type' => 'earnings'
+            ];
+            
+            Log::info('REPORT_CONTROLLER: Earnings report generated successfully', [
+                'processed_employees' => $reportData['summary']['processed_employees'] ?? 0,
+                'unique_earnings' => count($reportData['summary']['earning_headers'] ?? []),
+                'total_earnings' => $reportData['summary']['total_earnings'] ?? 0,
+            ]);
+            
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            Log::error('REPORT_CONTROLLER: Error generating earnings report', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate earnings report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate deductions-only report
+     */
+    public function generateDeductionsReport(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Authentication required'
+                ], 401);
+            }
+
+            $validated = $request->validate([
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'department' => 'nullable|string',
+                'status' => 'sometimes|in:all,paid,pending',
+                'business_id' => 'sometimes|exists:businesses,id',
+                'country' => 'sometimes|string',
+                'deduction_type' => 'sometimes|in:all,tax,statutory,pension,health,levy,voluntary,other',
+            ]);
+
+            $startDate = Carbon::parse($validated['start_date']);
+            $endDate = Carbon::parse($validated['end_date']);
+            
+            Log::info('REPORT_CONTROLLER: Generating deductions report', [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'filters' => $validated
+            ]);
+            
+            // Get business-scoped employee IDs
+            $employeeQuery = $this->getBusinessScopedEmployees($request);
+            if (!empty($validated['department'])) {
+                $employeeQuery->where('department', $validated['department']);
+            }
+            $employeeIds = $employeeQuery->pluck('id');
+            
+            Log::info('REPORT_CONTROLLER: Business scoped employee IDs found', [
+                'count' => $employeeIds->count(),
+                'ids' => $employeeIds->toArray()
+            ]);
+            
+            if ($employeeIds->isEmpty()) {
+                return $this->emptyDeductionsResponse($validated, $startDate, $endDate);
+            }
+            
+            // Prepare filters for the service
+            $filters = [
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date' => $endDate->format('Y-m-d'),
+                'employee_ids' => $employeeIds->toArray(),
+            ];
+            
+            // Add optional filters
+            foreach (['status', 'business_id', 'country', 'department', 'deduction_type'] as $key) {
+                if (!empty($validated[$key]) && $validated[$key] !== 'all') {
+                    $filters[$key] = $validated[$key];
+                }
+            }
+            
+            // Generate the deductions report
+            $reportData = $this->reportGeneratorService->generateDeductionsReport($filters);
+            
+            // Format the response
+            $response = [
+                'success' => true,
+                'message' => 'Deductions report generated successfully',
+                'data' => [
+                    'department' => $validated['department'] ?? 'All Departments',
+                    'total_deductions' => number_format($reportData['summary']['total_deductions'] ?? 0, 2),
+                    'total_paye_tax' => number_format($reportData['summary']['total_paye_tax'] ?? 0, 2),
+                    'processed_employees' => $reportData['summary']['processed_employees'] ?? 0,
+                    'average_deductions' => number_format($reportData['summary']['average_deductions'] ?? 0, 2),
+                    
+                    // Dynamic deduction information
+                    'deduction_totals' => $reportData['summary']['deduction_totals'] ?? [],
+                    'deduction_breakdown' => $reportData['summary']['deduction_breakdown'] ?? [],
+                    'deductions_by_type' => $reportData['summary']['deductions_by_type'] ?? [],
+                    'deduction_headers' => $reportData['summary']['deduction_headers'] ?? [],
+                    
+                    'employee_deductions' => $reportData['data'] ?? [],
+                    'department_breakdown' => $reportData['summary']['department_breakdown'] ?? [],
+                    
+                    'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+                    'generated_at' => $reportData['generated_at']->toDateTimeString(),
+                    'filters' => $reportData['summary']['filters'] ?? [],
+                ],
+                'type' => 'deductions'
+            ];
+            
+            Log::info('REPORT_CONTROLLER: Deductions report generated successfully', [
+                'processed_employees' => $reportData['summary']['processed_employees'] ?? 0,
+                'unique_deductions' => count($reportData['summary']['deduction_headers'] ?? []),
+                'total_deductions' => $reportData['summary']['total_deductions'] ?? 0,
+            ]);
+            
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            Log::error('REPORT_CONTROLLER: Error generating deductions report', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate deductions report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Download report - UPDATED to support earnings and deductions reports
+     */
+    public function downloadReport(Request $request, $type)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Authentication required'
+                ], 401);
+            }
+
+            $validated = $request->validate([
+                'format' => 'required|in:pdf,csv',
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'department' => 'sometimes|string',
+                'status' => 'sometimes|in:all,paid,pending,approved,rejected',
+                'business_id' => 'sometimes|exists:businesses,id',
+                'country' => 'sometimes|string',
+            ]);
+
+            Log::info("REPORT_CONTROLLER: Starting download for {$type}", [
+                'filters' => $validated
+            ]);
+
+            $filters = $validated;
+            $format = $validated['format'];
+            
+            // Generate the appropriate report based on type
+            switch ($type) {
+                case 'payroll':
+                    // Create a new request with the filters
+                    $reportRequest = new Request($filters);
+                    $reportRequest->setUserResolver(fn() => $user);
+                    
+                    $reportResponse = $this->generatePayrollReport($reportRequest);
+                    $reportData = $reportResponse->getData(true);
+                    
+                    $filename = "payroll_report_" . now()->format('Y-m-d_His') . "." . $format;
+                    $view = 'reports.payroll';
+                    
+                    Log::info('REPORT_CONTROLLER: Payroll report data for export', [
+                        'has_data' => isset($reportData['data']),
+                        'data_count' => count($reportData['data']['payslip_details'] ?? []),
+                        'has_earning_headers' => isset($reportData['data']['earning_headers']),
+                        'has_deduction_headers' => isset($reportData['data']['deduction_headers'])
+                    ]);
+                    
+                    if ($format === 'csv') {
+                        return $this->reportExportService->exportToCsv(
+                            $reportData['data'],
+                            $filename,
+                            'payroll'
+                        );
+                    }
+                    break;
+                    
+                case 'earnings':
+                    $reportRequest = new Request($filters);
+                    $reportRequest->setUserResolver(fn() => $user);
+                    
+                    $reportResponse = $this->generateEarningsReport($reportRequest);
+                    $reportData = $reportResponse->getData(true);
+                    $filename = "earnings_report_" . now()->format('Y-m-d_His') . "." . $format;
+                    $view = 'reports.earnings';
+                    
+                    if ($format === 'csv') {
+                        return $this->reportExportService->exportToCsv(
+                            $reportData['data'],
+                            $filename,
+                            'earnings'
+                        );
+                    }
+                    break;
+                    
+                case 'deductions':
+                    $reportRequest = new Request($filters);
+                    $reportRequest->setUserResolver(fn() => $user);
+                    
+                    $reportResponse = $this->generateDeductionsReport($reportRequest);
+                    $reportData = $reportResponse->getData(true);
+                    $filename = "deductions_report_" . now()->format('Y-m-d_His') . "." . $format;
+                    $view = 'reports.deductions';
+                    
+                    if ($format === 'csv') {
+                        return $this->reportExportService->exportToCsv(
+                            $reportData['data'],
+                            $filename,
+                            'deductions'
+                        );
+                    }
+                    break;
+                    
+                case 'attendance':
+                    $reportRequest = new Request($filters);
+                    $reportRequest->setUserResolver(fn() => $user);
+                    
+                    $reportResponse = $this->generateAttendanceReport($reportRequest);
+                    $reportData = $reportResponse->getData(true);
+                    $filename = "attendance_report_" . now()->format('Y-m-d_His') . "." . $format;
+                    $view = 'reports.attendance';
+                    break;
+                    
+                case 'leave':
+                    $reportRequest = new Request($filters);
+                    $reportRequest->setUserResolver(fn() => $user);
+                    
+                    $reportResponse = $this->generateLeaveReport($reportRequest);
+                    $reportData = $reportResponse->getData(true);
+                    $filename = "leave_report_" . now()->format('Y-m-d_His') . "." . $format;
+                    $view = 'reports.leave';
+                    break;
+                    
+                default:
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid report type'
+                    ], 422);
+            }
+
+            Log::info("REPORT_CONTROLLER: Generating {$type} report for export", [
+                'format' => $format,
+                'filename' => $filename,
+                'data_count' => count($reportData['data'] ?? [])
+            ]);
+
+            if ($format === 'pdf') {
+                return $this->reportExportService->exportToPdf($view, $reportData, $filename);
+            } else {
+                // For CSV export of non-payroll/earnings/deductions reports
+                return $this->reportExportService->exportToCsv(
+                    $reportData['data'] ?? [],
+                    $filename,
+                    $type
+                );
+            }
+
+        } catch (\Exception $e) {
+            Log::error("REPORT_CONTROLLER: Export {$type} report error", [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to export report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+   
+    /**
+     * Return empty deductions response
+     */
+    private function emptyDeductionsResponse(array $validated, Carbon $startDate, Carbon $endDate): JsonResponse
+    {
+        Log::info('REPORT_CONTROLLER: Empty deductions response - no employees found', [
+            'filters' => $validated
+        ]);
+        
+        $filterInfo = $this->buildFilterInfo($validated);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Deductions report generated successfully (no payslips found for selected criteria)',
+            'data' => [
+                'department' => $validated['department'] ?? 'All Departments',
+                'total_deductions' => '0.00',
+                'total_paye_tax' => '0.00',
+                'processed_employees' => 0,
+                'average_deductions' => '0.00',
+                'deduction_totals' => [],
+                'deduction_breakdown' => [],
+                'deductions_by_type' => [],
+                'deduction_headers' => [],
+                'employee_deductions' => [],
+                'department_breakdown' => [],
+                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+                'generated_at' => now()->toDateTimeString(),
+                'filters' => $filterInfo,
+            ],
+            'type' => 'deductions'
+        ]);
+    }
+    /**
+     * Return empty earnings response
+     */
+    private function emptyEarningsResponse(array $validated, Carbon $startDate, Carbon $endDate): JsonResponse
+    {
+        Log::info('REPORT_CONTROLLER: Empty earnings response - no employees found', [
+            'filters' => $validated
+        ]);
+        
+        $filterInfo = $this->buildFilterInfo($validated);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Earnings report generated successfully (no payslips found for selected criteria)',
+            'data' => [
+                'department' => $validated['department'] ?? 'All Departments',
+                'total_earnings' => '0.00',
+                'total_gross_salary' => '0.00',
+                'processed_employees' => 0,
+                'average_earnings' => '0.00',
+                'earning_totals' => [],
+                'earning_breakdown' => [],
+                'earnings_by_type' => [],
+                'earning_headers' => [],
+                'employee_earnings' => [],
+                'department_breakdown' => [],
+                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+                'generated_at' => now()->toDateTimeString(),
+                'filters' => $filterInfo,
+            ],
+            'type' => 'earnings'
+        ]);
+    }
+
+ 
 
     public function getAdminStats(Request $request): JsonResponse
     {
-
         try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'total_employees' => 0,
+                    'present_today' => 0,
+                    'pending_leaves' => 0,
+                    'avg_attendance' => 0,
+                    'month' => Carbon::now()->format('F Y')
+                ]);
+            }
+
             // Use business-scoped employees
             $employeeQuery = $this->getBusinessScopedEmployees($request);
             $totalEmployees = $employeeQuery->count();
@@ -190,8 +716,8 @@ class ReportController extends Controller
             Log::info('REPORT_CONTROLLER: Getting admin stats', [
                 'total_employees' => $totalEmployees,
                 'employee_ids_count' => $employeeIds->count(),
-                'user_id' => $request->user()->id,
-                'user_role' => $request->user()->role,
+                'user_id' => $user->id,
+                'user_role' => $user->role,
                 'requested_business_id' => $request->input('business_id'),
                 'requested_country' => $request->input('country'),
             ]);
@@ -245,89 +771,136 @@ class ReportController extends Controller
         }
     }
 
-    public function teamReport(Request $request): JsonResponse
-    {
-        $filters = $request->validate([
-            'department' => 'sometimes|string',
-            'start_date' => 'sometimes|date',
-            'end_date' => 'sometimes|date|after_or_equal:start_date',
-        ]);
-        
-        $reportData = $this->generateTeamReport($request, $filters);
-        return response()->json($reportData);
-    }
-
-    public function payrollReport(Request $request): JsonResponse
-    {
-        $filters = $request->validate([
-            'start_date' => 'sometimes|date',
-            'end_date' => 'sometimes|date|after_or_equal:start_date',
-            'status' => 'sometimes|in:draft,processing,completed,failed',
-        ]);
-        
-        $filters['request'] = $request; // Pass request for business scoping
-        $reportData = $this->reportService->generatePayrollReport($filters);
-        return response()->json($reportData);
-    }
-
-    public function attendanceReport(Request $request): JsonResponse
-    {
-        $filters = $request->validate([
-            'employee_id' => 'sometimes|exists:employees,id',
-            'start_date' => 'sometimes|date',
-            'end_date' => 'sometimes|date|after_or_equal:start_date',
-            'status' => 'sometimes|in:present,absent,late,half_day',
-        ]);
-        
-        $filters['request'] = $request; // Pass request for business scoping
-        $reportData = $this->reportService->generateAttendanceReport($filters);
-        return response()->json($reportData);
-    }
-
-    public function leaveReport(Request $request): JsonResponse
-    {
-        $filters = $request->validate([
-            'employee_id' => 'sometimes|exists:employees,id',
-            'type' => 'sometimes|in:vacation,sick,personal,maternity,paternity',
-            'status' => 'sometimes|in:pending,approved,rejected',
-            'start_date' => 'sometimes|date',
-            'end_date' => 'sometimes|date|after_or_equal:start_date',
-        ]);
-        
-        $filters['request'] = $request; // Pass request for business scoping
-        $reportData = $this->reportService->generateLeaveReport($filters);
-        return response()->json($reportData);
-    }
-
-    public function productivityReport(Request $request): JsonResponse
-    {
-        $filters = $request->validate([
-            'employee_id' => 'sometimes|exists:employees,id',
-            'start_date' => 'sometimes|date',
-            'end_date' => 'sometimes|date|after_or_equal:start_date',
-            'department' => 'sometimes|string',
-        ]);
-        
-        $reportData = $this->generateProductivityReport($request, $filters);
-        return response()->json($reportData);
-    }
-
   
+/**
+ * Return empty payroll response with proper structure
+ */
+private function emptyPayrollResponse(array $validated, Carbon $startDate, Carbon $endDate): JsonResponse
+{
+    Log::info('REPORT_CONTROLLER: Empty payroll response - no employees found', [
+        'filters' => $validated
+    ]);
+    
+    $filterInfo = $this->buildFilterInfo($validated);
+    
+    return response()->json([
+        'success' => true,
+        'message' => 'Payroll report generated successfully (no payslips found for selected criteria)',
+        'data' => [
+            'department' => $validated['department'] ?? 'All Departments',
+            'total_gross_salary' => 0,
+            'total_net_salary' => 0,
+            'total_earnings' => 0,
+            'total_all_deductions' => 0,
+            'total_paye_tax' => 0,
+            'processed_employees' => 0,
+            'average_gross_salary' => 0,
+            'average_net_salary' => 0,
+            
+            // Empty dynamic structures
+            'earning_totals' => [],
+            'deduction_totals' => [],
+            'earning_breakdown' => [],
+            'deduction_breakdown' => [],
+            'earnings_by_type' => [],
+            'deductions_by_type' => [],
+            'earning_headers' => [],
+            'deduction_headers' => [],
+            
+            'payslip_details' => [],
+            'department_breakdown' => [],
+            
+            'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
+            'period_start' => $startDate->format('Y-m-d'),
+            'period_end' => $endDate->format('Y-m-d'),
+            'generated_at' => now()->toDateTimeString(),
+            'filters' => $filterInfo,
+        ],
+        'type' => 'payroll'
+    ]);
+}
+
+/**
+ * Helper method to build filter info for reports - UPDATED
+ */
+private function buildFilterInfo(array $validated): array
+{
+    $filterInfo = [];
+    
+    if (!empty($validated['business_id'])) {
+        $business = Business::find($validated['business_id']);
+        $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+        $filterInfo['business_id'] = $validated['business_id'];
+    }
+    
+    if (!empty($validated['country'])) {
+        if (is_numeric($validated['country'])) {
+            $country = Country::find($validated['country']);
+        } else {
+            $country = Country::where('code', $validated['country'])->first();
+        }
+        
+        if ($country) {
+            $filterInfo['country'] = $country->name;
+            $filterInfo['country_code'] = $country->code;
+            $filterInfo['currency'] = $country->currency;
+            $filterInfo['currency_symbol'] = $country->currency_symbol;
+        } else {
+            $filterInfo['country'] = 'Unknown Country';
+            $filterInfo['currency'] = 'KES';
+            $filterInfo['currency_symbol'] = 'KES';
+        }
+    } else {
+        // Default currency if not specified
+        $filterInfo['currency'] = 'KES';
+        $filterInfo['currency_symbol'] = 'KES';
+    }
+    
+    if (!empty($validated['department'])) {
+        $filterInfo['department'] = $validated['department'];
+    }
+    
+    if (!empty($validated['start_date'])) {
+        $filterInfo['start_date'] = $validated['start_date'];
+    }
+    
+    if (!empty($validated['end_date'])) {
+        $filterInfo['end_date'] = $validated['end_date'];
+    }
+    
+    if (!empty($validated['status']) && $validated['status'] !== 'all') {
+        $filterInfo['status'] = $validated['status'];
+    }
+    
+    if (!empty($validated['deduction_type']) && $validated['deduction_type'] !== 'all') {
+        $filterInfo['deduction_type'] = $validated['deduction_type'];
+    }
+    
+    return $filterInfo;
+}
     /**
-     * Generate comprehensive attendance report with business and country filters
+     * Generate attendance report with business and country filters
      */
     public function generateAttendanceReport(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'department' => 'sometimes|string',
-            'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|exists:countries,id',
-            'report_type' => 'sometimes|in:summary,detailed,daily'
-        ]);
-
         try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Authentication required'
+                ], 401);
+            }
+
+            $validated = $request->validate([
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'department' => 'sometimes|string',
+                'business_id' => 'sometimes|exists:businesses,id',
+                'country' => 'sometimes|exists:countries,id',
+                'report_type' => 'sometimes|in:summary,detailed,daily'
+            ]);
+
             $startDate = Carbon::parse($validated['start_date']);
             $endDate = Carbon::parse($validated['end_date']);
             
@@ -339,76 +912,9 @@ class ReportController extends Controller
                 'country' => $validated['country'] ?? null,
             ]);
             
-            // Get business-scoped attendance query
-            $query = $this->getBusinessScopedQuery($request, Attendance::class, 'employee')
-                ->with(['employee.user', 'employee.business', 'employee.country'])
-                ->whereBetween('date', [$startDate, $endDate]);
-
-            if (!empty($validated['department'])) {
-                $query->whereHas('employee', function ($q) use ($validated) {
-                    $q->where('department', $validated['department']);
-                });
-            }
-
-            $attendanceData = $query->get();
+            // Generate the report using the service
+            $reportData = $this->reportGeneratorService->generateAttendanceReport($validated);
             
-            // Get business-scoped employees count
-            $employeeQuery = $this->getBusinessScopedEmployees($request);
-            if (!empty($validated['department'])) {
-                $employeeQuery->where('department', $validated['department']);
-            }
-            $totalEmployees = $employeeQuery->count();
-
-            $workingDays = $startDate->diffInDaysFiltered(function (Carbon $date) {
-                return !$date->isWeekend();
-            }, $endDate) + 1; // Include both start and end dates
-
-            $presentDays = $attendanceData->where('status', 'present')->count();
-            $absentDays = $attendanceData->where('status', 'absent')->count();
-            $lateDays = $attendanceData->where('status', 'late')->count();
-
-            $attendanceRate = ($workingDays > 0 && $totalEmployees > 0) 
-                ? round(($presentDays / ($totalEmployees * $workingDays)) * 100, 2) 
-                : 0;
-
-            $departmentName = !empty($validated['department']) 
-                ? $validated['department'] 
-                : 'All Departments';
-            
-            // Add business/country info to report
-            $filterInfo = [];
-            if (!empty($validated['business_id'])) {
-                $business = Business::find($validated['business_id']);
-                $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-                $filterInfo['business_id'] = $validated['business_id'];
-            }
-            if (!empty($validated['country'])) {
-                $country = \App\Models\Country::find($validated['country']);
-                $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
-                $filterInfo['country_id'] = $validated['country'];
-            }
-
-            $reportData = [
-                'department' => $departmentName,
-                'total_employees' => $totalEmployees,
-                'working_days' => $workingDays,
-                'attendance_summary' => [
-                    'present' => $presentDays,
-                    'absent' => $absentDays,
-                    'late' => $lateDays,
-                ],
-                'attendance_rate' => $attendanceRate,
-                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
-                'generated_at' => now()->toDateTimeString(),
-                'filters' => $filterInfo,
-            ];
-
-            Log::info('REPORT_CONTROLLER: Attendance report generated', [
-                'total_employees' => $totalEmployees,
-                'attendance_records' => $attendanceData->count(),
-                'attendance_rate' => $attendanceRate,
-            ]);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Attendance report generated successfully',
@@ -433,16 +939,24 @@ class ReportController extends Controller
      */
     public function generateLeaveReport(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'leave_type' => 'sometimes|string',
-            'status' => 'sometimes|in:pending,approved,rejected,all',
-            'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|exists:countries,id'
-        ]);
-
         try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Authentication required'
+                ], 401);
+            }
+
+            $validated = $request->validate([
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'leave_type' => 'sometimes|string',
+                'status' => 'sometimes|in:pending,approved,rejected,all',
+                'business_id' => 'sometimes|exists:businesses,id',
+                'country' => 'sometimes|exists:countries,id'
+            ]);
+
             $startDate = Carbon::parse($validated['start_date']);
             $endDate = Carbon::parse($validated['end_date']);
             
@@ -455,56 +969,9 @@ class ReportController extends Controller
                 'country' => $validated['country'] ?? null,
             ]);
             
-            // Get business-scoped leave query
-            $query = $this->getBusinessScopedQuery($request, Leave::class, 'employee')
-                ->with(['employee.user', 'employee.business', 'employee.country'])
-                ->whereBetween('start_date', [$startDate, $endDate]);
-
-            if (!empty($validated['leave_type'])) {
-                $query->where('leave_type', $validated['leave_type']);
-            }
-
-            if (!empty($validated['status']) && $validated['status'] !== 'all') {
-                $query->where('status', $validated['status']);
-            }
-
-            $leaveData = $query->get();
-
-            $totalLeaveRequests = $leaveData->count();
-            $statusBreakdown = $leaveData->groupBy('status')->map->count();
+            // Generate the report using the service
+            $reportData = $this->reportGeneratorService->generateLeaveReport($validated);
             
-            $approvedCount = $statusBreakdown->get('approved', 0);
-            $approvalRate = $totalLeaveRequests > 0 
-                ? round(($approvedCount / $totalLeaveRequests) * 100, 2) 
-                : 0;
-
-            // Add business/country info to report
-            $filterInfo = [];
-            if (!empty($validated['business_id'])) {
-                $business = Business::find($validated['business_id']);
-                $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-                $filterInfo['business_id'] = $validated['business_id'];
-            }
-            if (!empty($validated['country'])) {
-                $country = \App\Models\Country::find($validated['country']);
-                $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
-                $filterInfo['country_id'] = $validated['country'];
-            }
-
-            $reportData = [
-                'total_leave_requests' => $totalLeaveRequests,
-                'status_breakdown' => $statusBreakdown,
-                'approval_rate' => $approvalRate,
-                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
-                'generated_at' => now()->toDateTimeString(),
-                'filters' => $filterInfo,
-            ];
-
-            Log::info('REPORT_CONTROLLER: Leave report generated', [
-                'total_requests' => $totalLeaveRequests,
-                'approval_rate' => $approvalRate,
-            ]);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Leave report generated successfully',
@@ -523,6 +990,188 @@ class ReportController extends Controller
             ], 500);
         }
     }
+
+   
+
+    public function teamReport(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'department' => 'sometimes|string',
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date|after_or_equal:start_date',
+        ]);
+        
+        $reportData = $this->generateTeamReport($request, $filters);
+        return response()->json($reportData);
+    }
+
+    /**
+     * Generate payment report (employee payments only)
+     */
+    public function generatePaymentReport(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'department' => 'nullable|string',
+            'status' => 'sometimes|in:all,paid,pending',
+            'business_id' => 'sometimes|exists:businesses,id',
+            'country' => 'sometimes|string',
+        ]);
+
+        try {
+            $filters = $this->prepareFilters($request, $validated);
+            $reportData = $this->reportGeneratorService->generatePaymentReport($filters);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Payment report generated successfully',
+                'data' => $reportData,
+                'type' => 'payment'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('REPORT_CONTROLLER: Error generating payment report', [
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate payment report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+ 
+
+    /**
+     * Export payroll report to PDF or CSV
+     */
+    public function exportPayrollReport(Request $request): mixed
+    {
+        $validated = $request->validate([
+            'format' => 'required|in:pdf,csv',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'department' => 'nullable|string',
+            'status' => 'sometimes|in:all,paid,pending',
+            'business_id' => 'sometimes|exists:businesses,id',
+            'country' => 'sometimes|string',
+        ]);
+
+        try {
+            $filters = $this->prepareFilters($request, $validated);
+            $reportData = $this->reportGeneratorService->generatePayrollReport($filters);
+            
+            $filename = "payroll_report_" . now()->format('Y-m-d_His') . "." . $validated['format'];
+            
+            if ($validated['format'] === 'pdf') {
+                return $this->reportExportService->exportToPdf(
+                    'reports.payroll',
+                    $reportData,
+                    $filename
+                );
+            } else {
+                return $this->reportExportService->exportToCsv(
+                    $reportData['data'] ?? [],
+                    $reportData['summary']['dynamic_headers'] ?? [],
+                    $filename
+                );
+            }
+
+        } catch (\Exception $e) {
+            Log::error('REPORT_CONTROLLER: Export error', [
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to export report: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Prepare filters from request
+     */
+    private function prepareFilters(Request $request, array $validated): array
+    {
+        $employeeQuery = $this->getBusinessScopedEmployees($request);
+        if (!empty($validated['department'])) {
+            $employeeQuery->where('department', $validated['department']);
+        }
+        $employeeIds = $employeeQuery->pluck('id');
+        
+        $filters = [
+            'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'],
+            'employee_ids' => $employeeIds->toArray(),
+        ];
+        
+        foreach (['status', 'business_id', 'country', 'department', 'deduction_type'] as $key) {
+            if (!empty($validated[$key]) && $validated[$key] !== 'all') {
+                $filters[$key] = $validated[$key];
+            }
+        }
+        
+        return $filters;
+    }
+
+    public function payrollReport(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date|after_or_equal:start_date',
+            'status' => 'sometimes|in:draft,processing,completed,failed',
+        ]);
+        
+        $filters['request'] = $request; // Pass request for business scoping
+        $reportData = $this->reportGeneratorService->generatePayrollReport($filters);
+        return response()->json($reportData);
+    }
+
+    public function attendanceReport(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'employee_id' => 'sometimes|exists:employees,id',
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date|after_or_equal:start_date',
+            'status' => 'sometimes|in:present,absent,late,half_day',
+        ]);
+        
+        $filters['request'] = $request; // Pass request for business scoping
+        $reportData = $this->reportGeneratorService->generateAttendanceReport($filters);
+        return response()->json($reportData);
+    }
+
+    public function leaveReport(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'employee_id' => 'sometimes|exists:employees,id',
+            'type' => 'sometimes|in:vacation,sick,personal,maternity,paternity',
+            'status' => 'sometimes|in:pending,approved,rejected',
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date|after_or_equal:start_date',
+        ]);
+        
+        $filters['request'] = $request; // Pass request for business scoping
+        $reportData = $this->reportGeneratorService->generateLeaveReport($filters);
+        return response()->json($reportData);
+    }
+
+    public function productivityReport(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'employee_id' => 'sometimes|exists:employees,id',
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date|after_or_equal:start_date',
+            'department' => 'sometimes|string',
+        ]);
+        
+        $reportData = $this->generateProductivityReport($request, $filters);
+        return response()->json($reportData);
+    }
+
     public function getReportParams($type): JsonResponse
     {
         $defaults = [
@@ -878,230 +1527,7 @@ class ReportController extends Controller
         })->filter()->values()->toArray();
     }
 
-   /**
-     * Generate comprehensive payroll report with business and country filters
-     */
-    public function generatePayrollReport(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'department' => 'nullable|string',
-            'status' => 'sometimes|in:all,paid,pending',
-            'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|exists:countries,id'
-        ]);
-
-        try {
-            $startDate = Carbon::parse($validated['start_date']);
-            $endDate = Carbon::parse($validated['end_date']);
-            
-            $department = !empty($validated['department']) ? $validated['department'] : null;
-            
-            Log::info('REPORT_CONTROLLER: Generating payroll report', [
-                'start_date' => $startDate->format('Y-m-d'),
-                'end_date' => $endDate->format('Y-m-d'),
-                'department' => $department ?? 'All Departments',
-                'status' => $validated['status'] ?? 'all',
-                'business_id' => $validated['business_id'] ?? null,
-                'country' => $validated['country'] ?? null
-            ]);
-            
-            // Get business-scoped employee IDs
-            $employeeQuery = $this->getBusinessScopedEmployees($request);
-            if ($department !== null) {
-                $employeeQuery->where('department', $department);
-            }
-            $employeeIds = $employeeQuery->pluck('id');
-            
-            Log::info('REPORT_CONTROLLER: Employee IDs for payroll report', [
-                'count' => $employeeIds->count(),
-                'department_filter' => $department ?? 'None',
-            ]);
-            
-            if ($employeeIds->isEmpty()) {
-                // Add business/country info to report
-                $filterInfo = $this->buildFilterInfo($validated);
-                
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Payroll report generated successfully',
-                    'data' => [
-                        'department' => $department ?? 'All Departments',
-                        'total_gross_salary' => '0.00',
-                        'total_net_salary' => '0.00',
-                        'total_tax_amount' => '0.00',
-                        'total_paye' => '0.00',
-                        'total_napsa' => '0.00',
-                        'total_nhima' => '0.00',
-                        'total_other_deductions' => '0.00',
-                        'total_all_deductions' => '0.00',
-                        'processed_employees' => 0,
-                        'average_gross_salary' => '0.00',
-                        'average_net_salary' => '0.00',
-                        'payslip_details' => [],
-                        'department_breakdown' => $department === null ? [] : null,
-                        'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
-                        'generated_at' => now()->toDateTimeString(),
-                        'filters' => $filterInfo,
-                    ],
-                    'type' => 'payroll'
-                ]);
-            }
-            
-            // Find payslips in the date range
-            $query = Payslip::with(['employee.user', 'employee.business', 'employee.country'])
-                ->whereBetween('pay_period_start', [$startDate, $endDate])
-                ->whereIn('employee_id', $employeeIds);
-
-            if (!empty($validated['status']) && $validated['status'] !== 'all') {
-                $query->where('status', $validated['status']);
-            }
-
-            $payslips = $query->get();
-
-            $totalNetSalary = 0;
-            $totalGrossSalary = 0;
-            $totalTaxAmount = 0;
-            $totalPaye = 0;
-            $totalNapsa = 0;
-            $totalNhima = 0;
-            $totalOtherDeductions = 0;
-            $totalAllDeductions = 0;
-            $processedEmployees = 0;
-            $payslipDetails = [];
-            $departmentBreakdown = [];
-
-            foreach ($payslips as $payslip) {
-                $grossSalary = $payslip->gross_salary ?? 0;
-                $netPay = $payslip->net_pay ?? 0;
-                $paye = $payslip->paye ?? 0;
-                $napsa = $payslip->napsa ?? 0;
-                $nhima = $payslip->nhima ?? 0;
-                $otherDeductions = $payslip->other_deductions ?? 0;
-                $totalDeductions = $payslip->total_deductions ?? 0;
-
-                $totalGrossSalary += $grossSalary;
-                $totalNetSalary += $netPay;
-                $totalPaye += $paye;
-                $totalNapsa += $napsa;
-                $totalNhima += $nhima;
-                $totalOtherDeductions += $otherDeductions;
-                $totalAllDeductions += $totalDeductions;
-                $totalTaxAmount += ($paye + $napsa + $nhima);
-                $processedEmployees++;
-
-                // Track department breakdown for "All Departments" view
-                $empDepartment = $payslip->employee->department ?? 'Unassigned';
-                if (!isset($departmentBreakdown[$empDepartment])) {
-                    $departmentBreakdown[$empDepartment] = [
-                        'employee_count' => 0,
-                        'total_net_salary' => 0,
-                        'total_gross_salary' => 0,
-                        'total_other_deductions' => 0,
-                    ];
-                }
-                $departmentBreakdown[$empDepartment]['employee_count']++;
-                $departmentBreakdown[$empDepartment]['total_net_salary'] += $netPay;
-                $departmentBreakdown[$empDepartment]['total_gross_salary'] += $grossSalary;
-                $departmentBreakdown[$empDepartment]['total_other_deductions'] += $otherDeductions;
-
-                $payslipDetails[] = [
-                    'employee_id' => $payslip->employee_id,
-                    'employee_name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
-                    'department' => $empDepartment,
-                    'business' => $payslip->employee->business ? $payslip->employee->business->name : 'No Business',
-                    'country' => $payslip->employee->country ? $payslip->employee->country->name : 'N/A',
-                    'gross_salary' => number_format($grossSalary, 2),
-                    'deductions' => number_format($totalDeductions, 2),
-                    'net_salary' => number_format($netPay, 2),
-                    'paye' => number_format($paye, 2),
-                    'napsa' => number_format($napsa, 2),
-                    'nhima' => number_format($nhima, 2),
-                    'other_deductions' => number_format($otherDeductions, 2),
-                    'tax_amount' => number_format($paye + $napsa + $nhima, 2),
-                    'pay_period' => $payslip->pay_period_start 
-                        ? Carbon::parse($payslip->pay_period_start)->format('M d, Y') . ' - ' . Carbon::parse($payslip->pay_period_end)->format('M d, Y')
-                        : 'N/A',
-                    'status' => $payslip->status ?? 'pending',
-                ];
-            }
-
-            $averageNetSalary = $processedEmployees > 0 ? $totalNetSalary / $processedEmployees : 0;
-            $averageGrossSalary = $processedEmployees > 0 ? $totalGrossSalary / $processedEmployees : 0;
-
-            $departmentName = $department ?? 'All Departments';
-            
-            // Add business/country info to report
-            $filterInfo = $this->buildFilterInfo($validated);
-
-            $reportData = [
-                'department' => $departmentName,
-                'total_gross_salary' => number_format($totalGrossSalary, 2),
-                'total_net_salary' => number_format($totalNetSalary, 2),
-                'total_tax_amount' => number_format($totalTaxAmount, 2),
-                'total_paye' => number_format($totalPaye, 2),
-                'total_napsa' => number_format($totalNapsa, 2),
-                'total_nhima' => number_format($totalNhima, 2),
-                'total_other_deductions' => number_format($totalOtherDeductions, 2),
-                'total_all_deductions' => number_format($totalAllDeductions, 2),
-                'processed_employees' => $processedEmployees,
-                'average_gross_salary' => number_format($averageGrossSalary, 2),
-                'average_net_salary' => number_format($averageNetSalary, 2),
-                'payslip_details' => $payslipDetails,
-                'department_breakdown' => $department === null ? $departmentBreakdown : null,
-                'period' => $startDate->format('M d, Y') . ' to ' . $endDate->format('M d, Y'),
-                'generated_at' => now()->toDateTimeString(),
-                'filters' => $filterInfo,
-            ];
-
-            Log::info('REPORT_CONTROLLER: Payroll report generated successfully', [
-                'processed_employees' => $processedEmployees,
-                'total_net_salary' => $totalNetSalary,
-                'total_other_deductions' => $totalOtherDeductions,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Payroll report generated successfully',
-                'data' => $reportData,
-                'type' => 'payroll'
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('REPORT_CONTROLLER: Error generating payroll report', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to generate payroll report: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Helper method to build filter info for reports
-     */
-    private function buildFilterInfo(array $validated): array
-    {
-        $filterInfo = [];
-        
-        if (!empty($validated['business_id'])) {
-            $business = Business::find($validated['business_id']);
-            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
-            $filterInfo['business_id'] = $validated['business_id'];
-        }
-        
-        if (!empty($validated['country'])) {
-            $country = \App\Models\Country::find($validated['country']);
-            $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
-            $filterInfo['country_id'] = $validated['country'];
-        }
-        
-        return $filterInfo;
-    }
+   
 
     public function exportReport(Request $request, string $type)
     {
@@ -1157,79 +1583,9 @@ class ReportController extends Controller
             ]);
 
             if ($format === 'pdf') {
-                return $this->reportService->exportToPdf($view, $reportData, $filename);
+                return $this->reportExportService->exportToPdf($view, $reportData, $filename);
             } else {
-                return $this->reportService->exportToCsv($reportData['data'] ?? [], $filename);
-            }
-
-        } catch (\Exception $e) {
-            Log::error("Export {$type} report error: " . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to export report: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-      /**
-     * Export report with business and country filters
-     */
-    public function downloadReport(Request $request, $type)
-    {
-        $validated = $request->validate([
-            'format' => 'required|in:pdf,csv',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-            'department' => 'sometimes|string',
-            'status' => 'sometimes|in:all,paid,pending,approved,rejected',
-            'business_id' => 'sometimes|exists:businesses,id',
-            'country' => 'sometimes|string',
-        ]);
-
-        try {
-            $filters = $validated;
-            $filters['request'] = $request;
-            $format = $validated['format'];
-            
-            // Call the appropriate report generation method
-            switch ($type) {
-                case 'payroll':
-                    $reportData = $this->generatePayrollReport(new Request($filters))->getData(true);
-                    $filename = "payroll_report_" . now()->format('Y-m-d_His') . "." . $format;
-                    $view = 'reports.payroll';
-                    break;
-                  
-                case 'attendance':
-                    $reportData = $this->generateAttendanceReport(new Request($filters))->getData(true);
-                    $filename = "attendance_report_" . now()->format('Y-m-d_His') . "." . $format;
-                    $view = 'reports.attendance';
-                    break;
-                  
-                case 'leave':
-                    $reportData = $this->generateLeaveReport(new Request($filters))->getData(true);
-                    $filename = "leave_report_" . now()->format('Y-m-d_His') . "." . $format;
-                    $view = 'reports.leave';
-                    break;
-                  
-                default:
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Invalid report type'
-                    ], 422);
-            }
-
-            Log::info("Generating {$type} report with filters", [
-                'format' => $format,
-                'filters' => $filters,
-                'data_count' => count($reportData['data'] ?? [])
-            ]);
-
-            if ($format === 'pdf') {
-                return $this->reportService->exportToPdf($view, $reportData, $filename);
-            } else {
-                return $this->reportService->exportToCsv($reportData['data'] ?? [], $filename);
+                return $this->reportExportService->exportToCsv($reportData['data'] ?? [], $filename);
             }
 
         } catch (\Exception $e) {
@@ -1334,5 +1690,104 @@ class ReportController extends Controller
             $csv .= implode(',', $row) . "\n";
         }
         return $csv;
+    }
+
+    /**
+     * Extract deductions data from payslip with dynamic names
+     */
+    private function extractDeductionsData(Payslip $payslip, array $statutoryDeductions): array
+    {
+        $deductions = [];
+        
+        // Extract PAYE tax
+        if ($payslip->paye > 0) {
+            $deductions[] = [
+                'name' => 'PAYE Tax',
+                'amount' => $payslip->paye,
+                'type' => 'statutory',
+                'description' => 'Pay As You Earn Tax'
+            ];
+        }
+        
+        // Extract statutory deductions dynamically
+        foreach ($statutoryDeductions as $deductionConfig) {
+            $deductionName = $deductionConfig['name'] ?? '';
+            $deductionType = $deductionConfig['type'] ?? 'statutory';
+            
+            if (!empty($deductionName)) {
+                // Map deduction names to payslip fields
+                $fieldName = $this->mapDeductionToField($deductionName);
+                $amount = $payslip->{$fieldName} ?? 0;
+                
+                if ($amount > 0) {
+                    $deductions[] = [
+                        'name' => $deductionName,
+                        'amount' => $amount,
+                        'type' => $deductionType,
+                        'description' => $deductionConfig['description'] ?? $deductionName
+                    ];
+                }
+            }
+        }
+        
+        // Extract other deductions (voluntary, loans, etc.)
+        $otherDeductions = $payslip->other_deductions ?? 0;
+        if ($otherDeductions > 0) {
+            // Try to parse detailed other deductions from JSON
+            $detailedOtherDeductions = json_decode($payslip->other_deductions_breakdown ?? '[]', true);
+            
+            if (is_array($detailedOtherDeductions) && count($detailedOtherDeductions) > 0) {
+                foreach ($detailedOtherDeductions as $deduction) {
+                    $deductions[] = [
+                        'name' => $deduction['name'] ?? 'Other Deduction',
+                        'amount' => $deduction['amount'] ?? 0,
+                        'type' => $deduction['type'] ?? 'voluntary',
+                        'description' => $deduction['description'] ?? 'Additional deduction'
+                    ];
+                }
+            } else {
+                // Fallback to lump sum
+                $deductions[] = [
+                    'name' => 'Other Deductions',
+                    'amount' => $otherDeductions,
+                    'type' => 'voluntary',
+                    'description' => 'Miscellaneous deductions'
+                ];
+            }
+        }
+        
+        return $deductions;
+    }
+
+    /**
+     * Map deduction names to database field names
+     */
+    private function mapDeductionToField(string $deductionName): string
+    {
+        $mapping = [
+            'NAPSA' => 'napsa',
+            'NHIMA' => 'nhima',
+            'Pension' => 'pension',
+            'Social Security' => 'social_security',
+            'Provident Fund' => 'provident_fund',
+            'Health Insurance' => 'health_insurance',
+            'Union Dues' => 'union_dues'
+        ];
+        
+        // Try exact match
+        if (isset($mapping[$deductionName])) {
+            return $mapping[$deductionName];
+        }
+        
+        // Try case-insensitive match
+        $lowerName = strtolower($deductionName);
+        foreach ($mapping as $key => $field) {
+            if (strtolower($key) === $lowerName) {
+                return $field;
+            }
+        }
+        
+        // Default: convert to snake_case
+        return strtolower(preg_replace('/[^A-Za-z0-9]+/', '_', $deductionName));
     }
 }
