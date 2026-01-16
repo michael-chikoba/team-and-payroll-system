@@ -11,30 +11,32 @@ class ScheduleNotification extends Model
 
     protected $fillable = [
         'schedule_id',
+        'employee_id',
+        'user_id',
         'type',
+        'notification_type',  // Add this
         'message',
-        'is_read'
+        'is_read',
+        'read_at',
     ];
 
     protected $casts = [
-        'is_read' => 'boolean'
+        'is_read' => 'boolean',
+        'read_at' => 'datetime',
     ];
 
-    // Relationships
     public function schedule()
     {
         return $this->belongsTo(Schedule::class);
     }
 
-    // Scopes
-    public function scopeUnread($query)
+    public function employee()
     {
-        return $query->where('is_read', false);
+        return $this->belongsTo(Employee::class);
     }
 
-    // Methods
-    public function markAsRead()
+    public function user()
     {
-        $this->update(['is_read' => true]);
+        return $this->belongsTo(User::class);
     }
 }

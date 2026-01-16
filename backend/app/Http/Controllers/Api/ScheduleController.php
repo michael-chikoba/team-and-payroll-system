@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Schedule;
+use App\Events\ScheduleAssigned;
+use App\Events\ScheduleUpdated;
 use App\Models\ScheduleNotification;
 use App\Models\Employee;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class ScheduleController extends Controller
 {
@@ -41,106 +44,68 @@ class ScheduleController extends Controller
 
     public function store(Request $request)
     {
-        // LOG INCOMING REQUEST
-        Log::info('Schedule Store Request:', [
-            'all_data' => $request->all(),
-            'user_id' => auth()->id()
-        ]);
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'type' => 'required|string',
+                'priority' => 'required|string|in:low,moderate,high,urgent',
+                'scheduled_date' => 'nullable|date',
+                'due_date' => 'required|date',
+                'assigned_to' => 'required|exists:employees,id',
+                'notes' => 'nullable|string',
+                'meta_data' => 'nullable|array',
+                'status' => 'nullable|string|in:pending,in_progress,completed,overdue,cancelled',
+            ]);
 
-        $validator = Validator::make($request->all(), [
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'type' => 'required|in:banner_creation,weekly_overview,test_sequence,live_games,multibets,news_section,other',
-            'priority' => 'required|in:low,moderate,high,urgent',
-            'scheduled_date' => 'nullable|date',
-            'due_date' => 'required|date',
-            'assigned_to' => 'required|integer|exists:employees,id',
-            'meta_data' => 'nullable|array',
-            'notes' => 'nullable|string',
-            'status' => 'nullable|in:pending,in_progress,completed,overdue'
-        ]);
+            // Map frontend fields to database fields
+            $scheduleData = [
+                'title' => $validated['title'],
+                'description' => $validated['description'] ?? null,
+                'type' => $validated['type'],
+                'priority' => $validated['priority'],
+                'start_date' => $validated['scheduled_date'] ?? null,
+                'due_date' => $validated['due_date'],
+                'assigned_to' => $validated['assigned_to'],
+                'notes' => $validated['notes'] ?? null,
+                'metadata' => $validated['meta_data'] ?? null,
+                'status' => $validated['status'] ?? 'pending',
+                'created_by' => Auth::id(),
+            ];
 
-        if ($validator->fails()) {
-            Log::error('Schedule Validation Failed:', [
-                'errors' => $validator->errors()->toArray(),
-                'request_data' => $request->all()
+            $schedule = Schedule::create($scheduleData);
+
+            Log::info('Schedule created', [
+                'schedule_id' => $schedule->id,
+                'assigned_to' => $schedule->assigned_to,
+                'created_by' => $schedule->created_by
+            ]);
+
+            // Dispatch event to trigger notification
+            event(new ScheduleAssigned($schedule));
+
+            return response()->json([
+                'message' => 'Schedule created successfully',
+                'schedule' => $schedule->load(['assignedEmployee', 'createdBy'])
+            ], 201);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Validation failed for schedule creation', [
+                'errors' => $e->errors(),
+                'input' => $request->all()
             ]);
             
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $validator->errors(),
-                'received_data' => $request->all()
+                'errors' => $e->errors()
             ], 422);
-        }
-
-        try {
-            // Get the employee to find their user_id
-            $employee = Employee::find($request->assigned_to);
             
-            if (!$employee) {
-                return response()->json([
-                    'message' => 'Employee not found',
-                    'employee_id' => $request->assigned_to
-                ], 404);
-            }
-
-            Log::info('Employee details:', [
-                'employee_id' => $employee->id,
-                'user_id' => $employee->user_id,
-                'name' => $employee->full_name
-            ]);
-
-            $scheduleData = [
-                'title' => $request->title,
-                'description' => $request->description,
-                'type' => $request->type,
-                'priority' => $request->priority,
-                'start_date' => $request->scheduled_date ?? now(),  // Map scheduled_date to start_date
-                'due_date' => $request->due_date,
-                'assigned_to' => $employee->id,
-                'assigned_user_id' => $employee->user_id,
-                'metadata' => $request->meta_data ?? [],  // Map meta_data to metadata
-                'notes' => $request->notes,
-                'status' => $request->status ?? 'pending',
-                'created_by' => auth()->id() ?? 1,
-            ];
-
-            Log::info('Creating schedule with data:', $scheduleData);
-
-            $schedule = Schedule::create($scheduleData);
-
-            // Create assignment notification
-            if ($schedule->assigned_to) {
-                try {
-                    $schedule->notifications()->create([
-                        'notification_type' => 'assigned',
-                        'message' => "You have been assigned: {$schedule->title}",
-                        'is_read' => false,
-                        'employee_id' => $employee->id,
-                        'user_id' => $employee->user_id
-                    ]);
-                } catch (\Exception $e) {
-                    Log::warning('Failed to create notification:', ['error' => $e->getMessage()]);
-                }
-            }
-
-            Log::info('Schedule created successfully:', [
-                'schedule_id' => $schedule->id,
-                'assigned_to_employee' => $employee->id,
-                'assigned_to_user' => $employee->user_id
-            ]);
-
-            return response()->json([
-                'message' => 'Schedule created successfully',
-                'schedule' => $schedule->load('assignedEmployee', 'createdBy', 'notifications')
-            ], 201);
-
         } catch (\Exception $e) {
-            Log::error('Schedule Creation Error:', [
-                'message' => $e->getMessage(),
+            Log::error('Failed to create schedule', [
+                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-
+            
             return response()->json([
                 'message' => 'Failed to create schedule',
                 'error' => $e->getMessage()
@@ -148,97 +113,70 @@ class ScheduleController extends Controller
         }
     }
 
-    public function show($id)
-    {
-        $schedule = Schedule::with(['assignedEmployee', 'createdBy', 'notifications'])->findOrFail($id);
-        return response()->json($schedule);
-    }
-
     public function update(Request $request, $id)
     {
-        Log::info('Schedule Update Request:', [
-            'id' => $id,
-            'data' => $request->all()
-        ]);
+        try {
+            $schedule = Schedule::findOrFail($id);
+            
+            $validated = $request->validate([
+                'title' => 'sometimes|string|max:255',
+                'description' => 'nullable|string',
+                'type' => 'sometimes|string',
+                'priority' => 'sometimes|string|in:low,moderate,high,urgent',
+                'scheduled_date' => 'sometimes|nullable|date',
+                'due_date' => 'sometimes|date',
+                'assigned_to' => 'sometimes|exists:employees,id',
+                'notes' => 'nullable|string',
+                'meta_data' => 'nullable|array',
+                'status' => 'sometimes|in:pending,in_progress,completed,overdue,cancelled',
+            ]);
 
-        $schedule = Schedule::findOrFail($id);
+            // Map frontend fields to database fields
+            $updateData = [];
+            
+            if (isset($validated['title'])) $updateData['title'] = $validated['title'];
+            if (isset($validated['description'])) $updateData['description'] = $validated['description'];
+            if (isset($validated['type'])) $updateData['type'] = $validated['type'];
+            if (isset($validated['priority'])) $updateData['priority'] = $validated['priority'];
+            if (isset($validated['scheduled_date'])) $updateData['start_date'] = $validated['scheduled_date'];
+            if (isset($validated['due_date'])) $updateData['due_date'] = $validated['due_date'];
+            if (isset($validated['assigned_to'])) $updateData['assigned_to'] = $validated['assigned_to'];
+            if (isset($validated['notes'])) $updateData['notes'] = $validated['notes'];
+            if (isset($validated['meta_data'])) $updateData['metadata'] = $validated['meta_data'];
+            if (isset($validated['status'])) $updateData['status'] = $validated['status'];
 
-        $validator = Validator::make($request->all(), [
-            'title' => 'sometimes|required|string|max:255',
-            'description' => 'nullable|string',
-            'type' => 'sometimes|required|in:banner_creation,weekly_overview,test_sequence,live_games,multibets,news_section,other',
-            'status' => 'sometimes|required|in:pending,in_progress,completed,overdue',
-            'priority' => 'sometimes|required|in:low,moderate,high,urgent',
-            'scheduled_date' => 'nullable|date',
-            'due_date' => 'sometimes|required|date',
-            'assigned_to' => 'nullable|integer|exists:employees,id',
-            'meta_data' => 'nullable|array',
-            'notes' => 'nullable|string'
-        ]);
+            $schedule->update($updateData);
 
-        if ($validator->fails()) {
-            Log::error('Schedule Update Validation Failed:', [
-                'errors' => $validator->errors()->toArray()
+            Log::info('Schedule updated', [
+                'schedule_id' => $schedule->id,
+                'updated_fields' => array_keys($updateData)
+            ]);
+
+            // Dispatch event to trigger notification
+            event(new ScheduleUpdated($schedule));
+
+            return response()->json([
+                'message' => 'Schedule updated successfully',
+                'schedule' => $schedule->fresh(['assignedEmployee', 'createdBy'])
+            ]);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Validation failed for schedule update', [
+                'errors' => $e->errors(),
+                'input' => $request->all()
             ]);
             
             return response()->json([
                 'message' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $e->errors()
             ], 422);
-        }
-
-        try {
-            $updateData = [];
             
-            if ($request->has('title')) $updateData['title'] = $request->title;
-            if ($request->has('description')) $updateData['description'] = $request->description;
-            if ($request->has('type')) $updateData['type'] = $request->type;
-            if ($request->has('priority')) $updateData['priority'] = $request->priority;
-            if ($request->has('scheduled_date')) $updateData['start_date'] = $request->scheduled_date;  // Map to start_date
-            if ($request->has('due_date')) $updateData['due_date'] = $request->due_date;
-            if ($request->has('meta_data')) $updateData['metadata'] = $request->meta_data;  // Map to metadata
-            if ($request->has('notes')) $updateData['notes'] = $request->notes;
-            if ($request->has('status')) $updateData['status'] = $request->status;
-            
-            // Handle assigned_to change
-            if ($request->has('assigned_to')) {
-                $employee = Employee::find($request->assigned_to);
-                if ($employee) {
-                    $updateData['assigned_to'] = $employee->id;
-                    $updateData['assigned_user_id'] = $employee->user_id;
-                }
-            }
-
-            $schedule->update($updateData);
-
-            // If marked as completed
-            if ($request->has('status') && $request->status === 'completed') {
-                $schedule->update(['completed_at' => now()]);
-                
-                try {
-                    $schedule->notifications()->create([
-                        'notification_type' => 'completed',
-                        'message' => "Schedule completed: {$schedule->title}",
-                        'is_read' => false
-                    ]);
-                } catch (\Exception $e) {
-                    Log::warning('Failed to create completion notification:', ['error' => $e->getMessage()]);
-                }
-            }
-
-            Log::info('Schedule updated successfully:', ['schedule_id' => $schedule->id]);
-
-            return response()->json([
-                'message' => 'Schedule updated successfully',
-                'schedule' => $schedule->load('assignedEmployee', 'createdBy', 'notifications')
-            ]);
-
         } catch (\Exception $e) {
-            Log::error('Schedule Update Error:', [
-                'message' => $e->getMessage(),
+            Log::error('Failed to update schedule', [
+                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-
+            
             return response()->json([
                 'message' => 'Failed to update schedule',
                 'error' => $e->getMessage()
@@ -246,105 +184,127 @@ class ScheduleController extends Controller
         }
     }
 
-    public function destroy($id)
+    public function getUnreadCount()
     {
         try {
-            $schedule = Schedule::findOrFail($id);
-            $schedule->delete();
+            $userId = auth()->id();
+            $employee = Employee::where('user_id', $userId)->first();
+            
+            if (!$employee) {
+                return response()->json(['count' => 0]);
+            }
+            
+            $count = ScheduleNotification::where(function($query) use ($userId, $employee) {
+                    $query->where('user_id', $userId)
+                          ->orWhere('employee_id', $employee->id);
+                })
+                ->where('is_read', false)
+                ->count();
 
-            Log::info('Schedule deleted successfully:', ['schedule_id' => $id]);
-
-            return response()->json(['message' => 'Schedule deleted successfully']);
+            return response()->json(['count' => $count]);
         } catch (\Exception $e) {
-            Log::error('Schedule Delete Error:', [
-                'message' => $e->getMessage()
+            Log::error('Failed to fetch unread count:', ['error' => $e->getMessage()]);
+            return response()->json(['count' => 0]);
+        }
+    }
+
+    public function markNotificationRead($id)
+    {
+        try {
+            $userId = auth()->id();
+            $employee = Employee::where('user_id', $userId)->first();
+            
+            $notification = ScheduleNotification::where('id', $id)
+                ->where(function($query) use ($userId, $employee) {
+                    $query->where('user_id', $userId);
+                    if ($employee) {
+                        $query->orWhere('employee_id', $employee->id);
+                    }
+                })
+                ->firstOrFail();
+                
+            $notification->update([
+                'is_read' => true,
+                'read_at' => now()
+            ]);
+
+            Log::info('Notification marked as read:', [
+                'notification_id' => $id,
+                'user_id' => $userId
             ]);
 
             return response()->json([
-                'message' => 'Failed to delete schedule',
-                'error' => $e->getMessage()
+                'message' => 'Notification marked as read',
+                'notification' => $notification
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to mark notification as read:', [
+                'error' => $e->getMessage(),
+                'notification_id' => $id
+            ]);
+            return response()->json([
+                'message' => 'Failed to mark notification as read'
             ], 500);
         }
     }
 
-    public function complete($id)
+    public function markAllNotificationsRead()
     {
         try {
-            $schedule = Schedule::findOrFail($id);
+            $userId = auth()->id();
+            $employee = Employee::where('user_id', $userId)->first();
             
-            $schedule->update([
-                'status' => 'completed',
-                'completed_at' => now()
-            ]);
-
-            try {
-                $schedule->notifications()->create([
-                    'notification_type' => 'completed',
-                    'message' => "Schedule completed: {$schedule->title}",
-                    'is_read' => false
+            $updated = ScheduleNotification::where('is_read', false)
+                ->where(function($query) use ($userId, $employee) {
+                    $query->where('user_id', $userId);
+                    if ($employee) {
+                        $query->orWhere('employee_id', $employee->id);
+                    }
+                })
+                ->update([
+                    'is_read' => true,
+                    'read_at' => now()
                 ]);
-            } catch (\Exception $e) {
-                Log::warning('Failed to create completion notification:', ['error' => $e->getMessage()]);
-            }
 
-            Log::info('Schedule marked as complete:', ['schedule_id' => $id]);
-
-            return response()->json([
-                'message' => 'Schedule marked as complete',
-                'schedule' => $schedule->load('assignedEmployee', 'createdBy', 'notifications')
+            Log::info('All notifications marked as read:', [
+                'user_id' => $userId,
+                'count' => $updated
             ]);
 
+            return response()->json([
+                'message' => 'All notifications marked as read',
+                'count' => $updated
+            ]);
         } catch (\Exception $e) {
-            Log::error('Schedule Complete Error:', [
-                'message' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'message' => 'Failed to complete schedule',
+            Log::error('Failed to mark all notifications as read:', [
                 'error' => $e->getMessage()
+            ]);
+            return response()->json([
+                'message' => 'Failed to mark all notifications as read'
             ], 500);
         }
     }
 
-    public function updateMeta(Request $request, $id)
+    public function getCalendarData(Request $request)
     {
         try {
-            $schedule = Schedule::findOrFail($id);
-            
-            $validator = Validator::make($request->all(), [
-                'meta_data' => 'required|array'
-            ]);
+            $month = $request->input('month', now()->month);
+            $year = $request->input('year', now()->year);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
+            $schedules = Schedule::whereYear('due_date', $year)
+                ->whereMonth('due_date', $month)
+                ->get()
+                ->groupBy(function($schedule) {
+                    return $schedule->due_date->format('Y-m-d');
+                });
 
-            $schedule->update([
-                'metadata' => $request->meta_data  // Map to metadata
-            ]);
-
-            Log::info('Schedule meta updated:', ['schedule_id' => $id, 'meta_data' => $request->meta_data]);
-
-            return response()->json([
-                'message' => 'Meta data updated successfully',
-                'schedule' => $schedule
-            ]);
-
+            return response()->json(['schedules' => $schedules]);
         } catch (\Exception $e) {
-            Log::error('Schedule Meta Update Error:', [
-                'message' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'message' => 'Failed to update meta data',
-                'error' => $e->getMessage()
-            ], 500);
+            Log::error('Failed to fetch calendar data:', ['error' => $e->getMessage()]);
+            return response()->json(['schedules' => []]);
         }
     }
-
+    
     public function getEmployeeSchedules(Request $request)
     {
         try {
@@ -414,71 +374,43 @@ class ScheduleController extends Controller
             ], 500);
         }
     }
-
-    public function getNotifications()
+     public function complete($id)
     {
         try {
-            $notifications = ScheduleNotification::with('schedule')
-                ->orderBy('created_at', 'desc')
-                ->take(50)
-                ->get();
-
-            return response()->json(['notifications' => $notifications]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch notifications:', ['error' => $e->getMessage()]);
-            return response()->json(['notifications' => []]);
-        }
-    }
-
-    public function markNotificationRead($id)
-    {
-        try {
-            $notification = ScheduleNotification::findOrFail($id);
-            $notification->update(['is_read' => true]);
-
-            return response()->json([
-                'message' => 'Notification marked as read',
-                'notification' => $notification
+            $schedule = Schedule::findOrFail($id);
+            
+            $schedule->update([
+                'status' => 'completed',
+                'completed_at' => now()
             ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to mark notification as read:', ['error' => $e->getMessage()]);
+
+            try {
+                $schedule->notifications()->create([
+                    'notification_type' => 'completed',
+                    'message' => "Schedule completed: {$schedule->title}",
+                    'is_read' => false
+                ]);
+            } catch (\Exception $e) {
+                Log::warning('Failed to create completion notification:', ['error' => $e->getMessage()]);
+            }
+
+            Log::info('Schedule marked as complete:', ['schedule_id' => $id]);
+
             return response()->json([
-                'message' => 'Failed to mark notification as read'
+                'message' => 'Schedule marked as complete',
+                'schedule' => $schedule->load('assignedEmployee', 'createdBy', 'notifications')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Schedule Complete Error:', [
+                'message' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to complete schedule',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
-    public function markAllNotificationsRead()
-    {
-        try {
-            ScheduleNotification::where('is_read', false)->update(['is_read' => true]);
-
-            return response()->json(['message' => 'All notifications marked as read']);
-        } catch (\Exception $e) {
-            Log::error('Failed to mark all notifications as read:', ['error' => $e->getMessage()]);
-            return response()->json([
-                'message' => 'Failed to mark all notifications as read'
-            ], 500);
-        }
-    }
-
-    public function getCalendarData(Request $request)
-    {
-        try {
-            $month = $request->input('month', now()->month);
-            $year = $request->input('year', now()->year);
-
-            $schedules = Schedule::whereYear('due_date', $year)
-                ->whereMonth('due_date', $month)
-                ->get()
-                ->groupBy(function($schedule) {
-                    return $schedule->due_date->format('Y-m-d');
-                });
-
-            return response()->json(['schedules' => $schedules]);
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch calendar data:', ['error' => $e->getMessage()]);
-            return response()->json(['schedules' => []]);
-        }
-    }
 }

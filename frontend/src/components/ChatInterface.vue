@@ -2,7 +2,6 @@
   <div class="chat-interface">
     <div class="chat-container">
       <!-- Sidebar with groups list -->
-      <!-- Added class logic to hide sidebar on mobile when a chat is open -->
       <div class="chat-sidebar" :class="{ 'mobile-hidden': selectedGroup }">
         <div class="sidebar-header">
           <h2>Messages</h2>
@@ -21,7 +20,7 @@
         </div>
 
         <div class="groups-list">
-          <div v-if="loadingGroups" class="loading-state">
+          <div v-if="loadingGroups && groups.length === 0" class="loading-state">
             Loading chats...
           </div>
           <div v-else-if="filteredGroups.length === 0" class="empty-state">
@@ -57,7 +56,6 @@
       </div>
 
       <!-- Chat area -->
-      <!-- Added class logic to show chat on mobile only when selected -->
       <div class="chat-area" :class="{ 'mobile-visible': selectedGroup }">
         <!-- State 1: No Group Selected (Desktop Only) -->
         <div v-if="!selectedGroup" class="no-chat-selected">
@@ -69,7 +67,7 @@
 
         <!-- State 2: Group Selected -->
         <div v-else class="chat-content">
-          <!-- Chat header -->
+          <!-- Chat header (Fixed Top) -->
           <div class="chat-header">
             <div class="chat-header-left">
               <!-- Back Button (Mobile Only) -->
@@ -82,13 +80,18 @@
               </div>
             </div>
             <div class="chat-header-actions">
-              <button @click="showGroupDetails = true" class="btn-icon" title="Group Details">ℹ️</button>
+              <button @click="openAddMemberModal" class="btn-icon" title="Add Members">
+                👥
+              </button>
+              <button @click="showGroupDetails = true" class="btn-icon" title="Group Details">
+                ℹ️
+              </button>
             </div>
           </div>
 
-          <!-- Messages area -->
+          <!-- Messages area (Scrollable Middle) -->
           <div ref="messagesContainer" class="messages-container">
-            <div v-if="loadingMessages" class="loading">Loading messages...</div>
+            <div v-if="loadingMessages && messages.length === 0" class="loading">Loading messages...</div>
             <div v-else-if="messages.length === 0" class="empty-messages">
               <p>No messages here yet. Be the first to write!</p>
             </div>
@@ -140,7 +143,7 @@
             </div>
           </div>
 
-          <!-- Message input area -->
+          <!-- Message input area (Fixed Bottom) -->
           <div class="message-input-area">
             <div v-if="selectedFile" class="selected-file-preview">
               <span class="file-name">📎 {{ selectedFile.name }}</span>
@@ -190,6 +193,7 @@
       </div>
     </div>
 
+    <!-- Modals (Unchanged) -->
     <!-- New Group Modal -->
     <div v-if="showNewGroupModal" class="modal-overlay" @click.self="showNewGroupModal = false">
       <div class="modal" @click.stop>
@@ -259,11 +263,127 @@
         </div>
       </div>
     </div>
+
+    <!-- Add Member Modal -->
+    <div v-if="showAddMemberModal" class="modal-overlay" @click.self="showAddMemberModal = false">
+      <div class="modal" @click.stop>
+        <div class="modal-header">
+          <h3>Add Members to {{ selectedGroup?.name }}</h3>
+          <button @click="showAddMemberModal = false" class="btn-close">✕</button>
+        </div>
+        
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Search Users</label>
+            <input 
+              v-model="addMemberSearch" 
+              type="text" 
+              placeholder="Search users to add..."
+              @input="searchUsersForAdding"
+            />
+            <div class="user-list">
+              <div v-if="addMemberFilteredUsers.length === 0" class="no-users">
+                No users found
+              </div>
+              <div 
+                v-else
+                v-for="user in addMemberFilteredUsers" 
+                :key="user.id"
+                @click="toggleAddMemberSelection(user)"
+                :class="['user-item', { selected: selectedAddMemberIds.includes(user.id), disabled: isExistingMember(user.id) }]"
+              >
+                <div class="user-item-info">
+                  <span class="user-name">{{ user.name }}</span>
+                  <span class="user-email">{{ user.email }}</span>
+                  <span v-if="isExistingMember(user.id)" class="existing-member-badge">Already a member</span>
+                </div>
+                <div class="user-checkbox">
+                  <span v-if="selectedAddMemberIds.includes(user.id)">☑️</span>
+                  <span v-else-if="isExistingMember(user.id)">✓</span>
+                  <span v-else>⬜</span>
+                </div>
+              </div>
+            </div>
+            <div class="selection-summary" v-if="selectedAddMemberIds.length > 0">
+              {{ selectedAddMemberIds.length }} user(s) selected to add
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button @click="showAddMemberModal = false" class="btn-cancel">Cancel</button>
+          <button 
+            @click="addMembersToGroup" 
+            class="btn-primary" 
+            :disabled="selectedAddMemberIds.length === 0 || addingMembers">
+            <span v-if="addingMembers">Adding...</span>
+            <span v-else>Add Members</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Group Details Modal -->
+    <div v-if="showGroupDetails" class="modal-overlay" @click.self="showGroupDetails = false">
+      <div class="modal" @click.stop>
+        <div class="modal-header">
+          <h3>Group Details</h3>
+          <button @click="showGroupDetails = false" class="btn-close">✕</button>
+        </div>
+        
+        <div class="modal-body">
+          <div v-if="loadingGroupDetails" class="loading">Loading group details...</div>
+          <div v-else-if="groupDetails">
+            <div class="form-group">
+              <label>Group Name</label>
+              <p class="detail-value">{{ groupDetails.name }}</p>
+            </div>
+            
+            <div class="form-group">
+              <label>Group Type</label>
+              <p class="detail-value">{{ groupDetails.type }}</p>
+            </div>
+            
+            <div class="form-group">
+              <label>Created</label>
+              <p class="detail-value">{{ formatDate(groupDetails.created_at) }}</p>
+            </div>
+            
+            <div class="form-group">
+              <label>Members ({{ groupDetails.members?.length || 0 }})</label>
+              <div class="members-list">
+                <div v-if="!groupDetails.members || groupDetails.members.length === 0" class="no-members">
+                  No members found
+                </div>
+                <div 
+                  v-else
+                  v-for="member in groupDetails.members" 
+                  :key="member.id"
+                  class="member-item"
+                >
+                  <div class="member-avatar">
+                    {{ member.name?.charAt(0).toUpperCase() || 'U' }}
+                  </div>
+                  <div class="member-info">
+                    <span class="member-name">{{ member.name }}</span>
+                    <span class="member-email">{{ member.email }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="modal-footer">
+          <button @click="showGroupDetails = false" class="btn-primary">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import axios from 'axios'
 import { format } from 'date-fns'
 
@@ -281,15 +401,25 @@ const newMessage = ref('')
 const searchQuery = ref('')
 const selectedFile = ref(null)
 const messagesContainer = ref(null)
+const refreshInterval = ref(null)
 
 // New group modal data
 const showNewGroupModal = ref(false)
 const showGroupDetails = ref(false)
-const newGroupName = ref('') 
+const newGroupName = ref('')
 const newGroupType = ref('')
 const userSearch = ref('')
 const availableUsers = ref([])
 const selectedUserIds = ref([])
+
+// Add member modal data
+const showAddMemberModal = ref(false)
+const addMemberSearch = ref('')
+const addMemberAvailableUsers = ref([])
+const selectedAddMemberIds = ref([])
+const addingMembers = ref(false)
+const groupDetails = ref(null)
+const loadingGroupDetails = ref(false)
 
 // Computed
 const filteredGroups = computed(() => {
@@ -307,6 +437,16 @@ const filteredUsers = computed(() => {
   
   const query = userSearch.value.toLowerCase()
   return availableUsers.value.filter(user => 
+    user.name.toLowerCase().includes(query) ||
+    user.email.toLowerCase().includes(query)
+  )
+})
+
+const addMemberFilteredUsers = computed(() => {
+  if (!addMemberSearch.value) return addMemberAvailableUsers.value
+  
+  const query = addMemberSearch.value.toLowerCase()
+  return addMemberAvailableUsers.value.filter(user => 
     user.name.toLowerCase().includes(query) ||
     user.email.toLowerCase().includes(query)
   )
@@ -334,6 +474,16 @@ function formatMessageTime(timestamp) {
   }
 }
 
+function formatDate(timestamp) {
+  if (!timestamp) return ''
+  try {
+    const date = new Date(timestamp)
+    return format(date, 'MMM dd, yyyy hh:mm a')
+  } catch (e) {
+    return timestamp
+  }
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -342,39 +492,55 @@ function scrollToBottom() {
   })
 }
 
+function isExistingMember(userId) {
+  if (!groupDetails.value || !groupDetails.value.members) return false
+  return groupDetails.value.members.some(member => member.id === userId)
+}
+
 // API Methods
-async function fetchGroups() {
-  loadingGroups.value = true
+async function fetchGroups(isBackground = false) {
+  if (!isBackground) loadingGroups.value = true
+  
   try {
     const response = await axios.get('/api/chat/groups')
     if (response.data.success) {
       groups.value = response.data.groups || []
-    } else {
-      console.error('Failed to fetch groups:', response.data.message)
     }
   } catch (err) {
-    console.error('Failed to fetch groups:', err.response?.data || err.message)
+    console.error('Failed to fetch groups:', err)
   } finally {
-    loadingGroups.value = false
+    if (!isBackground) loadingGroups.value = false
   }
 }
 
-async function fetchMessages() {
+async function fetchMessages(isBackground = false) {
   if (!selectedGroup.value) return
   
-  loadingMessages.value = true
+  if (!isBackground) loadingMessages.value = true
+  
   try {
     const response = await axios.get(`/api/chat/groups/${selectedGroup.value.id}/messages`)
     if (response.data.success) {
-      messages.value = response.data.messages || []
-      scrollToBottom()
-    } else {
-      console.error('Failed to fetch messages:', response.data.message)
+      const newMessages = response.data.messages || []
+      
+      const container = messagesContainer.value
+      let isNearBottom = true
+      
+      if (container) {
+        const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+        isNearBottom = distanceToBottom < 100
+      }
+
+      messages.value = newMessages
+      
+      if (!isBackground || isNearBottom) {
+        scrollToBottom()
+      }
     }
   } catch (err) {
-    console.error('Failed to fetch messages:', err.response?.data || err.message)
+    console.error('Failed to fetch messages:', err)
   } finally {
-    loadingMessages.value = false
+    if (!isBackground) loadingMessages.value = false
   }
 }
 
@@ -405,30 +571,15 @@ async function sendMessage() {
     )
     
     if (response.data.success) {
-      const newMsg = response.data.message || response.data.data
-      if (newMsg) {
-        messages.value.push(newMsg)
-      }
-      
       newMessage.value = ''
       selectedFile.value = null
-      
-      await fetchMessages()
+      await fetchMessages(false) 
     } else {
       alert('Failed to send message: ' + response.data.message)
     }
   } catch (err) {
-    console.error('Failed to send message:', err.response?.data || err.message)
-    if (err.response?.status === 422) {
-      const errors = err.response.data.errors
-      let errorMessage = "Validation errors:\n"
-      for (const key in errors) {
-        errorMessage += `${key}: ${errors[key][0]}\n`
-      }
-      alert(errorMessage)
-    } else {
-      alert('Failed to send message: ' + (err.response?.data?.message || err.message))
-    }
+    console.error('Failed to send message:', err)
+    alert('Failed to send message.')
   } finally {
     sending.value = false
   }
@@ -436,7 +587,7 @@ async function sendMessage() {
 
 async function selectGroup(group) {
   selectedGroup.value = group
-  await fetchMessages()
+  await fetchMessages(false)
   
   if (group.unread_count > 0) {
     try {
@@ -446,14 +597,12 @@ async function selectGroup(group) {
       console.error('Failed to mark as read:', err)
     }
   }
-  fetchGroups()
+  fetchGroups(true)
 }
 
-// Mobile specific: Deselect group to return to list view
 function deselectGroup() {
   selectedGroup.value = null
-  // Refresh groups to see updated last messages/status
-  fetchGroups() 
+  fetchGroups(false)
 }
 
 function handleFileSelect(event) {
@@ -465,7 +614,7 @@ function handleFileSelect(event) {
     }
     selectedFile.value = file
   }
-  event.target.value = null 
+  event.target.value = null
 }
 
 async function fetchAvailableUsers() {
@@ -479,12 +628,37 @@ async function fetchAvailableUsers() {
   }
 }
 
+async function fetchUsersForAdding() {
+  try {
+    const response = await axios.get('/api/chat/available-users')
+    if (response.data.success) {
+      addMemberAvailableUsers.value = response.data.users || []
+    }
+  } catch (err) {
+    console.error('Failed to fetch users for adding:', err)
+  }
+}
+
+function searchUsers() {}
+function searchUsersForAdding() {}
+
 function toggleUserSelection(user) {
   const index = selectedUserIds.value.indexOf(user.id)
   if (index > -1) {
     selectedUserIds.value.splice(index, 1)
   } else {
     selectedUserIds.value.push(user.id)
+  }
+}
+
+function toggleAddMemberSelection(user) {
+  if (isExistingMember(user.id)) return
+  
+  const index = selectedAddMemberIds.value.indexOf(user.id)
+  if (index > -1) {
+    selectedAddMemberIds.value.splice(index, 1)
+  } else {
+    selectedAddMemberIds.value.push(user.id)
   }
 }
 
@@ -501,60 +675,115 @@ async function createGroup() {
     if (response.data.success) {
       const newGroup = response.data.group
       groups.value.unshift(newGroup)
-      
       showNewGroupModal.value = false
       newGroupName.value = ''
       newGroupType.value = ''
       selectedUserIds.value = []
       userSearch.value = ''
-      
       await selectGroup(newGroup)
-    } else {
-      alert('Failed to create group: ' + response.data.message)
     }
   } catch (err) {
     console.error('Failed to create group:', err)
-    alert('Failed to create group: ' + (err.response?.data?.message || err.message))
+  }
+}
+
+async function openAddMemberModal() {
+  if (!selectedGroup.value) return
+  showAddMemberModal.value = true
+  addMemberSearch.value = ''
+  selectedAddMemberIds.value = []
+  await Promise.all([fetchUsersForAdding(), fetchGroupDetails()])
+}
+
+async function fetchGroupDetails() {
+  if (!selectedGroup.value) return
+  loadingGroupDetails.value = true
+  try {
+    const response = await axios.get(`/api/chat/groups/${selectedGroup.value.id}/details`)
+    if (response.data.success) {
+      groupDetails.value = response.data.group
+    }
+  } catch (err) {
+    console.error('Failed to fetch group details:', err)
+  } finally {
+    loadingGroupDetails.value = false
+  }
+}
+
+async function addMembersToGroup() {
+  if (!selectedGroup.value || selectedAddMemberIds.value.length === 0 || addingMembers.value) return
+  addingMembers.value = true
+  try {
+    const response = await axios.post(`/api/chat/groups/${selectedGroup.value.id}/add-members`, {
+      member_ids: selectedAddMemberIds.value
+    })
+    if (response.data.success) {
+      await fetchGroupDetails()
+      const groupIndex = groups.value.findIndex(g => g.id === selectedGroup.value.id)
+      if (groupIndex !== -1) {
+        groups.value[groupIndex].member_count = (groups.value[groupIndex].member_count || 0) + selectedAddMemberIds.value.length
+        selectedGroup.value.member_count = groups.value[groupIndex].member_count
+      }
+      selectedAddMemberIds.value = []
+      showAddMemberModal.value = false
+      alert('Members added successfully!')
+    }
+  } catch (err) {
+    console.error('Failed to add members:', err)
+  } finally {
+    addingMembers.value = false
   }
 }
 
 // Lifecycle
 onMounted(async () => {
-  await fetchGroups()
+  await fetchGroups(false)
   await fetchAvailableUsers()
   
-  setInterval(async () => {
+  refreshInterval.value = setInterval(async () => {
     if (selectedGroup.value) {
-      await fetchMessages()
+      await fetchMessages(true)
     }
-    await fetchGroups()
+    await fetchGroups(true)
   }, 5000)
 })
 
-watch(showNewGroupModal, (newVal) => {
-  if (newVal) {
-    fetchAvailableUsers()
+onUnmounted(() => {
+  if (refreshInterval.value) {
+    clearInterval(refreshInterval.value)
   }
+})
+
+watch(showNewGroupModal, (newVal) => {
+  if (newVal) fetchAvailableUsers()
+})
+
+watch(showGroupDetails, (newVal) => {
+  if (newVal && selectedGroup.value) fetchGroupDetails()
 })
 </script>
 
 <style scoped>
-/* Main Layout */
+/* Main Layout - Fixed Height for Mobile/Desktop */
 .chat-interface {
-  height: calc(100vh - 60px);
+  height: calc(100vh - 60px); /* Adjust 60px if your top navbar is different */
   background: #f5f7fb;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-container {
   display: flex;
-  height: 100%;
-  max-width: 100%;
+  flex: 1;
+  width: 100%;
+  height: 100%; /* Force full height */
   margin: 0;
   background: white;
   box-shadow: 0 0 15px rgba(0,0,0,0.05);
-  position: relative; /* Essential for mobile transitions */
+  position: relative;
+  overflow: hidden;
 }
 
 /* Sidebar */
@@ -566,6 +795,7 @@ watch(showNewGroupModal, (newVal) => {
   background: #fff;
   z-index: 2;
   transition: transform 0.3s ease;
+  height: 100%; /* Ensure full height */
 }
 
 .sidebar-header {
@@ -575,6 +805,7 @@ watch(showNewGroupModal, (newVal) => {
   justify-content: space-between;
   align-items: center;
   background: #f8f9fa;
+  flex-shrink: 0;
 }
 
 .sidebar-header h2 {
@@ -605,6 +836,7 @@ watch(showNewGroupModal, (newVal) => {
 .search-box {
   padding: 1rem;
   border-bottom: 1px solid #f0f0f0;
+  flex-shrink: 0;
 }
 
 .search-input {
@@ -626,6 +858,13 @@ watch(showNewGroupModal, (newVal) => {
 .groups-list {
   flex: 1;
   overflow-y: auto;
+}
+
+.loading-state, .empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.9rem;
 }
 
 .group-item {
@@ -721,6 +960,7 @@ watch(showNewGroupModal, (newVal) => {
   position: relative;
   overflow: hidden;
   background: white;
+  height: 100%;
 }
 
 .no-chat-selected {
@@ -737,12 +977,17 @@ watch(showNewGroupModal, (newVal) => {
   padding: 1rem;
 }
 
+/* 
+  VITAL FIX: Ensure chat-content is a column flex 
+  and explicitly consumes 100% height to force children layout 
+*/
 .chat-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 .chat-header {
@@ -753,6 +998,7 @@ watch(showNewGroupModal, (newVal) => {
   align-items: center;
   background: white;
   z-index: 10;
+  flex-shrink: 0; /* Never shrink header */
 }
 
 .chat-header-left {
@@ -762,7 +1008,7 @@ watch(showNewGroupModal, (newVal) => {
 }
 
 .btn-back {
-  display: none; /* Hidden by default (desktop) */
+  display: none;
   background: none;
   border: none;
   font-size: 1.5rem;
@@ -771,13 +1017,13 @@ watch(showNewGroupModal, (newVal) => {
   padding: 0 0.5rem 0 0;
 }
 
-.chat-header h3 {
+.chat-header-info h3 {
   margin: 0 0 0.2rem 0;
   font-size: 1.1rem;
   color: #1f2937;
 }
 
-.chat-header p {
+.chat-header-info p {
   margin: 0;
   font-size: 0.85rem;
   color: #6b7280;
@@ -790,13 +1036,17 @@ watch(showNewGroupModal, (newVal) => {
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 50%;
+  margin-left: 0.5rem;
 }
 
 .btn-icon:hover {
   background: #f3f4f6;
 }
 
-/* Messages Area */
+/* 
+  VITAL FIX: Messages Area 
+  Must use min-height: 0 to allow scrolling inside flex container
+*/
 .messages-container {
   flex: 1;
   overflow-y: auto;
@@ -805,6 +1055,14 @@ watch(showNewGroupModal, (newVal) => {
   flex-direction: column;
   gap: 1rem;
   background: #fff;
+  scroll-behavior: smooth;
+  min-height: 0; 
+}
+
+.loading {
+  text-align: center;
+  color: #6b7280;
+  padding: 1rem;
 }
 
 .empty-messages {
@@ -903,14 +1161,19 @@ watch(showNewGroupModal, (newVal) => {
   text-align: right;
 }
 
-/* Input Area */
+/* 
+  VITAL FIX: Input Area 
+  Remove sticky positioning. Let it sit naturally at the bottom 
+  of the flex column.
+*/
 .message-input-area {
   padding: 1rem 1.5rem;
   background: white;
   border-top: 1px solid #e1e4e8;
-  position: sticky;
-  bottom: 0;
   z-index: 20;
+  flex-shrink: 0; /* Prevent collapsing */
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .selected-file-preview {
@@ -1072,6 +1335,15 @@ watch(showNewGroupModal, (newVal) => {
   box-sizing: border-box;
 }
 
+.detail-value {
+  padding: 0.6rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin: 0;
+  font-size: 0.95rem;
+  color: #374151;
+}
+
 .user-list {
   margin-top: 0.5rem;
   max-height: 180px;
@@ -1089,7 +1361,7 @@ watch(showNewGroupModal, (newVal) => {
   border-bottom: 1px solid #f9fafb;
 }
 
-.user-item:hover {
+.user-item:hover:not(.disabled) {
   background: #f9fafb;
 }
 
@@ -1097,9 +1369,16 @@ watch(showNewGroupModal, (newVal) => {
   background: #eff6ff;
 }
 
+.user-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f9fafb;
+}
+
 .user-item-info {
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .user-name {
@@ -1108,6 +1387,75 @@ watch(showNewGroupModal, (newVal) => {
 }
 
 .user-email {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.existing-member-badge {
+  font-size: 0.7rem;
+  color: #059669;
+  background: #d1fae5;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-top: 0.2rem;
+  display: inline-block;
+}
+
+.selection-summary {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #f0f9ff;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #0369a1;
+  text-align: center;
+}
+
+.members-list {
+  margin-top: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.member-item {
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-bottom: 1px solid #f9fafb;
+}
+
+.member-item:last-child {
+  border-bottom: none;
+}
+
+.member-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #4b5563;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.member-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.member-name {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+.member-email {
   font-size: 0.8rem;
   color: #6b7280;
 }
@@ -1149,13 +1497,11 @@ watch(showNewGroupModal, (newVal) => {
 /* MOBILE RESPONSIVE STYLES                  */
 /* ========================================= */
 @media (max-width: 768px) {
-  /* Layout: Stack sidebar and chat area on top of each other */
   .chat-container {
     flex-direction: column;
     overflow: hidden;
   }
 
-  /* Make both full width/height by default */
   .chat-sidebar, .chat-area {
     width: 100%;
     height: 100%;
@@ -1165,23 +1511,19 @@ watch(showNewGroupModal, (newVal) => {
     background: white;
   }
 
-  /* Sidebar Logic */
   .chat-sidebar {
     z-index: 10;
     display: flex;
-    /* Hide sidebar when a chat is open */
     transform: translateX(0);
   }
   
   .chat-sidebar.mobile-hidden {
     transform: translateX(-100%);
-    pointer-events: none; /* Prevent clicks when hidden */
+    pointer-events: none;
   }
 
-  /* Chat Area Logic */
   .chat-area {
     z-index: 20;
-    /* Hide chat area by default, slide in when active */
     transform: translateX(100%);
     transition: transform 0.3s ease;
   }
@@ -1190,17 +1532,14 @@ watch(showNewGroupModal, (newVal) => {
     transform: translateX(0);
   }
   
-  /* Show Back Button on Mobile */
   .btn-back.mobile-only {
     display: block;
   }
 
-  /* Hide "Select a conversation" placeholder on mobile since we start at list */
   .no-chat-selected {
     display: none;
   }
 
-  /* Compact header on mobile */
   .chat-header {
     padding: 0.75rem 1rem;
   }
@@ -1209,17 +1548,14 @@ watch(showNewGroupModal, (newVal) => {
     padding: 1rem;
   }
 
-  /* Hide desktop text in buttons if needed */
   .desktop-only {
     display: none;
   }
   
-  /* Input Area adjustments */
   .message-input-area {
     padding: 0.75rem;
   }
 
-  /* Modal adjustments */
   .modal {
     width: 95%;
     max-height: 90vh;

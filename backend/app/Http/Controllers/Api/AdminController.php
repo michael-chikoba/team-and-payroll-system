@@ -78,6 +78,16 @@ class AdminController extends Controller
     {
     }
 
+    public function getLoginAudits(Request $request)
+{
+    $logs = DB::table('login_audits')
+        ->join('users', 'login_audits.user_id', '=', 'users.id')
+        ->select('login_audits.*', 'users.first_name', 'users.last_name', 'users.email')
+        ->orderBy('login_audits.login_at', 'desc')
+        ->paginate(20);
+
+    return response()->json($logs);
+}
    public function systemStats(Request $request): JsonResponse
 {
     $currentUser = $request->user();

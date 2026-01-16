@@ -1,4 +1,3 @@
-
 @component('mail::message')
 # Ticket Approval Request
 
@@ -12,7 +11,7 @@ A new ticket requires your approval.
 **Description:**  
 {{ $ticket->description }}
 
-@component('mail::button', ['url' => $url])
+@component('mail::button', ['url' => 'https://archangel.darth.cloud/admin/tickets'])
 Review Ticket
 @endcomponent
 

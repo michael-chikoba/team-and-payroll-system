@@ -60,7 +60,7 @@
           <span class="link-text">Assign Shifts</span>
         </router-link>
         
-        <!-- Add Chat Navigation Link -->
+        <!-- Chat Navigation Link -->
         <a href="#" class="nav-link" @click.prevent="openChatModal" :class="{ 'active': showChatModal }">
           <span class="link-icon">💬</span>
           <span class="link-text">Chat</span>
@@ -77,7 +77,7 @@
       <header class="top-bar">
         <h2 class="page-title">Manager Dashboard</h2>
         
-        <!-- Quick Action Buttons including Chat Button -->
+        <!-- Quick Action Buttons -->
         <div class="quick-actions">
           <button 
             @click="openChatModal" 
@@ -89,15 +89,8 @@
             <span v-if="unreadCount > 0 && !showChatModal" class="notification-badge">{{ unreadCount }}</span>
           </button>
           
-          <button 
-            @click="openNotifications" 
-            class="quick-action-button"
-            title="Notifications"
-          >
-            <span class="quick-action-icon">🔔</span>
-            <span class="quick-action-text">Notifications</span>
-            <span class="notification-badge">5</span>
-          </button>
+          <!-- Notification Bell Button -->
+          <NotificationBell />
         </div>
         
         <!-- Profile Dropdown -->
@@ -149,7 +142,7 @@
         <!-- Chat Modal -->
         <transition name="modal">
           <div v-if="showChatModal" class="modal-overlay" @click.self="closeChatModal">
-            <div class="modal-container">
+            <div class="modal-container chat-modal-container">
               <div class="modal-header">
                 <h3>💬 Team Chat</h3>
                 <button @click="closeChatModal" class="modal-close-btn" title="Close Chat">×</button>
@@ -158,13 +151,7 @@
                 <ChatInterface 
                   ref="chatInterface"
                   @unread-count="updateUnreadCount"
-                  :key="chatKey"
                 />
-              </div>
-              <div class="modal-footer">
-                <button @click="closeChatModal" class="btn-secondary">
-                  Close Chat
-                </button>
               </div>
             </div>
           </div>
@@ -179,13 +166,15 @@ import { defineComponent, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AttendanceToggle from '../components/common/Toggle.vue'
 import ChatInterface from '@/components/ChatInterface.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 import { useAuthStore } from '../stores/auth'
 
 export default defineComponent({
   name: 'ManagerLayout',
   components: {
     AttendanceToggle,
-    ChatInterface
+    ChatInterface,
+    NotificationBell
   },
   setup() {
     const router = useRouter()
@@ -195,7 +184,6 @@ export default defineComponent({
     const showChatModal = ref(false)
     const unreadCount = ref(0)
     const chatInterface = ref(null)
-    const chatKey = ref(0)
     
     const toggleProfileDropdown = () => {
       showProfileDropdown.value = !showProfileDropdown.value
@@ -220,10 +208,7 @@ export default defineComponent({
     const openChatModal = () => {
       showChatModal.value = true
       closeProfileDropdown()
-      // Reset unread count when opening chat
       unreadCount.value = 0
-      // Force re-render chat interface to ensure fresh state
-      chatKey.value++
     }
     
     const closeChatModal = () => {
@@ -234,11 +219,6 @@ export default defineComponent({
       if (!showChatModal.value) {
         unreadCount.value = count
       }
-    }
-    
-    const openNotifications = () => {
-      // Implement notification functionality
-      alert('Notifications feature coming soon!')
     }
     
     const getInitials = () => {
@@ -284,14 +264,12 @@ export default defineComponent({
       showChatModal,
       unreadCount,
       chatInterface,
-      chatKey,
       toggleProfileDropdown,
       closeProfileDropdown,
       handleLogout,
       openChatModal,
       closeChatModal,
       updateUnreadCount,
-      openNotifications,
       getInitials,
       authStore
     }
@@ -352,9 +330,7 @@ export default defineComponent({
   flex-shrink: 0;
 }
 
-.logo-icon {
-  font-size: 1.8rem;
-}
+.logo-icon { font-size: 1.8rem; }
 
 .title {
   margin: 0;
@@ -379,14 +355,8 @@ export default defineComponent({
   padding-right: 5px;
 }
 
-.nav::-webkit-scrollbar {
-  width: 4px;
-}
-
-.nav::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-
+.nav::-webkit-scrollbar { width: 4px; }
+.nav::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); }
 .nav::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 4px;
@@ -408,9 +378,7 @@ export default defineComponent({
   position: relative;
 }
 
-.nav-link:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
+.nav-link:hover { background-color: rgba(255, 255, 255, 0.1); }
 
 .nav-link.active {
   background-color: var(--primary-color);
@@ -419,10 +387,7 @@ export default defineComponent({
   font-weight: 600;
 }
 
-.nav-link.active .link-icon {
-  color: white;
-}
-
+.nav-link.active .link-icon { color: white; }
 .link-icon {
   font-size: 1.1rem;
   color: var(--sidebar-text-color);
@@ -430,7 +395,6 @@ export default defineComponent({
   text-align: center;
 }
 
-/* Navigation badge */
 .nav-badge {
   position: absolute;
   right: 10px;
@@ -449,10 +413,7 @@ export default defineComponent({
   animation: pulse 1.5s infinite;
 }
 
-.sidebar-footer {
-  padding-top: 1rem;
-  flex-shrink: 0;
-}
+.sidebar-footer { padding-top: 1rem; flex-shrink: 0; }
 
 /* CONTENT AREA */
 .content-area {
@@ -487,11 +448,7 @@ export default defineComponent({
   flex: 1;
 }
 
-.quick-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
+.quick-actions { display: flex; gap: 10px; align-items: center; }
 
 .quick-action-button {
   display: flex;
@@ -515,13 +472,8 @@ export default defineComponent({
   color: var(--primary-color);
 }
 
-.quick-action-icon {
-  font-size: 1rem;
-}
-
-.quick-action-text {
-  white-space: nowrap;
-}
+.quick-action-icon { font-size: 1rem; }
+.quick-action-text { white-space: nowrap; }
 
 .notification-badge {
   position: absolute;
@@ -549,10 +501,7 @@ export default defineComponent({
 }
 
 /* PROFILE DROPDOWN */
-.profile-dropdown {
-  position: relative;
-  display: inline-block;
-}
+.profile-dropdown { position: relative; display: inline-block; }
 
 .profile-trigger {
   display: flex;
@@ -567,9 +516,7 @@ export default defineComponent({
   transition: background-color 0.2s;
 }
 
-.profile-trigger:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
+.profile-trigger:hover { background-color: rgba(0, 0, 0, 0.05); }
 
 .profile-dropdown-menu {
   position: absolute;
@@ -601,20 +548,9 @@ export default defineComponent({
   font-size: 0.95rem;
 }
 
-.dropdown-item:hover {
-  background-color: rgba(0, 123, 255, 0.1);
-}
-
-.dropdown-divider {
-  height: 1px;
-  background-color: var(--border-color);
-  margin: 0.25rem 0;
-}
-
-.logout-dropdown-item:hover {
-  background-color: rgba(220, 53, 69, 0.1);
-  color: var(--danger-color);
-}
+.dropdown-item:hover { background-color: rgba(0, 123, 255, 0.1); }
+.dropdown-divider { height: 1px; background-color: var(--border-color); margin: 0.25rem 0; }
+.logout-dropdown-item:hover { background-color: rgba(220, 53, 69, 0.1); color: var(--danger-color); }
 
 .user-avatar {
   width: 35px;
@@ -629,16 +565,8 @@ export default defineComponent({
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: all 0.2s ease;
-}
-
-.dropdown-enter-from,
-.dropdown-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
+.dropdown-enter-active, .dropdown-leave-active { transition: all 0.2s ease; }
+.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-10px); }
 
 /* MODAL STYLES */
 .modal-overlay {
@@ -660,10 +588,11 @@ export default defineComponent({
   border-radius: 16px;
   width: 90%;
   max-width: 900px;
-  max-height: 90vh;
+  height: 80vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--chat-shadow);
+  overflow: hidden;
 }
 
 .modal-header {
@@ -673,7 +602,7 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-radius: 16px 16px 0 0;
+  flex-shrink: 0;
 }
 
 .modal-header h3 {
@@ -700,187 +629,62 @@ export default defineComponent({
   transition: background 0.2s;
 }
 
-.modal-close-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
+.modal-close-btn:hover { background: rgba(255, 255, 255, 0.3); }
 
 .modal-content {
   padding: 0;
-  overflow: hidden;
-  flex: 1;
-  min-height: 500px;
-}
-
-.modal-footer {
-  padding: 1.5rem 2rem;
-  border-top: 1px solid var(--border-color);
   display: flex;
-  justify-content: flex-end;
-  gap: 12px;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }
 
-.btn-secondary {
-  background-color: #f8f9fa;
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  background-color: #e9ecef;
-}
-
-/* Style the ChatInterface component */
 .modal-content :deep(.chat-interface) {
   height: 100%;
   width: 100%;
-}
-
-.modal-content :deep(.chat-container) {
-  height: 100%;
-  width: 100%;
-  border-radius: 0;
-  border: none;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Modal Transitions */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity 0.3s ease;
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-active .modal-container,
-.modal-leave-active .modal-container {
-  transition: transform 0.3s ease;
-}
-
-.modal-enter-from .modal-container,
-.modal-leave-to .modal-container {
-  transform: scale(0.95);
-}
+.modal-enter-active, .modal-leave-active { transition: opacity 0.3s ease; }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-active .modal-container, .modal-leave-active .modal-container { transition: transform 0.3s ease; }
+.modal-enter-from .modal-container, .modal-leave-to .modal-container { transform: scale(0.95); }
 
 @keyframes pulse {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
-  }
-  70% {
-    transform: scale(1.1);
-    box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
-  }
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
-  }
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
 }
 
 /* RESPONSIVE DESIGN */
 @media (max-width: 1024px) {
-  .modal-container {
-    width: 95%;
-    max-width: 95%;
-  }
+  .modal-container { width: 95%; max-width: 95%; }
 }
 
 @media (max-width: 768px) {
-  .sidebar {
-    width: 70px;
-    padding: 1rem 0.5rem;
-  }
-  
-  .title, .user-name, .link-text, .quick-action-text {
-    display: none;
-  }
-  
-  .logo-section {
-    justify-content: center;
-  }
-  
-  .nav-link {
-    justify-content: center;
-    padding: 0.75rem;
-  }
-
-  .nav-link .link-text {
-    display: none;
-  }
-  
-  .nav-badge {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    transform: none;
-  }
-  
-  .main {
-    padding: 1.5rem;
-  }
-  
-  .top-bar {
-    padding: 1rem 1.5rem;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  
-  .page-title {
-    font-size: 1.5rem;
-    order: 1;
-    flex: 100%;
-    margin-bottom: 10px;
-  }
-  
-  .quick-actions {
-    order: 2;
-  }
-  
-  .profile-dropdown {
-    order: 3;
-  }
-  
-  .modal-container {
-    width: 100%;
-    height: 100%;
-    max-height: 100%;
-    border-radius: 0;
-    margin: 0;
-  }
-  
-  .modal-header {
-    border-radius: 0;
-  }
-  
-  .notification-badge {
-    min-width: 18px;
-    height: 18px;
-    font-size: 0.65rem;
-  }
+  .sidebar { width: 70px; padding: 1rem 0.5rem; }
+  .title, .user-name, .link-text, .quick-action-text { display: none; }
+  .logo-section { justify-content: center; }
+  .nav-link { justify-content: center; padding: 0.75rem; }
+  .nav-link .link-text { display: none; }
+  .nav-badge { position: absolute; top: 5px; right: 5px; transform: none; }
+  .main { padding: 1.5rem; }
+  .top-bar { padding: 1rem 1.5rem; flex-wrap: wrap; gap: 10px; }
+  .page-title { font-size: 1.5rem; order: 1; flex: 100%; margin-bottom: 10px; }
+  .quick-actions { order: 2; }
+  .profile-dropdown { order: 3; }
+  .modal-container { width: 100%; height: 100%; max-height: 100%; border-radius: 0; margin: 0; }
+  .modal-header { border-radius: 0; }
+  .notification-badge { min-width: 18px; height: 18px; font-size: 0.65rem; }
 }
 
 @media (max-width: 480px) {
-  .top-bar {
-    padding: 1rem;
-  }
-  
-  .main {
-    padding: 1rem;
-  }
-  
-  .quick-action-button {
-    padding: 6px 12px;
-  }
-  
-  .modal-container {
-    width: 100%;
-    height: 100%;
-  }
+  .top-bar { padding: 1rem; }
+  .main { padding: 1rem; }
+  .quick-action-button { padding: 6px 12px; }
+  .modal-container { width: 100%; height: 100%; }
 }
 </style>

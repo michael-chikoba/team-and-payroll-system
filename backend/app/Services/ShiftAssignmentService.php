@@ -6,6 +6,7 @@ use App\Models\ShiftAssignment;
 use App\Models\Employee;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class ShiftAssignmentService
 {
@@ -14,6 +15,19 @@ class ShiftAssignmentService
     public function __construct(LeaveBalanceService $leaveBalanceService)
     {
         $this->leaveBalanceService = $leaveBalanceService;
+    }
+
+    /**
+     * Normalize time format to H:i:s
+     */
+    private function normalizeTime(string $time): string
+    {
+        // If time is in H:i format, add seconds
+        if (strlen($time) === 5 && substr_count($time, ':') === 1) {
+            return $time . ':00';
+        }
+        // If already in H:i:s format, return as is
+        return $time;
     }
 
     /**
@@ -60,8 +74,14 @@ class ShiftAssignmentService
     {
         Log::info('Attempting to assign shift', [
             'employee_id' => $data['employee_id'],
-            'date' => $data['shift_date']
+            'date' => $data['shift_date'],
+            'start_time' => $data['start_time'],
+            'end_time' => $data['end_time']
         ]);
+
+        // Normalize time formats
+        $data['start_time'] = $this->normalizeTime($data['start_time']);
+        $data['end_time'] = $this->normalizeTime($data['end_time']);
 
         // Validate assignment
         $validation = $this->validateShiftAssignment(
@@ -85,7 +105,7 @@ class ShiftAssignmentService
         try {
             $employee = $validation['employee'];
 
-            // Create shift assignment
+            // Create shift assignment with normalized times
             $shift = ShiftAssignment::create([
                 'employee_id' => $data['employee_id'],
                 'assigned_by' => $data['assigned_by'],
@@ -105,7 +125,9 @@ class ShiftAssignmentService
             Log::info('Shift assigned successfully', [
                 'shift_id' => $shift->id,
                 'employee_id' => $employee->id,
-                'date' => $shift->shift_date
+                'date' => $shift->shift_date,
+                'start_time' => $shift->start_time,
+                'end_time' => $shift->end_time
             ]);
 
             return [
@@ -119,7 +141,8 @@ class ShiftAssignmentService
             
             Log::error('Failed to assign shift', [
                 'employee_id' => $data['employee_id'],
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return [
@@ -136,8 +159,14 @@ class ShiftAssignmentService
     {
         Log::info('Bulk assigning shifts', [
             'employee_count' => count($employeeIds),
-            'date' => $shiftData['shift_date']
+            'date' => $shiftData['shift_date'],
+            'start_time' => $shiftData['start_time'],
+            'end_time' => $shiftData['end_time']
         ]);
+
+        // Normalize times
+        $shiftData['start_time'] = $this->normalizeTime($shiftData['start_time']);
+        $shiftData['end_time'] = $this->normalizeTime($shiftData['end_time']);
 
         $results = [
             'success' => [],

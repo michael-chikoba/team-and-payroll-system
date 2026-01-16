@@ -9,7 +9,7 @@
     <!-- Today's Shift Card -->
     <div v-if="todayShift" class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg shadow-lg p-6 mb-6 text-white">
       <div class="flex items-start justify-between">
-        <div>
+        <div class="flex-1">
           <p class="text-indigo-100 text-sm mb-2">Today's Shift</p>
           <h2 class="text-2xl font-bold mb-4">{{ todayShift.shift_type }} Shift</h2>
           
@@ -28,7 +28,9 @@
             <p class="text-sm">{{ todayShift.notes }}</p>
           </div>
 
-          <div class="flex items-center gap-3">
+          <!-- Attendance Status Section -->
+          <div class="flex items-center gap-3 flex-wrap">
+            <!-- Shift Status Badge -->
             <span v-if="todayShift.status === 'pending'" class="inline-flex px-3 py-1 bg-yellow-400 text-yellow-900 rounded-full text-sm font-medium">
               Pending Acceptance
             </span>
@@ -36,21 +38,66 @@
               ✓ Accepted
             </span>
             
-            <button
-              v-if="todayShift.status === 'accepted' && !todayShift.shift"
-              @click="checkInNow"
-              class="px-4 py-2 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors font-medium"
-            >
-              Check In Now
-            </button>
-            
-            <span v-if="todayShift.shift" class="inline-flex px-3 py-1 bg-blue-400 text-blue-900 rounded-full text-sm font-medium">
-              ✓ Checked In
+            <!-- Attendance Status Badge -->
+            <span v-if="attendanceStatus && attendanceStatus.status === 'present'" 
+                  class="inline-flex px-3 py-1 bg-blue-400 text-blue-900 rounded-full text-sm font-medium">
+              ✓ Checked In at {{ attendanceStatus.attendance?.clock_in }}
             </span>
+            <span v-else-if="attendanceStatus && attendanceStatus.status === 'completed'" 
+                  class="inline-flex px-3 py-1 bg-purple-400 text-purple-900 rounded-full text-sm font-medium">
+              ✓ Shift Completed
+            </span>
+            
+            <!-- Check In Button -->
+            <button
+              v-if="todayShift.status === 'accepted' && canCheckIn"
+              @click="handleCheckIn"
+              :disabled="checkingIn"
+              class="px-6 py-2 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg v-if="checkingIn" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ checkingIn ? 'Checking In...' : 'Check In Now' }}
+            </button>
+
+            <!-- Check Out Button -->
+            <button
+              v-if="todayShift.status === 'accepted' && canCheckOut"
+              @click="handleCheckOut"
+              :disabled="checkingOut"
+              class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <svg v-if="checkingOut" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {{ checkingOut ? 'Checking Out...' : 'Check Out' }}
+            </button>
+          </div>
+
+          <!-- Total Hours Display (if checked in) -->
+          <div v-if="attendanceStatus && attendanceStatus.attendance" class="mt-4 bg-white/10 backdrop-blur rounded-lg p-3">
+            <div class="grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <p class="text-indigo-100">Clock In</p>
+                <p class="font-semibold">{{ attendanceStatus.attendance.clock_in || 'N/A' }}</p>
+              </div>
+              <div>
+                <p class="text-indigo-100">Clock Out</p>
+                <p class="font-semibold">{{ attendanceStatus.attendance.clock_out || 'Working...' }}</p>
+              </div>
+              <div>
+                <p class="text-indigo-100">Total Hours</p>
+                <p class="font-semibold">{{ formatHours(attendanceStatus.attendance.total_hours) }}</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div v-if="todayShift.status === 'pending'" class="flex gap-2">
+        <!-- Accept/Reject Buttons (Only for pending shifts) -->
+        <div v-if="todayShift.status === 'pending'" class="flex gap-2 ml-4">
           <button
             @click="acceptShift(todayShift.id)"
             class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
@@ -73,6 +120,25 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
       </svg>
       <p class="text-gray-600 text-lg">No shift assigned for today</p>
+    </div>
+
+    <!-- Success/Error Messages -->
+    <div v-if="successMessage" class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg mb-6 flex items-center justify-between">
+      <span>{{ successMessage }}</span>
+      <button @click="successMessage = ''" class="text-green-700 hover:text-green-900">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <div v-if="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6 flex items-center justify-between">
+      <span>{{ errorMessage }}</span>
+      <button @click="errorMessage = ''" class="text-red-700 hover:text-red-900">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Upcoming Shifts -->
@@ -163,8 +229,7 @@
       </button>
 
       <div v-if="showPastShifts" class="space-y-4">
-        <!-- Add past shifts list here similar to upcoming -->
-        <p class="text-gray-500 text-center py-4">Past shifts will be shown here</p>
+        <p class="text-gray-500 text-center py-4">Past shifts feature coming soon</p>
       </div>
     </div>
 
@@ -212,25 +277,67 @@ import { format } from 'date-fns';
 
 const todayShift = ref(null);
 const upcomingShifts = ref([]);
+const attendanceStatus = ref(null);
 const loading = ref(false);
+const checkingIn = ref(false);
+const checkingOut = ref(false);
 const showPastShifts = ref(false);
 const showRejectDialogue = ref(false);
 const rejectionReason = ref('');
 const selectedShiftForRejection = ref(null);
+const successMessage = ref('');
+const errorMessage = ref('');
+
+// Computed properties for check-in/out buttons
+const canCheckIn = computed(() => {
+  if (!attendanceStatus.value) return true;
+  return attendanceStatus.value.status === 'absent';
+});
+
+const canCheckOut = computed(() => {
+  if (!attendanceStatus.value) return false;
+  return attendanceStatus.value.status === 'present' && attendanceStatus.value.attendance?.clock_in;
+});
+
+const getToken = () => {
+  return localStorage.getItem('token');
+};
 
 const loadTodayShift = async () => {
   try {
     const response = await fetch('/api/shift-assignments/today', {
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${getToken()}`
       }
     });
 
     const data = await response.json();
     todayShift.value = data.assignment;
+    
+    // If we have a today shift, load attendance status
+    if (todayShift.value) {
+      await loadAttendanceStatus();
+    }
   } catch (error) {
     console.error('Failed to load today shift:', error);
+    errorMessage.value = 'Failed to load today\'s shift';
+  }
+};
+
+const loadAttendanceStatus = async () => {
+  try {
+    const response = await fetch('/api/employee/attendance/today-status', {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${getToken()}`
+      }
+    });
+
+    const data = await response.json();
+    attendanceStatus.value = data;
+  } catch (error) {
+    console.error('Failed to load attendance status:', error);
   }
 };
 
@@ -240,7 +347,7 @@ const loadUpcomingShifts = async () => {
     const response = await fetch('/api/shift-assignments/my-shifts', {
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${getToken()}`
       }
     });
 
@@ -253,8 +360,81 @@ const loadUpcomingShifts = async () => {
     });
   } catch (error) {
     console.error('Failed to load upcoming shifts:', error);
+    errorMessage.value = 'Failed to load upcoming shifts';
   } finally {
     loading.value = false;
+  }
+};
+
+const handleCheckIn = async () => {
+  checkingIn.value = true;
+  errorMessage.value = '';
+  successMessage.value = '';
+
+  try {
+    const response = await fetch('/api/employee/attendance/clock-in', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getToken()}`
+      }
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      successMessage.value = data.message || 'Successfully checked in!';
+      await loadAttendanceStatus();
+      
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => {
+        successMessage.value = '';
+      }, 5000);
+    } else {
+      errorMessage.value = data.message || 'Failed to check in';
+    }
+  } catch (error) {
+    console.error('Check-in failed:', error);
+    errorMessage.value = 'An error occurred while checking in';
+  } finally {
+    checkingIn.value = false;
+  }
+};
+
+const handleCheckOut = async () => {
+  checkingOut.value = true;
+  errorMessage.value = '';
+  successMessage.value = '';
+
+  try {
+    const response = await fetch('/api/employee/attendance/clock-out', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getToken()}`
+      }
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      successMessage.value = data.message || 'Successfully checked out!';
+      await loadAttendanceStatus();
+      
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => {
+        successMessage.value = '';
+      }, 5000);
+    } else {
+      errorMessage.value = data.message || 'Failed to check out';
+    }
+  } catch (error) {
+    console.error('Check-out failed:', error);
+    errorMessage.value = 'An error occurred while checking out';
+  } finally {
+    checkingOut.value = false;
   }
 };
 
@@ -264,16 +444,22 @@ const acceptShift = async (id) => {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${getToken()}`
       }
     });
 
     if (response.ok) {
+      successMessage.value = 'Shift accepted successfully!';
       loadTodayShift();
       loadUpcomingShifts();
+      
+      setTimeout(() => {
+        successMessage.value = '';
+      }, 5000);
     }
   } catch (error) {
     console.error('Failed to accept shift:', error);
+    errorMessage.value = 'Failed to accept shift';
   }
 };
 
@@ -298,28 +484,34 @@ const submitRejection = async () => {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${getToken()}`
       },
       body: JSON.stringify({ reason: rejectionReason.value })
     });
 
     if (response.ok) {
+      successMessage.value = 'Shift rejected successfully';
       closeRejectModal();
       loadTodayShift();
       loadUpcomingShifts();
+      
+      setTimeout(() => {
+        successMessage.value = '';
+      }, 5000);
     }
   } catch (error) {
     console.error('Failed to reject shift:', error);
+    errorMessage.value = 'Failed to reject shift';
   }
-};
-
-const checkInNow = () => {
-  // Navigate to check-in page or trigger check-in API
-  window.location.href = '/shifts/check-in';
 };
 
 const formatDate = (date) => {
   return format(new Date(date), 'EEEE, MMM dd, yyyy');
+};
+
+const formatHours = (hours) => {
+  if (!hours) return '0.00 hrs';
+  return `${hours.toFixed(2)} hrs`;
 };
 
 const getStatusClass = (status) => {
@@ -345,5 +537,12 @@ const getShiftTypeClass = (type) => {
 onMounted(() => {
   loadTodayShift();
   loadUpcomingShifts();
+  
+  // Auto-refresh attendance status every 30 seconds if on today's shift
+  setInterval(() => {
+    if (todayShift.value) {
+      loadAttendanceStatus();
+    }
+  }, 30000);
 });
 </script>

@@ -22,31 +22,7 @@
             </div>
           </div>
         </div>
-        <!-- Quick Actions -->
-        <div class="mb-8 flex flex-wrap gap-4 justify-center sm:justify-start">
-          <router-link
-            to="/manager/tasks/new"
-            class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1"
-          >
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Create New Task
-          </router-link>
-          <button
-            @click="refreshTasks"
-            :disabled="loadingEmployees"
-            class="inline-flex items-center px-6 py-3 bg-white border-2 border-gray-200 text-gray-700 font-semibold rounded-lg shadow-sm hover:shadow-md transition-all duration-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg v-if="loadingEmployees" class="w-5 h-5 mr-2 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <svg v-else class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {{ loadingEmployees ? 'Refreshing...' : 'Refresh' }}
-          </button>
-        </div>
+       
         <!-- Task Board Section -->
         <div class="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
           <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50">

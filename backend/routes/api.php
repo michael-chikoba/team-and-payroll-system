@@ -21,6 +21,10 @@ use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\ChatMessageController;
 use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\CountryController; 
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\SubtaskController;
+use App\Http\Controllers\Api\TaskWorkLogController;
+use App\Http\Controllers\Api\TaskLinkController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,13 +35,6 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
-
-// CSRF Cookie route (must be public)
-Route::middleware(['web'])->group(function () {
-    Route::get('/sanctum/csrf-cookie', function () {
-        return response()->json(['message' => 'CSRF cookie set']);
-    })->name('sanctum.csrf-cookie');
-});
 
 /*
 |--------------------------------------------------------------------------
@@ -55,25 +52,27 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
+    | Notification Routes (Available to ALL authenticated users)
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [NotificationController::class, 'index']);
+        Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+        Route::post('/{id}/read', [NotificationController::class, 'markAsRead']);
+        Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
+        Route::delete('/{id}', [NotificationController::class, 'destroy']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
     | Global Resource & Report Routes (Fix for AdminReports.vue 404s)
     |--------------------------------------------------------------------------
-    | These routes match the exact API calls from the Vue component.
-    | We wrap them in role:admin to ensure security.
     */
     Route::middleware(['role:admin'])->group(function () {
-        // Business List for Dropdowns
         Route::get('/businesses', [BusinessController::class, 'index']);
-        
-        // Country List for Dropdowns
         Route::get('/countries', [CountryController::class, 'index']);
-        
-        // Department List
         Route::get('/departments', [EmployeeController::class, 'departments']);
-        
-        // Organization Stats (Top Dashboard Cards)
         Route::get('/org-stats', [ReportController::class, 'getAdminStats']);
-        
-        // Previously Generated Reports List
         Route::get('/generated-reports', [ReportController::class, 'getGeneratedReports']);
     });
 
@@ -88,13 +87,16 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::prefix('attendance')->group(function () {
             Route::get('today-status', [AttendanceController::class, 'todayStatus']);
             Route::get('stats', [AttendanceController::class, 'summary']);
-            Route::get('history', [AttendanceController::class, 'history']); // Personal history
-            Route::get('/', [AttendanceController::class, 'history']); // Same as above
+            Route::get('history', [AttendanceController::class, 'history']);
+            Route::get('/', [AttendanceController::class, 'history']);
             Route::post('clock-in', [AttendanceController::class, 'clockIn']);
             Route::post('clock-out', [AttendanceController::class, 'clockOut']);
+            Route::post('clock-in-overtime', [AttendanceController::class, 'clockInOvertime']);
             Route::post('force-reset', [AttendanceController::class, 'forceReset']);
             Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
             Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
+            Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
+            Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
             Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
         });
       
@@ -108,65 +110,58 @@ Route::middleware(['auth:sanctum'])->group(function () {
       
         // Payslip Routes for Employees
         Route::prefix('payslips')->group(function () {
-            Route::get('/', [PayslipController::class, 'index']); // Employee's own payslips
+            Route::get('/', [PayslipController::class, 'index']);
             Route::get('/{payslip}', [PayslipController::class, 'show']);
             Route::get('/{payslip}/download', [PayslipController::class, 'download']);
         });
       
-        // Leave Balance Initialization (Temporary/Setup endpoint)
         Route::post('initialize-leave-balances', [EmployeeController::class, 'initializeLeaveBalances']);
     });
    
     /*
     |--------------------------------------------------------------------------
-    | Manager Routes
+    | Manager Routes - FIXED ORDER
     |--------------------------------------------------------------------------
     */
     Route::middleware(['role:manager'])->prefix('manager')->group(function () {
-        // Manager's Personal Attendance
-        Route::prefix('attendance')->group(function () {
-            Route::get('today-status', [AttendanceController::class, 'todayStatus']);
-            Route::get('stats', [AttendanceController::class, 'summary']);
-            Route::get('history', [AttendanceController::class, 'history']); 
-            Route::get('/', [AttendanceController::class, 'history']); 
-            Route::post('clock-in', [AttendanceController::class, 'clockIn']);
-            Route::post('clock-out', [AttendanceController::class, 'clockOut']);
-            Route::post('force-reset', [AttendanceController::class, 'forceReset']);
-            Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
-            Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
-            Route::get('/attendance', [AttendanceController::class, 'getManagerTeamAttendance']);
-    
-            // Get real-time team status (clocked in/out)
-            Route::get('/team-status', [AttendanceController::class, 'getTeamStatus']);
-            
-            // Get employee history
-            Route::get('/employee/{employee}', [AttendanceController::class, 'employeeHistory']);
-            
-            // Get full team history
-            Route::get('/team-history', [AttendanceController::class, 'managerTeamHistory']);
-        });
         
         // Employee Management
         Route::get('employees', [ManagerController::class, 'employees']);
         Route::get('employees/{employee}', [ManagerController::class, 'employeeDetails']);
-      
-        // Team Attendance Monitoring
+        
+        // Manager's Personal Attendance (specific routes first)
         Route::prefix('attendance')->group(function () {
-            // Team reports
-            Route::get('team-status', [ManagerController::class, 'attendanceReport']);
+            // SPECIFIC ROUTES FIRST (before generic routes)
+            Route::get('team-status', [AttendanceController::class, 'getTeamStatus']);
             Route::get('team-history', [AttendanceController::class, 'managerTeamHistory']);
+            Route::get('today-status', [AttendanceController::class, 'todayStatus']);
+            Route::get('stats', [AttendanceController::class, 'summary']);
+            Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
+            Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
+            Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
+            Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
             
-            // Specific employee attendance
+            // Employee-specific routes (with parameter)
             Route::get('{employee}/history', [AttendanceController::class, 'employeeHistory']);
+            Route::post('{employee}/mark-present', [AttendanceController::class, 'markPresent']);
+            Route::post('{employee}/clock-out', [AttendanceController::class, 'managerClockOut']);
+            
+            // Date-based history
             Route::get('history/{date}', [AttendanceController::class, 'historyByDate']);
             
-            // Mark present for team members
-            Route::post('{employee}/mark-present', [AttendanceController::class, 'markPresent']);
+            // Personal attendance actions
+            Route::get('history', [AttendanceController::class, 'history']);
+            Route::get('/', [AttendanceController::class, 'history']);
+            Route::post('clock-in', [AttendanceController::class, 'clockIn']);
+            Route::post('clock-out', [AttendanceController::class, 'clockOut']);
+            Route::post('clock-in-overtime', [AttendanceController::class, 'clockInOvertime']);
+            Route::post('force-reset', [AttendanceController::class, 'forceReset']);
+            Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
         });
         
         // Personal Payslip Routes for Managers
         Route::prefix('payslips')->group(function () {
-            Route::get('/', [PayslipController::class, 'index']); // Manager's own payslips
+            Route::get('/', [PayslipController::class, 'index']);
             Route::get('/{payslip}', [PayslipController::class, 'show']);
             Route::get('/{payslip}/download', [PayslipController::class, 'download']);
         });
@@ -196,45 +191,35 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         // Admin's Personal Attendance
         Route::prefix('attendance')->group(function () {
+            // Specific routes first
+            Route::get('status', [AttendanceController::class, 'getAttendanceStatus']);
+            Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
+            Route::get('countries', [AttendanceController::class, 'getCountries']);
+            Route::get('businesses', [AttendanceController::class, 'getBusinesses']);
             Route::get('today-status', [AttendanceController::class, 'todayStatus']);
             Route::get('stats', [AttendanceController::class, 'summary']);
-            Route::get('history', [AttendanceController::class, 'history']); 
+            Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
+            Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
+            Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
+            Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
+            
+            // Actions
+            Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
+            Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
+            Route::post('{employee}/mark-present', [AttendanceController::class, 'markPresent']);
+            
+            // Personal actions
+            Route::get('history', [AttendanceController::class, 'adminHistory']);
             Route::get('/', [AttendanceController::class, 'history']);
             Route::post('clock-in', [AttendanceController::class, 'clockIn']);
             Route::post('clock-out', [AttendanceController::class, 'clockOut']);
+            Route::post('clock-in-overtime', [AttendanceController::class, 'clockInOvertime']);
             Route::post('force-reset', [AttendanceController::class, 'forceReset']);
-            Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
-            Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
         });
         
         // Employee Management
         Route::apiResource('employees', EmployeeController::class);
         Route::get('managers', [EmployeeController::class, 'managers']);
-        
-        // Attendance Management - System-wide
-        Route::prefix('attendance')->group(function () {
-            // Main attendance monitor endpoint
-            Route::get('status', [AttendanceController::class, 'getAttendanceStatus']);
-            
-            // Admin history with filters
-            Route::get('history', [AttendanceController::class, 'adminHistory']);
-            
-            // Mark attendance
-            Route::post('{employee}/mark-present', [AttendanceController::class, 'markPresent']);
-            Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
-            
-            // Current statuses
-            Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
-            
-            // Filter options
-            Route::get('countries', [AttendanceController::class, 'getCountries']);
-            Route::get('businesses', [AttendanceController::class, 'getBusinesses']);
-            
-            // Recalculate hours
-            Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
-        });
-        
-        // Department and Country Filters (Admin specific namespace)
         Route::get('/departments', [EmployeeController::class, 'departments']);
         
         // Report Generation
@@ -257,12 +242,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('employee/{employeeId}/payslip', [PayrollController::class, 'viewEmployeePayslip']);
         });
       
-        // Payslip Management - ADMIN ROUTES
+        // Payslip Management
         Route::prefix('payslips')->group(function () {
-            Route::get('/', [PayslipController::class, 'adminIndex']); // List all payslips with filters
-            Route::post('/', [PayslipController::class, 'store']); // CREATE new payslip
-            Route::get('/{payslip}', [PayslipController::class, 'show']); // Get single payslip
-            Route::post('/generate', [PayslipController::class, 'generate']); // Generate from payroll
+            Route::get('/', [PayslipController::class, 'adminIndex']);
+            Route::post('/', [PayslipController::class, 'store']);
+            Route::get('/{payslip}', [PayslipController::class, 'show']);
+            Route::post('/generate', [PayslipController::class, 'generate']);
             Route::post('/bulk-download', [PayslipController::class, 'bulkDownload']);
             Route::post('/{payslip}/generate-pdf', [PayslipController::class, 'generatePdf']);
             Route::get('/{payslip}/download', [PayslipController::class, 'download']);
@@ -271,43 +256,30 @@ Route::middleware(['auth:sanctum'])->group(function () {
       
         // Tax Configuration
         Route::get('tax-configuration', [AdminController::class, 'getTaxConfiguration']);
-        
-        // Get all tax configurations for a specific country
         Route::get('/tax-configurations/country/{countryCode}', [AdminController::class, 'getTaxConfigurationsByCountry']);
-        
-        // Save/update tax configuration
         Route::post('/update-tax-configuration', [AdminController::class, 'updateTaxConfiguration']);
-        
-        // Delete tax configuration
         Route::delete('/tax-configuration/{id}', [AdminController::class, 'deleteTaxConfiguration']);
 
-        // Reports (Nested under /api/admin/reports)
+        // Reports
         Route::prefix('reports')->group(function () {
-            // Stats and basic data
             Route::get('stats', [ReportController::class, 'getAdminStats']);
             Route::get('report-params/{type}', [ReportController::class, 'getReportParams']);
             Route::get('generated-reports', [ReportController::class, 'getGeneratedReports']);
-            
-            // Report generation endpoints
             Route::post('generate/attendance', [ReportController::class, 'generateAttendanceReport']);
             Route::post('generate/leave', [ReportController::class, 'generateLeaveReport']);
             Route::post('generate/payroll', [ReportController::class, 'generatePayrollReport']);
-                Route::post('generate/earnings', [ReportController::class, 'generateEarningsReport']);  // ADD THIS
-    Route::post('generate/deductions', [ReportController::class, 'generateDeductionsReport']);
+            Route::post('generate/earnings', [ReportController::class, 'generateEarningsReport']);
+            Route::post('generate/deductions', [ReportController::class, 'generateDeductionsReport']);
             Route::post('generate/organization', [ReportController::class, 'generateOrganizationReport']);
             Route::post('download/{type}', [ReportController::class, 'downloadReport']);
-            
-            // Predefined report views
             Route::get('payroll', [ReportController::class, 'payrollReport']);
             Route::get('attendance', [ReportController::class, 'attendanceReport']);
             Route::get('leave', [ReportController::class, 'leaveReport']);
-            
-            // Dynamic Report Types (matching the Vue component dynamic calls)
             Route::post('/attendance', [ReportController::class, 'generateAttendanceReport']);
             Route::post('/leave', [ReportController::class, 'generateLeaveReport']);
             Route::post('/payroll', [ReportController::class, 'generatePayrollReport']);
-            Route::post('/earnings', [ReportController::class, 'generateEarningsReport']); // Assuming method exists
-            Route::post('/deductions', [ReportController::class, 'generateDeductionsReport']); // Assuming method exists
+            Route::post('/earnings', [ReportController::class, 'generateEarningsReport']);
+            Route::post('/deductions', [ReportController::class, 'generateDeductionsReport']);
             Route::get('/{reportId}/download/pdf', [ReportController::class, 'downloadPdf']);
             Route::get('/{reportId}/export/excel', [ReportController::class, 'exportExcel']);
         });
@@ -327,23 +299,40 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 });
 
-// Task Management Routes
+/*
+|--------------------------------------------------------------------------
+| Task Management Routes - ALL authenticated users can create tasks
+|--------------------------------------------------------------------------
+*/
 Route::middleware(['auth:sanctum'])->group(function () {
-    // Employee/Manager list routes
-    Route::get('/employees', [TaskController::class, 'getEmployees'])->middleware('role:manager');
-    Route::get('/tasks/employees/simple', [TaskController::class, 'getSimpleEmployees']);    
+    // Employee list endpoints - accessible by managers and admins
+    Route::get('/employees', [TaskController::class, 'getEmployees'])->middleware('role:manager,admin');
+    Route::get('/tasks/employees/simple', [TaskController::class, 'getSimpleEmployees'])->middleware('role:manager,admin');
     
-    // Task routes
-    Route::get('/tasks', [TaskController::class, 'index']);
-    Route::post('/tasks', [TaskController::class, 'store'])->middleware('role:manager');
-    Route::patch('/tasks/{task}/status', [TaskController::class, 'updateStatus']);
-    Route::get('/tasks/{task}', [TaskController::class, 'show']);
-    Route::put('/tasks/{task}', [TaskController::class, 'update'])->middleware('role:manager');
-    Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])->middleware('role:manager');
-   
-    // Comment routes
+    // Task CRUD - ALL authenticated users can access
+    Route::get('/tasks', [TaskController::class, 'index']); // All can view their tasks
+    Route::post('/tasks', [TaskController::class, 'store']); // All can create tasks (employees can only assign to themselves)
+    Route::patch('/tasks/{task}/status', [TaskController::class, 'updateStatus']); // All can update status
+    Route::get('/tasks/{task}', [TaskController::class, 'show']); // All can view tasks they're involved with
+    Route::put('/tasks/{task}', [TaskController::class, 'update']); // All can update their own tasks
+    Route::delete('/tasks/{task}', [TaskController::class, 'destroy']); // All can delete their own tasks
+    
+    // Task comments - all authenticated users
     Route::post('/tasks/{task}/comments', [TaskCommentController::class, 'store']);
     Route::delete('/comments/{comment}', [TaskCommentController::class, 'destroy']);
+
+    // Subtask routes - all authenticated users
+    Route::post('/tasks/{task}/subtasks', [SubtaskController::class, 'store']);
+    Route::patch('/subtasks/{subtask}', [SubtaskController::class, 'update']);
+    Route::delete('/subtasks/{subtask}', [SubtaskController::class, 'destroy']);
+
+    // Work log routes - all authenticated users
+    Route::post('/tasks/{task}/worklogs', [TaskWorkLogController::class, 'store']);
+    Route::delete('/worklogs/{workLog}', [TaskWorkLogController::class, 'destroy']);
+
+    // Task link routes - all authenticated users
+    Route::post('/tasks/{task}/links', [TaskLinkController::class, 'store']);
+    Route::delete('/task-links/{link}', [TaskLinkController::class, 'destroy']);
 });
 
 // Profile and Document Routes
@@ -352,36 +341,27 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/profile', [EmployeeController::class, 'updateProfile']);
     Route::post('/profile/password', [EmployeeController::class, 'updatePassword']);
     
-    // Employee Documents Routes (Available to all authenticated users with employee record)
     Route::prefix('employee')->group(function () {
-        Route::get('/documents', [EmployeeController::class, 'documents']); // List documents
-        Route::post('/documents', [EmployeeController::class, 'uploadDocuments']); // Upload documents
-        Route::delete('/documents/{id}', [EmployeeController::class, 'deleteDocument']); // Delete document
-        Route::get('/documents/{id}/download', [EmployeeController::class, 'downloadDocument']); // Download document
-        Route::post('/profile-pic', [EmployeeController::class, 'uploadProfilePic']); // Upload profile picture
+        Route::get('/documents', [EmployeeController::class, 'documents']);
+        Route::post('/documents', [EmployeeController::class, 'uploadDocuments']);
+        Route::delete('/documents/{id}', [EmployeeController::class, 'deleteDocument']);
+        Route::get('/documents/{id}/download', [EmployeeController::class, 'downloadDocument']);
+        Route::post('/profile-pic', [EmployeeController::class, 'uploadProfilePic']);
     });
 });
 
-/*
-|--------------------------------------------------------------------------
-| Country Management Routes (Admin Only)
-|--------------------------------------------------------------------------
-*/
+// Country Management Routes
 Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
-    // Country CRUD operations
     Route::prefix('countries')->group(function () {
         Route::get('/', [CountryController::class, 'index']);
         Route::post('/', [CountryController::class, 'store']);
         Route::get('/{country}', [CountryController::class, 'show']);
         Route::put('/{country}', [CountryController::class, 'update']);
         Route::delete('/{country}', [CountryController::class, 'destroy']);
-        
-        // Additional country operations
         Route::post('/{country}/toggle-status', [CountryController::class, 'toggleStatus']);
         Route::get('/{country}/statistics', [CountryController::class, 'statistics']);
     });
     
-    // Business Routes
     Route::prefix('businesses')->group(function () {
         Route::get('/', [BusinessController::class, 'index']);
         Route::post('/', [BusinessController::class, 'store']);
@@ -400,40 +380,28 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 });
 
-// Schedule CRUD routes
-Route::prefix('schedules')->group(function () {
-    Route::get('/', [ScheduleController::class, 'index']);
-    Route::post('/', [ScheduleController::class, 'store']);
-    Route::get('/{id}', [ScheduleController::class, 'show']);
-    Route::put('/{id}', [ScheduleController::class, 'update']);
-    Route::delete('/{id}', [ScheduleController::class, 'destroy']);
-    Route::post('/{id}/complete', [ScheduleController::class, 'complete']);
-    Route::put('/{id}/meta', [ScheduleController::class, 'updateMeta']);
-    
-    // Calendar data
-    Route::get('/calendar/data', [ScheduleController::class, 'getCalendarData']);
-});
-
-// Employee schedule routes
+// Schedule Routes
 Route::middleware(['auth:sanctum'])->group(function () {
+    Route::prefix('schedules')->group(function () {
+        Route::get('/', [ScheduleController::class, 'index']);
+        Route::post('/', [ScheduleController::class, 'store']);
+        Route::get('/{id}', [ScheduleController::class, 'show']);
+        Route::put('/{id}', [ScheduleController::class, 'update']);
+        Route::delete('/{id}', [ScheduleController::class, 'destroy']);
+        Route::post('/{id}/complete', [ScheduleController::class, 'complete']);
+        Route::put('/{id}/meta', [ScheduleController::class, 'updateMeta']);
+        Route::get('/calendar/data', [ScheduleController::class, 'getCalendarData']);
+    });
+    
     Route::get('/employee/schedules', [ScheduleController::class, 'getEmployeeSchedules']);
-});
-
-// Notification routes
-Route::prefix('notifications')->group(function () {
-    Route::get('/', [ScheduleController::class, 'getNotifications']);
-    Route::put('/{id}/read', [ScheduleController::class, 'markNotificationRead']);
-    Route::post('/read-all', [ScheduleController::class, 'markAllNotificationsRead']);
 });
 
 // Shift Assignments
 Route::middleware(['auth:sanctum'])->group(function () {
-    // Employee routes
     Route::get('/shift-assignments/my-shifts', [ShiftAssignmentController::class, 'myShifts']);
     Route::get('/shift-assignments/today', [ShiftAssignmentController::class, 'todayShift']);
     Route::post('/shift-assignments/{id}/accept', [ShiftAssignmentController::class, 'accept']);
     Route::post('/shift-assignments/{id}/reject', [ShiftAssignmentController::class, 'reject']);
-    
     Route::get('/shift-assignments/assigned-by-me', [ShiftAssignmentController::class, 'assignedByMe']);
     Route::get('/shift-assignments', [ShiftAssignmentController::class, 'index']);
     Route::post('/shift-assignments', [ShiftAssignmentController::class, 'store']);
@@ -443,77 +411,61 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::delete('/shift-assignments/{id}', [ShiftAssignmentController::class, 'destroy']);
 });
 
+// Chat Routes
 Route::middleware(['auth:sanctum'])->prefix('chat')->group(function () {
-    // Group management
     Route::get('/groups', [ChatController::class, 'index']);
     Route::post('/groups', [ChatController::class, 'store']);
     Route::get('/groups/{id}', [ChatController::class, 'show']);
     Route::put('/groups/{id}', [ChatController::class, 'update']);
     Route::delete('/groups/{id}', [ChatController::class, 'destroy']);
-    
-    // Group members
     Route::post('/groups/{id}/members', [ChatController::class, 'addMembers']);
     Route::delete('/groups/{id}/members/{userId}', [ChatController::class, 'removeMember']);
     Route::get('/groups/{id}/members', [ChatController::class, 'getMembers']);
-    
-    // Direct messaging
     Route::post('/direct-message', [ChatController::class, 'getOrCreateDirectMessage']);
-    
-    // Available users for chat
     Route::get('/available-users', [ChatController::class, 'getAvailableUsers']);
-    
-    // Group actions
     Route::post('/groups/{id}/mute', [ChatController::class, 'toggleMute']);
     Route::post('/groups/{id}/read', [ChatController::class, 'markAsRead']);
     Route::post('/groups/{id}/leave', [ChatController::class, 'leaveGroup']);
-    
-    // Messages
     Route::get('/groups/{groupId}/messages', [ChatMessageController::class, 'index']);
     Route::post('/groups/{groupId}/messages', [ChatMessageController::class, 'store']);
     Route::put('/groups/{groupId}/messages/{messageId}', [ChatMessageController::class, 'update']);
     Route::delete('/groups/{groupId}/messages/{messageId}', [ChatMessageController::class, 'destroy']);
     Route::get('/groups/{groupId}/messages/search', [ChatMessageController::class, 'search']);
-    
-    // Message reactions
     Route::post('/messages/{messageId}/reactions', [ChatMessageController::class, 'addReaction']);
     Route::delete('/messages/{messageId}/reactions', [ChatMessageController::class, 'removeReaction']);
 });
 
-// Shift Management Routes
+// Shift Management
 Route::middleware(['auth:sanctum'])->group(function () {
-    
-    // Manager/Admin routes
     Route::prefix('shifts')->group(function () {
         Route::get('available-employees', [ShiftAssignmentController::class, 'getAvailableEmployees']);
         Route::post('assign', [ShiftAssignmentController::class, 'assignShift']);
         Route::post('bulk-assign', [ShiftAssignmentController::class, 'bulkAssignShifts']);
         Route::get('check-availability', [ShiftAssignmentController::class, 'checkAvailability']);
-    });
-
-    // Employee routes
-    Route::prefix('shifts')->group(function () {
         Route::get('my-shifts', [ShiftAssignmentController::class, 'getMyShifts']);
         Route::post('{shift}/accept', [ShiftAssignmentController::class, 'acceptShift']);
         Route::post('{shift}/reject', [ShiftAssignmentController::class, 'rejectShift']);
     });
 });
 
+// Ticket Routes
 Route::middleware(['auth:sanctum'])->prefix('tickets')->group(function () {
-    // Specific routes first (before the parameter routes)
     Route::get('/count', [TicketController::class, 'count'])->name('tickets.count');
     Route::get('/stats', [TicketController::class, 'stats'])->name('tickets.stats');
     Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.my');
-    
-    // Standard CRUD routes (parameter routes come last)
+    Route::get('/approvers', [TicketController::class, 'getApprovers']);
+    Route::get('/statistics', [TicketController::class, 'statistics']);
+    Route::get('/assigned-tickets', [TicketController::class, 'assignedToMe']);
+    Route::patch('/{ticket}/update-status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
     Route::get('/', [TicketController::class, 'index'])->name('tickets.index');
     Route::post('/', [TicketController::class, 'store'])->name('tickets.store');
     Route::get('/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
     Route::put('/{ticket}', [TicketController::class, 'update'])->name('tickets.update');
     Route::delete('/{ticket}', [TicketController::class, 'destroy'])->name('tickets.destroy');
-    
-    // Additional actions
     Route::post('/{ticket}/assign', [TicketController::class, 'assign'])->name('tickets.assign');
     Route::post('/{ticket}/resolve', [TicketController::class, 'resolve'])->name('tickets.resolve');
     Route::post('/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
     Route::post('/{ticket}/reopen', [TicketController::class, 'reopen'])->name('tickets.reopen');
+    Route::patch('/{ticket}/priority', [TicketController::class, 'updatePriority']);
+    Route::patch('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
 });

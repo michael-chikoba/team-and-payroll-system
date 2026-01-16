@@ -39,6 +39,7 @@
                   <button
                     @click="closeModal"
                     class="rounded-full p-1 hover:bg-blue-800 transition-colors"
+                    :disabled="loading"
                   >
                     <XMarkIcon class="w-6 h-6 text-white" />
                   </button>
@@ -56,7 +57,7 @@
                     </div>
                     <div>
                       <p class="text-sm font-medium text-gray-500">Requester</p>
-                      <p class="text-lg font-semibold text-gray-900">{{ ticket?.user?.name }}</p>
+                      <p class="text-lg font-semibold text-gray-900">{{ getUserName(ticket?.user) }}</p>
                     </div>
                     <div>
                       <p class="text-sm font-medium text-gray-500">Priority</p>
@@ -69,8 +70,18 @@
                   </div>
                   
                   <div class="mt-4 pt-4 border-t border-gray-200">
-                    <p class="text-sm font-medium text-gray-500 mb-2">Title</p>
-                    <p class="text-gray-900">{{ ticket?.title }}</p>
+                    <p class="text-sm font-medium text-gray-500 mb-1">Title</p>
+                    <p class="text-gray-900 font-medium">{{ ticket?.title }}</p>
+                  </div>
+                  
+                  <div class="mt-3">
+                    <p class="text-sm font-medium text-gray-500 mb-1">Description</p>
+                    <p class="text-gray-700 text-sm">{{ ticket?.description }}</p>
+                  </div>
+                  
+                  <div v-if="ticket?.comments" class="mt-3 pt-3 border-t border-gray-200">
+                    <p class="text-sm font-medium text-gray-500 mb-1">Previous Comments</p>
+                    <p class="text-gray-700 text-sm italic">{{ ticket?.comments }}</p>
                   </div>
                 </div>
 
@@ -84,9 +95,11 @@
                       v-for="option in decisionOptions"
                       :key="option.value"
                       @click="selectDecision(option.value)"
+                      :disabled="loading"
                       :class="[
                         'flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all',
                         'focus:outline-none focus:ring-2 focus:ring-offset-2',
+                        'disabled:opacity-50 disabled:cursor-not-allowed',
                         form.status === option.value
                           ? option.selectedClasses
                           : option.unselectedClasses
@@ -101,7 +114,7 @@
                     </button>
                   </div>
                   <p v-if="errors.status" class="mt-2 text-sm text-red-600">
-                    {{ errors.status[0] }}
+                    {{ errors.status }}
                   </p>
                 </div>
 
@@ -119,13 +132,14 @@
                     class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-colors resize-none"
                     placeholder="Add comments about your decision..."
                     :class="{ 'border-red-300': errors.comments }"
+                    :disabled="loading"
                   ></textarea>
                   <div class="flex justify-between items-center mt-1">
                     <p v-if="errors.comments" class="text-sm text-red-600">
-                      {{ errors.comments[0] }}
+                      {{ errors.comments }}
                     </p>
                     <span class="text-sm text-gray-500">
-                      {{ form.comments.length }}/1000
+                      {{ form.comments?.length || 0 }}/1000
                     </span>
                   </div>
                 </div>
@@ -138,6 +152,7 @@
                       v-model="form.send_email"
                       type="checkbox"
                       class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      :disabled="loading"
                     />
                     <label for="send-email" class="ml-2 block text-sm text-gray-900">
                       Send email notification to requester
@@ -156,7 +171,15 @@
                 <div v-if="errors.general" class="bg-red-50 border border-red-200 rounded-lg p-4">
                   <div class="flex items-center">
                     <ExclamationCircleIcon class="w-5 h-5 text-red-600 mr-3" />
-                    <p class="text-sm text-red-800">{{ errors.general[0] }}</p>
+                    <p class="text-sm text-red-800">{{ errors.general }}</p>
+                  </div>
+                </div>
+                
+                <!-- Success Message -->
+                <div v-if="successMessage" class="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div class="flex items-center">
+                    <CheckCircleIcon class="w-5 h-5 text-green-600 mr-3" />
+                    <p class="text-sm text-green-800">{{ successMessage }}</p>
                   </div>
                 </div>
               </div>
@@ -165,7 +188,7 @@
               <div class="border-t border-gray-200 px-6 py-4">
                 <div class="flex items-center justify-between">
                   <div class="text-sm text-gray-500">
-                    You are approving as: <span class="font-medium text-gray-700">{{ currentUser?.name }}</span>
+                    You are approving as: <span class="font-medium text-gray-700">{{ currentUser?.name || currentUser?.email }}</span>
                   </div>
                   <div class="flex items-center space-x-3">
                     <button
@@ -178,7 +201,11 @@
                     <button
                       @click="submitApproval"
                       :disabled="loading || !form.status"
-                      class="inline-flex items-center px-6 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 rounded-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                      :class="[
+                        'inline-flex items-center px-6 py-2.5 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all',
+                        'disabled:opacity-50 disabled:cursor-not-allowed',
+                        getButtonClass
+                      ]"
                     >
                       <template v-if="loading">
                         <ArrowPathIcon class="w-4 h-4 mr-2 animate-spin" />
@@ -201,7 +228,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
 import axios from 'axios'
 import PriorityBadge from '@/components/PriorityBadge.vue'
@@ -215,7 +242,9 @@ import {
   ExclamationTriangleIcon,
   ExclamationCircleIcon
 } from '@heroicons/vue/24/outline'
+import { useToast } from 'vue-toastification'
 
+// Props
 const props = defineProps({
   show: Boolean,
   ticket: Object
@@ -223,9 +252,13 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'approved'])
 
+// Initialize toast
+const toast = useToast()
+
 // Reactive state
 const loading = ref(false)
 const errors = ref({})
+const successMessage = ref('')
 const currentUser = ref(JSON.parse(localStorage.getItem('user')))
 
 const form = reactive({
@@ -279,6 +312,15 @@ const getButtonText = computed(() => {
   }
 })
 
+const getButtonClass = computed(() => {
+  switch (form.status) {
+    case 'approved': return 'bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 focus:ring-green-500'
+    case 'rejected': return 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 focus:ring-red-500'
+    case 'in_progress': return 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:ring-blue-500'
+    default: return 'bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 focus:ring-gray-500'
+  }
+})
+
 // Methods
 const closeModal = () => {
   if (!loading.value) {
@@ -292,31 +334,47 @@ const resetForm = () => {
   form.comments = ''
   form.send_email = true
   errors.value = {}
+  successMessage.value = ''
 }
 
 const formatDate = (dateString) => {
   if (!dateString) return 'No due date'
-  return new Date(dateString).toLocaleDateString('en-US', {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  })
+  try {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  } catch (error) {
+    return 'Invalid Date'
+  }
+}
+
+const getUserName = (user) => {
+  if (!user) return 'Unknown'
+  if (user.name) return user.name
+  if (user.first_name || user.last_name) {
+    return `${user.first_name || ''} ${user.last_name || ''}`.trim()
+  }
+  return user.email || 'Unknown'
 }
 
 const selectDecision = (status) => {
   form.status = status
   errors.value = {}
+  successMessage.value = ''
 }
 
 const submitApproval = async () => {
   if (!form.status) {
-    errors.value = { status: ['Please select a decision'] }
+    errors.value = { status: 'Please select a decision' }
     return
   }
 
   loading.value = true
   errors.value = {}
+  successMessage.value = ''
 
   try {
     const payload = {
@@ -325,46 +383,130 @@ const submitApproval = async () => {
       send_email: form.send_email
     }
 
-    const response = await axios.patch(`/api/tickets/${props.ticket.id}/status`, payload)
+    console.log('📤 Submitting approval for ticket:', props.ticket?.id)
+    console.log('📤 Payload:', payload)
+    console.log('📤 API Endpoint:', `/api/tickets/${props.ticket?.id}/update-status`)
+
+    const response = await axios.patch(`/api/tickets/${props.ticket.id}/update-status`, payload)
+    
+    console.log('✅ Approval response:', response.data)
     
     // Show success message
-    showSuccessMessage()
+    const messages = {
+      approved: 'Ticket approved successfully!',
+      rejected: 'Ticket rejected successfully.',
+      in_progress: 'Ticket marked as In Progress.'
+    }
+    
+    successMessage.value = messages[form.status] || 'Decision submitted successfully!'
+    
+    // Show toast notification
+    toast.success(successMessage.value, {
+      timeout: 3000,
+      position: 'top-right'
+    })
+    
+    // Wait a moment for user to see success message
+    await new Promise(resolve => setTimeout(resolve, 1000))
     
     // Emit event and close modal
-    emit('approved', response.data)
+    emit('approved', response.data.ticket)
     resetForm()
     
+    // Dispatch event to refresh ticket count
+    window.dispatchEvent(new CustomEvent('ticket-updated'))
+    
+    // Close modal after successful submission
+    setTimeout(() => {
+      closeModal()
+    }, 500)
+    
   } catch (error) {
+    console.error('❌ Error approving ticket:', error)
+    console.error('❌ Error response:', error.response)
+    
     if (error.response?.status === 422) {
-      errors.value = error.response.data.errors
+      errors.value = error.response.data.errors || {}
+      
+      // Convert Laravel validation errors object to string if needed
+      if (typeof errors.value === 'object' && !Array.isArray(errors.value)) {
+        const errorMessages = []
+        for (const key in errors.value) {
+          if (Array.isArray(errors.value[key])) {
+            errorMessages.push(...errors.value[key])
+          } else {
+            errorMessages.push(errors.value[key])
+          }
+        }
+        errors.value = { general: errorMessages.join(', ') }
+      }
     } else if (error.response?.status === 403) {
       errors.value = { 
-        general: ['You are not authorized to approve this ticket.'] 
+        general: 'You are not authorized to approve this ticket.' 
       }
-    } else {
+      toast.error('Unauthorized to approve this ticket', {
+        timeout: 3000,
+        position: 'top-right'
+      })
+    } else if (error.response?.status === 404) {
       errors.value = { 
-        general: [error.response?.data?.message || 'Failed to submit decision. Please try again.'] 
+        general: 'Ticket not found or route does not exist.' 
       }
+      toast.error('Ticket not found', {
+        timeout: 3000,
+        position: 'top-right'
+      })
+    } else if (error.code === 'ERR_NETWORK') {
+      errors.value = { 
+        general: 'Network error. Please check your connection.' 
+      }
+      toast.error('Network error. Please check your connection.', {
+        timeout: 3000,
+        position: 'top-right'
+      })
+    } else {
+      const errorMsg = error.response?.data?.message || 
+                      error.response?.data?.error || 
+                      'Failed to submit decision. Please try again.'
+      errors.value = { 
+        general: errorMsg
+      }
+      toast.error(errorMsg, {
+        timeout: 3000,
+        position: 'top-right'
+      })
     }
   } finally {
     loading.value = false
   }
 }
 
-const showSuccessMessage = () => {
-  const messages = {
-    approved: 'Ticket approved successfully! An email has been sent to the requester.',
-    rejected: 'Ticket rejected. The requester has been notified.',
-    in_progress: 'Ticket marked as In Progress. The requester has been notified.'
+// Debug function to test API endpoint
+const testEndpoint = async () => {
+  try {
+    console.log('🧪 Testing API endpoint...')
+    const response = await axios.get(`/api/tickets/${props.ticket?.id}`)
+    console.log('✅ Ticket exists:', response.data)
+    return true
+  } catch (error) {
+    console.error('❌ Ticket fetch error:', error)
+    return false
   }
-  
-  // You could use a toast notification library here
-  alert(messages[form.status] || 'Decision submitted successfully!')
 }
 
 // Watchers
-watch(() => props.show, (newVal) => {
-  if (!newVal) {
+watch(() => props.show, async (newVal) => {
+  if (newVal) {
+    console.log('🎫 Approval modal opened for ticket:', props.ticket)
+    
+    // Reset form when modal opens
+    resetForm()
+    
+    // Test if ticket exists and can be fetched
+    if (props.ticket?.id) {
+      await testEndpoint()
+    }
+  } else {
     resetForm()
   }
 })
@@ -375,6 +517,16 @@ watch(() => form.comments, (newComments) => {
     form.comments = newComments.substring(0, 1000)
   }
 })
+
+// Auto-select decision based on ticket status if it's not pending
+watch(() => props.ticket, (newTicket) => {
+  if (newTicket && newTicket.status !== 'pending') {
+    // If ticket is already approved/rejected/in_progress, pre-select that option
+    if (['approved', 'rejected', 'in_progress'].includes(newTicket.status)) {
+      form.status = newTicket.status
+    }
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -399,5 +551,52 @@ button {
 
 textarea {
   min-height: 120px;
+}
+
+/* Loading state styles */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Success message animation */
+.bg-green-50 {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hover effects for decision buttons */
+button[class*="hover:border-"]:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Focus styles for accessibility */
+button:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+textarea:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }
 </style>

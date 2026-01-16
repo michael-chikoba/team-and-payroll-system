@@ -9,7 +9,7 @@
         <div class="clock-buttons">
           <button
             @click="clockIn"
-            :disabled="todayStatus === 'present' || todayStatus === 'completed' || clockingIn"
+            :disabled="!canClockIn || clockingIn"
             class="clock-btn in"
           >
             {{ clockingIn ? 'Clocking In...' : 'Clock In' }}
@@ -17,10 +17,20 @@
           
           <button
             @click="clockOut"
-            :disabled="todayStatus !== 'present' || clockingOut"
+            :disabled="!canClockOut || clockingOut"
             class="clock-btn out"
           >
             {{ clockingOut ? 'Clocking Out...' : 'Clock Out' }}
+          </button>
+          
+          <button
+            v-if="canStartOvertime"
+            @click="clockInOvertime"
+            :disabled="clockingInOvertime"
+            class="clock-btn overtime"
+            title="Clock in for overtime after shift end"
+          >
+            {{ clockingInOvertime ? 'Starting...' : '⚡ Overtime' }}
           </button>
           
           <button
@@ -37,6 +47,14 @@
         <div class="status-badge" :class="todayStatus ? todayStatus.toLowerCase() : 'absent'">
           <span class="status-dot"></span>
           {{ formatTodayStatus(todayStatus) }}
+          <span v-if="isInOvertimeSession" class="overtime-indicator">⚡ OVERTIME</span>
+        </div>
+        
+        <!-- Shift Info Display -->
+        <div v-if="currentShift" class="shift-info-card">
+          <span class="shift-label">Today's Shift:</span>
+          <span class="shift-time">{{ currentShift.start_time }} - {{ currentShift.end_time }}</span>
+          <span class="shift-type">{{ formatShiftType(currentShift.type) }}</span>
         </div>
       </div>
     </header>
@@ -58,19 +76,20 @@
             <option value="present">Present</option>
             <option value="absent">Absent</option>
             <option value="late">Late</option>
-            <option value="early_leave">Early Leave</option>
+            <option value="completed">Completed</option>
           </select>
         </div>
         <div class="filter-actions">
           <button @click="resetFilters" class="btn-secondary">
             Reset
           </button>
-          <button @click="exportAttendance" class="btn-export">
-            Export
+          <button @click="viewOvertimeSummary" class="btn-overtime">
+            ⚡ Overtime
           </button>
         </div>
       </div>
     </div>
+    
     <div class="content">
       <!-- Summary Cards -->
       <div class="summary-cards" v-if="!loading">
@@ -85,28 +104,29 @@
         <div class="card">
           <div class="card-header">
             <div class="card-icon green"></div>
+            <span class="card-label">Regular Hours</span>
+          </div>
+          <p class="card-value">{{ stats.regularHours?.toFixed(1) || 0 }}</p>
+          <p class="card-unit">standard time</p>
+        </div>
+        <div class="card overtime-card">
+          <div class="card-header">
+            <div class="card-icon orange"></div>
+            <span class="card-label">Overtime Hours</span>
+          </div>
+          <p class="card-value">{{ stats.overtimeHours?.toFixed(1) || 0 }}</p>
+          <p class="card-unit">extra time</p>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon purple"></div>
             <span class="card-label">Attendance Rate</span>
           </div>
           <p class="card-value">{{ stats.attendanceRate?.toFixed(1) || 0 }}%</p>
           <p class="card-unit">of workdays</p>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon orange"></div>
-            <span class="card-label">Late Days</span>
-          </div>
-          <p class="card-value">{{ stats.lateDays || 0 }}</p>
-          <p class="card-unit">this month</p>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon purple"></div>
-            <span class="card-label">Workdays</span>
-          </div>
-          <p class="card-value">{{ stats.workdays || 0 }}</p>
-          <p class="card-unit">this month</p>
-        </div>
       </div>
+      
       <!-- Attendance Table -->
       <div class="table-container">
         <div class="table-header">
@@ -116,21 +136,26 @@
             <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
           </div>
         </div>
+        
         <div v-if="filteredAttendance.length === 0 && !loading" class="empty-state">
           <div class="empty-icon"></div>
           <h3>No Records Found</h3>
           <p>No attendance records match your current filters.</p>
           <button @click="resetFilters" class="btn-primary">Reset Filters</button>
         </div>
+        
         <div v-else-if="!loading" class="table-wrapper">
           <table class="attendance-table">
             <thead>
               <tr>
                 <th>Date</th>
+                <th>Type</th>
+                <th>Status</th>
                 <th>Check In</th>
                 <th>Check Out</th>
-                <th>Hours Worked</th>
-                <th>Status</th>
+                <th>Regular</th>
+                <th>Overtime</th>
+                <th>Total</th>
                 <th>Notes</th>
               </tr>
             </thead>
@@ -140,6 +165,19 @@
                   <div class="date-cell">
                     <span class="date-main">{{ formatDate(record.date) }}</span>
                   </div>
+                </td>
+                <td>
+                  <span v-if="record.is_overtime_session" class="session-badge overtime">
+                    ⚡ Overtime
+                  </span>
+                  <span v-else class="session-badge regular">
+                    Regular
+                  </span>
+                </td>
+                <td>
+                  <span :class="['status-badge-table', getStatusClass(record.status)]">
+                    {{ formatStatus(record.status) }}
+                  </span>
                 </td>
                 <td>
                   <div class="time-cell">
@@ -153,13 +191,18 @@
                 </td>
                 <td>
                   <div class="hours-cell">
-                    {{ formatHours(record.hoursWorked || record.total_hours) }}
+                    {{ formatHours(record.regular_hours) }}
                   </div>
                 </td>
                 <td>
-                  <span :class="['status-badge-table', getStatusClass(record.status)]">
-                    {{ formatStatus(record.status) }}
-                  </span>
+                  <div class="hours-cell overtime-hours">
+                    {{ formatHours(record.overtime_hours) }}
+                  </div>
+                </td>
+                <td>
+                  <div class="hours-cell total-hours">
+                    <strong>{{ formatHours(record.hoursWorked || record.total_hours) }}</strong>
+                  </div>
                 </td>
                 <td>
                   <span class="notes-cell">{{ record.notes || '-' }}</span>
@@ -167,6 +210,7 @@
               </tr>
             </tbody>
           </table>
+          
           <!-- Pagination Controls -->
           <div class="pagination">
             <button
@@ -194,6 +238,7 @@
                 {{ page }}
               </button>
             </div>
+            
             <button
               @click="goToPage(currentPage + 1)"
               :disabled="currentPage === totalPages"
@@ -208,6 +253,7 @@
             >
               Last
             </button>
+            
             <select v-model="itemsPerPage" @change="handlePerPageChange" class="per-page-select">
               <option :value="10">10 per page</option>
               <option :value="25">25 per page</option>
@@ -217,11 +263,13 @@
           </div>
         </div>
       </div>
+      
       <!-- Loading State -->
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
         <p>Loading attendance records...</p>
       </div>
+      
       <!-- Error State -->
       <div v-if="error" class="error-message">
         <div class="error-icon"></div>
@@ -237,11 +285,13 @@ import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
 
 export default {
-  name: 'Attendance',
+  name: 'EmployeeAttendance',
+  
   setup() {
     const authStore = useAuthStore()
     return { authStore }
   },
+  
   data() {
     return {
       pageName: 'My Attendance',
@@ -251,8 +301,16 @@ export default {
       statusFilter: '',
       today: new Date().toISOString().split('T')[0],
       todayStatus: 'absent',
+      currentShift: null,
+      canClockIn: false,
+      canClockOut: false,
+      canStartOvertime: false,
+      isInOvertimeSession: false,
+      shiftHasEnded: false,
       stats: {
         totalHours: 0,
+        regularHours: 0,
+        overtimeHours: 0,
         attendanceRate: 0,
         lateDays: 0,
         workdays: 0
@@ -260,6 +318,7 @@ export default {
       loading: false,
       clockingIn: false,
       clockingOut: false,
+      clockingInOvertime: false,
       resetting: false,
       showResetButton: false,
       error: null,
@@ -268,6 +327,7 @@ export default {
       itemsPerPage: 25
     }
   },
+  
   computed: {
     filteredAttendance() {
       let filtered = [...this.attendance]
@@ -280,16 +340,24 @@ export default {
       if (this.statusFilter) {
         filtered = filtered.filter(record => record.status === this.statusFilter)
       }
-      return filtered.sort((a, b) => new Date(b.date) - new Date(a.date))
+      return filtered.sort((a, b) => {
+        const dateCompare = new Date(b.date) - new Date(a.date)
+        if (dateCompare !== 0) return dateCompare
+        // Sort overtime sessions after regular on same day
+        return (a.is_overtime_session ? 1 : 0) - (b.is_overtime_session ? 1 : 0)
+      })
     },
+    
     totalPages() {
       return Math.ceil(this.filteredAttendance.length / this.itemsPerPage)
     },
+    
     paginatedRecords() {
       const start = (this.currentPage - 1) * this.itemsPerPage
       const end = start + this.itemsPerPage
       return this.filteredAttendance.slice(start, end)
     },
+    
     visiblePages() {
       const pages = []
       const maxVisible = 5
@@ -306,32 +374,39 @@ export default {
       return pages
     }
   },
+  
   mounted() {
     this.fetchAttendance()
     this.fetchTodayStatus()
   },
+  
   methods: {
     goToPage(page) {
       if (page >= 1 && page <= this.totalPages) {
         this.currentPage = page
       }
     },
+    
     handlePerPageChange() {
       this.currentPage = 1
     },
+    
     handleFilterChange() {
       this.currentPage = 1
       this.fetchAttendance()
     },
+    
     async fetchAttendance(retry = false) {
       this.loading = true
       this.error = null
+      
       try {
         const params = {
           ...(this.dateFrom && { from: this.dateFrom }),
           ...(this.dateTo && { to: this.dateTo }),
           ...(this.statusFilter && { status: this.statusFilter })
         }
+        
         const [attendanceRes, statsRes] = await Promise.all([
           axios.get('/api/employee/attendance', { params }),
           axios.get('/api/employee/attendance/stats')
@@ -342,6 +417,8 @@ export default {
         const statsData = statsRes.data.stats || statsRes.data || {}
         this.stats = {
           totalHours: statsData.totalHours || statsData.total_hours || 0,
+          regularHours: statsData.regularHours || statsData.regular_hours || 0,
+          overtimeHours: statsData.overtimeHours || statsData.overtime_hours || 0,
           attendanceRate: statsData.attendanceRate || statsData.attendance_rate || 0,
           lateDays: statsData.lateDays || statsData.late_days || 0,
           workdays: statsData.workdays || statsData.working_days || 0
@@ -356,9 +433,17 @@ export default {
     async fetchTodayStatus() {
       try {
         const response = await axios.get('/api/employee/attendance/today-status')
-        this.todayStatus = response.data.status || 'absent'
         
-        if (this.todayStatus === 'present' && response.data.attendance?.clockOut) {
+        this.todayStatus = response.data.status || 'absent'
+        this.canClockIn = response.data.can_clock_in || false
+        this.canClockOut = response.data.can_clock_out || false
+        this.canStartOvertime = response.data.can_start_overtime || false
+        this.isInOvertimeSession = response.data.is_in_overtime_session || false
+        this.shiftHasEnded = response.data.shift_has_ended || false
+        this.currentShift = response.data.shift || null
+        
+        // Show reset button if stuck
+        if (this.todayStatus === 'present' && response.data.regular_attendance?.clock_out) {
           this.showResetButton = true
         }
       } catch (err) {
@@ -373,17 +458,19 @@ export default {
         const response = await axios.post('/api/employee/attendance/clock-in')
         this.todayStatus = 'present'
         this.showResetButton = false
+        
         this.$notify({
           type: 'success',
           title: 'Success',
           text: response.data.message || 'Clocked in successfully!'
         })
+        
         await this.fetchAttendance()
         await this.fetchTodayStatus()
       } catch (err) {
         console.error('Clock-in error:', err)
         
-        if (err.response?.status === 422 && err.response?.data?.message?.includes('Already clocked in')) {
+        if (err.response?.status === 422) {
           this.showResetButton = true
         }
         
@@ -396,17 +483,28 @@ export default {
         this.clockingIn = false
       }
     },
+    
     async clockOut() {
       this.clockingOut = true
       try {
         const response = await axios.post('/api/employee/attendance/clock-out')
         this.todayStatus = 'completed'
         this.showResetButton = false
+        
+        // Check if there's overtime
+        const overtimeHours = response.data.attendance?.overtime_hours || 0
+        let message = response.data.message || 'Clocked out successfully!'
+        
+        if (overtimeHours > 0) {
+          message += ` You worked ${this.formatHours(overtimeHours)} of overtime.`
+        }
+        
         this.$notify({
           type: 'success',
           title: 'Success',
-          text: response.data.message || 'Clocked out successfully!'
+          text: message
         })
+        
         await this.fetchAttendance()
         await this.fetchTodayStatus()
       } catch (err) {
@@ -420,19 +518,55 @@ export default {
         this.clockingOut = false
       }
     },
+    
+    async clockInOvertime() {
+      if (!confirm('Start overtime session? This will be tracked separately from your regular hours.')) {
+        return
+      }
+      
+      this.clockingInOvertime = true
+      try {
+        const response = await axios.post('/api/attendance/clock-in-overtime')
+        this.isInOvertimeSession = true
+        this.canStartOvertime = false
+        this.canClockOut = true
+        
+        this.$notify({
+          type: 'success',
+          title: 'Overtime Started',
+          text: response.data.message || 'Clocked in for overtime successfully!'
+        })
+        
+        await this.fetchAttendance()
+        await this.fetchTodayStatus()
+      } catch (err) {
+        console.error('Overtime clock-in error:', err)
+        this.$notify({
+          type: 'error',
+          title: 'Overtime Clock-in Failed',
+          text: err.response?.data?.message || 'Failed to start overtime. Please try again.'
+        })
+      } finally {
+        this.clockingInOvertime = false
+      }
+    },
+    
     async forceResetStatus() {
       if (!confirm('This will auto-close any open attendance records. Continue?')) {
         return
       }
+      
       this.resetting = true
       try {
         const response = await axios.post('/api/employee/attendance/force-reset')
         this.showResetButton = false
+        
         this.$notify({
           type: 'success',
           title: 'Status Reset',
           text: response.data.message || 'Attendance status has been reset successfully.'
         })
+        
         await this.fetchTodayStatus()
         await this.fetchAttendance()
       } catch (err) {
@@ -446,33 +580,34 @@ export default {
         this.resetting = false
       }
     },
-   
-    async exportAttendance() {
+    
+    async viewOvertimeSummary() {
       try {
-        const params = {
-          ...(this.dateFrom && { from: this.dateFrom }),
-          ...(this.dateTo && { to: this.dateTo }),
-          ...(this.statusFilter && { status: this.statusFilter })
-        }
-        const response = await axios.get('/api/employee/attendance/export', {
-          params,
-          responseType: 'blob'
+        const date = new Date()
+        const response = await axios.get('/api/attendance/overtime-summary', {
+          params: {
+            month: date.getMonth() + 1,
+            year: date.getFullYear()
+          }
         })
-        const url = window.URL.createObjectURL(new Blob([response.data]))
-        const link = document.createElement('a')
-        link.href = url
-        link.setAttribute('download', `attendance-${this.dateFrom || ''}-${this.dateTo || this.today}.csv`)
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        window.URL.revokeObjectURL(url)
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Attendance exported successfully!'
-        })
+        
+        const summary = response.data.summary
+        const message = `
+          Overtime Summary for ${response.data.period.month_name}:
+          
+          Total Overtime Hours: ${summary.total_overtime_hours}h
+          Overtime Sessions: ${summary.overtime_sessions_count}
+          Days with Overtime: ${summary.days_with_overtime}
+          Total Hours (All): ${summary.total_all_hours}h
+        `
+        
+        alert(message)
       } catch (err) {
-        this.handleApiError(err)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to load overtime summary'
+        })
       }
     },
    
@@ -532,13 +667,24 @@ export default {
         present: 'Present',
         absent: 'Absent',
         late: 'Late',
+        completed: 'Completed',
         early_leave: 'Early Leave'
       }
       return statuses[status] || status
     },
+    
+    formatShiftType(type) {
+      const types = {
+        morning: 'Morning',
+        day: 'Day',
+        evening: 'Evening',
+        night: 'Night'
+      }
+      return types[type] || type
+    },
    
     formatHours(hours) {
-      if (!hours && hours !== 0) return 'N/A'
+      if (!hours && hours !== 0) return '0h 0m'
       const h = Math.floor(hours)
       const m = Math.round((hours % 1) * 60)
       return `${h}h ${m}m`
@@ -601,7 +747,7 @@ export default {
   padding: 2rem;
   max-width: 1600px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f8f9fc;
   min-height: 100vh;
 }
@@ -689,18 +835,19 @@ export default {
   color: white;
 }
 
-.clock-btn.reset {
+.clock-btn.overtime {
   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+}
+
+.clock-btn.reset {
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
   color: white;
 }
 
 .clock-btn:hover:not(:disabled) {
   transform: translateY(-3px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-}
-
-.clock-btn:active:not(:disabled) {
-  transform: translateY(-1px);
 }
 
 .clock-btn:disabled {
@@ -743,6 +890,8 @@ export default {
   background: #3b82f6;
   box-shadow: 0 0 10px #3b82f6;
 }
+
+
 
 .status-badge.absent .status-dot {
   background: #ef4444;

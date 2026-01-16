@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Auth\Events\Login;
+use App\Listeners\LogUserLogin;
 
 class AppServiceProvider extends ServiceProvider
 {

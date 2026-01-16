@@ -39,9 +39,20 @@ class ShiftAssignment extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'shift_date' => 'date',
+        'shift_date' => 'date:Y-m-d', // Format without timezone conversion
         'accepted_at' => 'datetime',
         'rejected_at' => 'datetime',
+    ];
+
+    /**
+     * The attributes that should NOT be cast to Carbon instances
+     * to avoid timezone conversion issues.
+     */
+    protected $dates = [
+        'accepted_at',
+        'rejected_at',
+        'created_at',
+        'updated_at'
     ];
 
     /**
@@ -82,6 +93,48 @@ class ShiftAssignment extends Model
     public function shift(): BelongsTo
     {
         return $this->belongsTo(Shift::class, 'shift_id');
+    }
+
+    /**
+     * Get start_time attribute - prevent timezone conversion
+     */
+    public function getStartTimeAttribute($value)
+    {
+        // Return raw time value without timezone conversion
+        return $value;
+    }
+
+    /**
+     * Get end_time attribute - prevent timezone conversion
+     */
+    public function getEndTimeAttribute($value)
+    {
+        // Return raw time value without timezone conversion
+        return $value;
+    }
+
+    /**
+     * Set start_time attribute - ensure correct format
+     */
+    public function setStartTimeAttribute($value)
+    {
+        // Ensure time is stored in H:i:s format
+        if ($value && strlen($value) === 5) {
+            $value .= ':00';
+        }
+        $this->attributes['start_time'] = $value;
+    }
+
+    /**
+     * Set end_time attribute - ensure correct format
+     */
+    public function setEndTimeAttribute($value)
+    {
+        // Ensure time is stored in H:i:s format
+        if ($value && strlen($value) === 5) {
+            $value .= ':00';
+        }
+        $this->attributes['end_time'] = $value;
     }
 
     /**
@@ -165,5 +218,23 @@ class ShiftAssignment extends Model
     public function scopeForEmployee($query, $employeeId)
     {
         return $query->where('employee_id', $employeeId);
+    }
+
+    /**
+     * Convert model to array with proper time formatting
+     */
+    public function toArray()
+    {
+        $array = parent::toArray();
+        
+        // Ensure times are in correct format without timezone conversion
+        if (isset($array['start_time'])) {
+            $array['start_time'] = substr($array['start_time'], 0, 8);
+        }
+        if (isset($array['end_time'])) {
+            $array['end_time'] = substr($array['end_time'], 0, 8);
+        }
+        
+        return $array;
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\PayslipGenerated;
 use App\Http\Requests\Payroll\GeneratePayslipRequest;
 use App\Jobs\SendPayslipEmail;
 use App\Models\Payslip;
@@ -268,7 +269,11 @@ class PayslipController extends Controller
             'gross_salary' => $calculation['gross_salary'],
             'net_pay' => $calculation['net_salary'],
         ]);
-        
+        try {
+            event(new PayslipGenerated($payslip));
+        } catch (\Exception $e) {
+            Log::warning('Failed to dispatch PayslipGenerated event:', ['error' => $e->getMessage()]);
+        }
         // Generate PDF if requested
         if ($request->boolean('generate_pdf', true)) {
             try {

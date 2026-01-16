@@ -118,7 +118,7 @@ const getTasksByStatus = (status) => {
 };
 
 const handleCreateTask = async () => {
-  if (userRole.value === 'manager') {
+  if (userRole.value === 'manager','employee','admin') {
     loadingEmployees.value = true;
     try {
       await fetchEmployees();
@@ -143,7 +143,7 @@ const handleStatusUpdate = async (taskId, newStatus) => {
 };
 
 const handleEditTask = async (task) => {
-  if (userRole.value === 'manager') {
+  if (userRole.value === 'manager','employee','admin') {
     loadingEmployees.value = true;
     try {
       await fetchEmployees();

@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Events\TaskAssigned;
 use App\Models\Employee;
+use App\Models\Subtask;
+use App\Models\TaskHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Controller;
@@ -30,16 +33,66 @@ class TaskController extends Controller
            
             if ($user->role === 'manager') {
                 // Managers see all tasks they created
-                $tasks = Task::with(['assignedTo.employee', 'createdBy', 'comments'])
-                    ->createdByUser($user->id)
-                    ->orderBy('deadline', 'asc')
-                    ->orderBy('created_at', 'desc')
-                    ->get();
+                $tasks = Task::with([
+                'assignedTo.employee', 
+                'createdBy', 
+                'comments.user',
+                'subtasks.assignee',
+                'workLogs.user',
+                'history.user',
+                'linkedItems.linkedTask'
+            ])
+                ->createdByUser($user->id)
+                ->orderBy('deadline', 'asc')
+                ->orderBy('created_at', 'desc')
+                ->get();
                   
                 Log::info('Manager tasks fetched', ['count' => $tasks->count()]);
+            } elseif ($user->role === 'admin') {
+                // Admins see all tasks within their business
+                $userEmployee = $user->employee;
+                
+                if (!$userEmployee || !$userEmployee->business_id) {
+                    Log::warning('Admin user has no business association', [
+                        'user_id' => $user->id
+                    ]);
+                    
+                    // Fallback: show tasks created by admin
+                    $tasks = Task::with(['assignedTo.employee', 'createdBy', 'comments'])
+                        ->createdByUser($user->id)
+                        ->orderBy('deadline', 'asc')
+                        ->orderBy('created_at', 'desc')
+                        ->get();
+                } else {
+                    // Get all user IDs for employees within the same business
+                    $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
+                        ->pluck('user_id')
+                        ->toArray();
+                    
+                    Log::info('Admin business employees', [
+                        'business_id' => $userEmployee->business_id,
+                        'employee_user_ids' => $businessEmployeeUserIds
+                    ]);
+                    
+                    // Get all tasks where EITHER:
+                    // 1. Task is assigned to any employee in the business, OR
+                    // 2. Task was created by any employee in the business
+                    $tasks = Task::with(['assignedTo.employee', 'createdBy', 'comments'])
+                        ->where(function($query) use ($businessEmployeeUserIds) {
+                            $query->whereIn('assigned_to', $businessEmployeeUserIds)
+                                  ->orWhereIn('created_by', $businessEmployeeUserIds);
+                        })
+                        ->orderBy('deadline', 'asc')
+                        ->orderBy('created_at', 'desc')
+                        ->get();
+                }
+                
+                Log::info('Admin tasks fetched', [
+                    'count' => $tasks->count(),
+                    'business_id' => $userEmployee->business_id ?? null
+                ]);
             } else {
                 // Employees see tasks assigned to them based on their user_id
-                // The assigned_to field in tasks table stores user_id
                 $tasks = Task::with(['assignedTo.employee', 'createdBy', 'comments'])
                     ->forUser($user->id)
                     ->orderBy('deadline', 'asc')
@@ -49,20 +102,6 @@ class TaskController extends Controller
                 Log::info('Employee tasks fetched from database', [
                     'user_id' => $user->id,
                     'count' => $tasks->count(),
-                    'tasks_data' => $tasks->map(function ($task) {
-                        return [
-                            'id' => $task->id,
-                            'title' => $task->title,
-                            'description' => substr($task->description, 0, 100) . '...',
-                            'priority' => $task->priority,
-                            'status' => $task->status,
-                            'assigned_to' => $task->assigned_to,
-                            'created_by' => $task->created_by,
-                            'deadline' => $task->deadline,
-                            'created_at' => $task->created_at,
-                            'updated_at' => $task->updated_at,
-                        ];
-                    })->toArray()
                 ]);
             }
 
@@ -84,7 +123,7 @@ class TaskController extends Controller
                         'first_name' => $task->assignedTo->first_name,
                         'last_name' => $task->assignedTo->last_name,
                         'email' => $task->assignedTo->email,
-                        'name' => $task->assignedTo->first_name . ' ' . $task->assignedTo->last_name, // Added for frontend compatibility
+                        'name' => $task->assignedTo->first_name . ' ' . $task->assignedTo->last_name,
                         'employee_id' => $assignedUserEmployee->employee_id ?? null,
                         'position' => $assignedUserEmployee->position ?? null,
                         'department' => $assignedUserEmployee->department ?? null,
@@ -94,7 +133,7 @@ class TaskController extends Controller
                         'first_name' => $task->createdBy->first_name,
                         'last_name' => $task->createdBy->last_name,
                         'email' => $task->createdBy->email,
-                        'name' => $task->createdBy->first_name . ' ' . $task->createdBy->last_name, // Added for frontend compatibility
+                        'name' => $task->createdBy->first_name . ' ' . $task->createdBy->last_name,
                     ],
                     'comments' => $task->comments,
                 ];
@@ -129,6 +168,8 @@ class TaskController extends Controller
                 'deadline' => 'nullable|date',
             ]);
 
+            $currentUser = Auth::user();
+
             // Verify the assigned user has an employee record
             $assignedUser = User::with('employee')->find($validated['assigned_to']);
            
@@ -144,14 +185,40 @@ class TaskController extends Controller
                 ], 400);
             }
 
-            // Store user_id in assigned_to field (not employee_id)
+            // For admins, verify the assigned user is in the same business
+            if ($currentUser->role === 'admin') {
+                $currentUserEmployee = $currentUser->employee;
+                
+                if ($currentUserEmployee && $currentUserEmployee->business_id) {
+                    if ($assignedUser->employee->business_id !== $currentUserEmployee->business_id) {
+                        return response()->json([
+                            'message' => 'You can only assign tasks to employees within your business'
+                        ], 403);
+                    }
+                }
+            }
+
+            // For managers, verify the assigned user is under their management
+            if ($currentUser->role === 'manager') {
+                $isUnderManagement = Employee::where('user_id', $validated['assigned_to'])
+                    ->where('manager_id', $currentUser->id)
+                    ->exists();
+                
+                if (!$isUnderManagement) {
+                    return response()->json([
+                        'message' => 'You can only assign tasks to employees under your management'
+                    ], 403);
+                }
+            }
+
+            // Create the task
             $task = Task::create([
                 'title' => $validated['title'],
                 'description' => $validated['description'],
                 'priority' => $validated['priority'],
-                'assigned_to' => $validated['assigned_to'], // This is user_id
+                'assigned_to' => $validated['assigned_to'],
                 'deadline' => $validated['deadline'],
-                'created_by' => Auth::id(),
+                'created_by' => $currentUser->id,
                 'status' => 'todo',
             ]);
 
@@ -159,8 +226,12 @@ class TaskController extends Controller
                 'task_id' => $task->id,
                 'assigned_to_user_id' => $task->assigned_to,
                 'assigned_to_employee_id' => $assignedUser->employee->employee_id,
-                'created_by' => $task->created_by
+                'created_by' => $task->created_by,
+                'created_by_role' => $currentUser->role
             ]);
+
+            // Dispatch event to trigger notification
+            event(new TaskAssigned($task));
 
             return response()->json([
                 'message' => 'Task created successfully',
@@ -183,6 +254,50 @@ class TaskController extends Controller
     public function show(Task $task)
     {
         try {
+            $user = Auth::user();
+            
+            // Authorization check
+            if ($user->role === 'employee') {
+                // Employees can only view their own tasks
+                if ($task->assigned_to !== $user->id) {
+                    return response()->json([
+                        'message' => 'Unauthorized to view this task'
+                    ], 403);
+                }
+            } elseif ($user->role === 'manager') {
+                // Managers can view tasks they created
+                if ($task->created_by !== $user->id && $task->assigned_to !== $user->id) {
+                    return response()->json([
+                        'message' => 'Unauthorized to view this task'
+                    ], 403);
+                }
+            } elseif ($user->role === 'admin') {
+                // Admins can view tasks within their business
+                $userEmployee = $user->employee;
+                
+                if ($userEmployee && $userEmployee->business_id) {
+                    // Check if either the assigned user or creator is in the same business
+                    $taskAssignedEmployee = $task->assignedTo->employee ?? null;
+                    $taskCreatorEmployee = $task->createdBy->employee ?? null;
+                    
+                    $canView = false;
+                    
+                    if ($taskAssignedEmployee && $taskAssignedEmployee->business_id === $userEmployee->business_id) {
+                        $canView = true;
+                    }
+                    
+                    if ($taskCreatorEmployee && $taskCreatorEmployee->business_id === $userEmployee->business_id) {
+                        $canView = true;
+                    }
+                    
+                    if (!$canView) {
+                        return response()->json([
+                            'message' => 'Unauthorized to view this task'
+                        ], 403);
+                    }
+                }
+            }
+
             return response()->json([
                 'task' => $task->load('assignedTo.employee', 'createdBy', 'comments')
             ]);
@@ -195,16 +310,44 @@ class TaskController extends Controller
     public function update(Request $request, Task $task)
     {
         try {
+            $user = Auth::user();
+            
+            // Authorization: Only task creator or admin in same business can update
+            $canUpdate = false;
+            
+            if ($task->created_by === $user->id) {
+                $canUpdate = true;
+            } elseif ($user->role === 'admin') {
+                $userEmployee = $user->employee;
+                
+                if ($userEmployee && $userEmployee->business_id) {
+                    $taskAssignedEmployee = $task->assignedTo->employee ?? null;
+                    $taskCreatorEmployee = $task->createdBy->employee ?? null;
+                    
+                    // Admin can update if task involves anyone in their business
+                    if (($taskAssignedEmployee && $taskAssignedEmployee->business_id === $userEmployee->business_id) ||
+                        ($taskCreatorEmployee && $taskCreatorEmployee->business_id === $userEmployee->business_id)) {
+                        $canUpdate = true;
+                    }
+                }
+            }
+            
+            if (!$canUpdate) {
+                return response()->json([
+                    'message' => 'Unauthorized to update this task'
+                ], 403);
+            }
+
             $validated = $request->validate([
                 'title' => 'sometimes|string|max:255',
                 'description' => 'sometimes|nullable|string',
                 'priority' => 'sometimes|in:low,moderate,high,critical',
                 'assigned_to' => 'sometimes|exists:users,id',
                 'deadline' => 'sometimes|nullable|date',
-                'status' => 'sometimes|in:todo,in_progress,under_review,completed', // Added for potential status updates
+                'status' => 'sometimes|in:todo,in_progress,under_review,completed',
             ]);
 
-            // If updating assigned_to, verify employee record exists
+            // If updating assigned_to, verify employee record exists and business match
             if (isset($validated['assigned_to'])) {
                 $assignedUser = User::with('employee')->find($validated['assigned_to']);
              
@@ -213,12 +356,23 @@ class TaskController extends Controller
                         'message' => 'Assigned user must have an employee record'
                     ], 400);
                 }
+                
+                // Verify business match for admins
+                if ($user->role === 'admin' && $user->employee) {
+                    if ($assignedUser->employee->business_id !== $user->employee->business_id) {
+                        return response()->json([
+                            'message' => 'You can only assign tasks to employees within your business'
+                        ], 403);
+                    }
+                }
             }
 
             $task->update($validated);
 
             Log::info('Task updated', [
                 'task_id' => $task->id,
+                'updated_by' => $user->id,
+                'updated_by_role' => $user->role,
                 'updated_fields' => array_keys($validated)
             ]);
 
@@ -239,14 +393,42 @@ class TaskController extends Controller
     public function updateStatus(Request $request, Task $task)
     {
         try {
+            $user = Auth::user();
+            
             Log::info('Updating task status', [
-                'user_id' => Auth::id(),
-                'user_role' => Auth::user()->role,
+                'user_id' => $user->id,
+                'user_role' => $user->role,
                 'task_id' => $task->id,
                 'task_assigned_to' => $task->assigned_to,
                 'task_created_by' => $task->created_by,
                 'new_status' => $request->status
             ]);
+
+            // Authorization: Assigned employee, task creator, or admin in same business
+            $canUpdateStatus = false;
+            
+            if ($task->assigned_to === $user->id || $task->created_by === $user->id) {
+                $canUpdateStatus = true;
+            } elseif ($user->role === 'admin') {
+                $userEmployee = $user->employee;
+                
+                if ($userEmployee && $userEmployee->business_id) {
+                    $taskAssignedEmployee = $task->assignedTo->employee ?? null;
+                    $taskCreatorEmployee = $task->createdBy->employee ?? null;
+                    
+                    // Admin can update if task involves anyone in their business
+                    if (($taskAssignedEmployee && $taskAssignedEmployee->business_id === $userEmployee->business_id) ||
+                        ($taskCreatorEmployee && $taskCreatorEmployee->business_id === $userEmployee->business_id)) {
+                        $canUpdateStatus = true;
+                    }
+                }
+            }
+            
+            if (!$canUpdateStatus) {
+                return response()->json([
+                    'message' => 'Unauthorized to update task status'
+                ], 403);
+            }
 
             $validated = $request->validate([
                 'status' => 'required|in:todo,in_progress,under_review,completed'
@@ -256,7 +438,9 @@ class TaskController extends Controller
 
             Log::info('Task status updated successfully', [
                 'task_id' => $task->id,
-                'new_status' => $task->status
+                'new_status' => $task->status,
+                'updated_by' => $user->id,
+                'updated_by_role' => $user->role
             ]);
 
             return response()->json([
@@ -273,9 +457,41 @@ class TaskController extends Controller
     public function destroy(Task $task)
     {
         try {
-            $this->authorize('delete', $task);
+            $user = Auth::user();
+            
+            // Authorization: Only task creator or admin in same business can delete
+            $canDelete = false;
+            
+            if ($task->created_by === $user->id) {
+                $canDelete = true;
+            } elseif ($user->role === 'admin') {
+                $userEmployee = $user->employee;
+                
+                if ($userEmployee && $userEmployee->business_id) {
+                    $taskAssignedEmployee = $task->assignedTo->employee ?? null;
+                    $taskCreatorEmployee = $task->createdBy->employee ?? null;
+                    
+                    // Admin can delete if task involves anyone in their business
+                    if (($taskAssignedEmployee && $taskAssignedEmployee->business_id === $userEmployee->business_id) ||
+                        ($taskCreatorEmployee && $taskCreatorEmployee->business_id === $userEmployee->business_id)) {
+                        $canDelete = true;
+                    }
+                }
+            }
+            
+            if (!$canDelete) {
+                return response()->json([
+                    'message' => 'Unauthorized to delete this task'
+                ], 403);
+            }
            
             $task->delete();
+
+            Log::info('Task deleted', [
+                'task_id' => $task->id,
+                'deleted_by' => $user->id,
+                'deleted_by_role' => $user->role
+            ]);
 
             return response()->json([
                 'message' => 'Task deleted successfully'
@@ -300,13 +516,26 @@ class TaskController extends Controller
                 $employees = Employee::with(['user', 'manager'])
                     ->where('manager_id', $currentUser->id)
                     ->get();
+            } elseif ($currentUser->role === 'admin') {
+                // Admins can see all employees in their business
+                $userEmployee = $currentUser->employee;
+                
+                if ($userEmployee && $userEmployee->business_id) {
+                    $employees = Employee::with(['user', 'manager'])
+                        ->where('business_id', $userEmployee->business_id)
+                        ->get();
+                } else {
+                    // Fallback: get all employees
+                    $employees = Employee::with(['user', 'manager'])->get();
+                }
             } else {
-                // Admins can see all employees
-                $employees = Employee::with(['user', 'manager'])->get();
+                // Regular employees see no one
+                $employees = collect([]);
             }
 
             Log::info('TASK_CONTROLLER: Employees fetched', [
-                'manager_id' => $currentUser->id,
+                'user_id' => $currentUser->id,
+                'user_role' => $currentUser->role,
                 'count' => $employees->count()
             ]);
 
@@ -332,32 +561,11 @@ class TaskController extends Controller
                     ->where('manager_id', $currentUser->id)
                     ->get()
                     ->filter(function ($employee) {
-                        // Only include employees with valid user records
                         return $employee->user !== null;
                     })
                     ->map(function ($employee) {
                         return [
-                            'id' => $employee->user->id, // user_id for task assignment
-                            'first_name' => $employee->user->first_name,
-                            'last_name' => $employee->user->last_name,
-                            'full_name' => $employee->full_name,
-                            'email' => $employee->user->email,
-                            'employee_id' => $employee->employee_id,
-                            'position' => $employee->position,
-                            'department' => $employee->department
-                        ];
-                    })
-                    ->values(); // Re-index array
-            } else {
-                // Admins can see all employees
-                $employees = Employee::with('user')
-                    ->get()
-                    ->filter(function ($employee) {
-                        return $employee->user !== null;
-                    })
-                    ->map(function ($employee) {
-                        return [
-                            'id' => $employee->user->id, // user_id for task assignment
+                            'id' => $employee->user->id,
                             'first_name' => $employee->user->first_name,
                             'last_name' => $employee->user->last_name,
                             'full_name' => $employee->full_name,
@@ -368,6 +576,54 @@ class TaskController extends Controller
                         ];
                     })
                     ->values();
+            } elseif ($currentUser->role === 'admin') {
+                // Admins can see all employees in their business
+                $userEmployee = $currentUser->employee;
+                
+                if ($userEmployee && $userEmployee->business_id) {
+                    $employees = Employee::with('user')
+                        ->where('business_id', $userEmployee->business_id)
+                        ->get()
+                        ->filter(function ($employee) {
+                            return $employee->user !== null;
+                        })
+                        ->map(function ($employee) {
+                            return [
+                                'id' => $employee->user->id,
+                                'first_name' => $employee->user->first_name,
+                                'last_name' => $employee->user->last_name,
+                                'full_name' => $employee->full_name,
+                                'email' => $employee->user->email,
+                                'employee_id' => $employee->employee_id,
+                                'position' => $employee->position,
+                                'department' => $employee->department
+                            ];
+                        })
+                        ->values();
+                } else {
+                    // Fallback: get all employees
+                    $employees = Employee::with('user')
+                        ->get()
+                        ->filter(function ($employee) {
+                            return $employee->user !== null;
+                        })
+                        ->map(function ($employee) {
+                            return [
+                                'id' => $employee->user->id,
+                                'first_name' => $employee->user->first_name,
+                                'last_name' => $employee->user->last_name,
+                                'full_name' => $employee->full_name,
+                                'email' => $employee->user->email,
+                                'employee_id' => $employee->employee_id,
+                                'position' => $employee->position,
+                                'department' => $employee->department
+                            ];
+                        })
+                        ->values();
+                }
+            } else {
+                // Regular employees see no one
+                $employees = collect([]);
             }
 
             Log::info('TASK_CONTROLLER: Simple employee list fetched', [

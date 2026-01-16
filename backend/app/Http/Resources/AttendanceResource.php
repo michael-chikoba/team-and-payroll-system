@@ -16,12 +16,41 @@ class AttendanceResource extends JsonResource
                 : Carbon::parse($this->date)->format('Y-m-d'),
             'checkIn' => $this->formatTime($this->clock_in),
             'checkOut' => $this->formatTime($this->clock_out),
-            'hoursWorked' => $this->total_hours ? (float) $this->total_hours : $this->calculateHours(),
+            
+            // Use the calculated hours from the model
+            'hoursWorked' => $this->total_hours ? (float) $this->total_hours : 0,
+            'regularHours' => $this->regular_hours ? (float) $this->regular_hours : 0,
+            'overtimeHours' => $this->overtime_hours ? (float) $this->overtime_hours : 0,
+            
             'breakMinutes' => $this->break_minutes ?? 0,
             'status' => $this->status ?? 'present',
             'notes' => $this->notes,
+            
+            // Include shift and overtime session info
+            'isOvertimeSession' => $this->is_overtime_session ?? false,
+            'hasShift' => $this->shift_assignment_id !== null,
+            'shift' => $this->when($this->shiftAssignment, function() {
+                return [
+                    'id' => $this->shiftAssignment->id,
+                    'type' => $this->shiftAssignment->shift_type,
+                    'startTime' => $this->shiftAssignment->start_time,
+                    'endTime' => $this->shiftAssignment->end_time,
+                    'status' => $this->shiftAssignment->status,
+                ];
+            }),
+            
             'employee' => new EmployeeResource($this->whenLoaded('employee')),
-            'overtimeHours' => $this->getOvertimeHours(),
+            
+            // Include parent attendance if this is an overtime session
+            'parentAttendance' => $this->when($this->parent_attendance_id, function() {
+                return $this->parentAttendance ? [
+                    'id' => $this->parentAttendance->id,
+                    'date' => $this->parentAttendance->date->format('Y-m-d'),
+                    'regularHours' => (float) $this->parentAttendance->regular_hours,
+                    'overtimeHours' => (float) $this->parentAttendance->overtime_hours,
+                ] : null;
+            }),
+            
             'createdAt' => $this->created_at->format('Y-m-d H:i:s'),
             'updatedAt' => $this->updated_at->format('Y-m-d H:i:s'),
         ];
@@ -44,35 +73,10 @@ class AttendanceResource extends JsonResource
                 // Time only (HH:MM:SS)
                 $carbon = Carbon::parse($time);
             }
-
+            
             return $carbon->format('h:i A'); // 08:47 AM format
         } catch (\Exception $e) {
             return $time;
-        }
-    }
-
-    /**
-     * Calculate hours if not already calculated
-     */
-    private function calculateHours(): float
-    {
-        if (!$this->clock_in || !$this->clock_out) {
-            return 0;
-        }
-
-        try {
-            $date = $this->date instanceof Carbon
-                ? $this->date->format('Y-m-d')
-                : Carbon::parse($this->date)->format('Y-m-d');
-            $clockIn = Carbon::parse($date . ' ' . $this->clock_in);
-            $clockOut = Carbon::parse($date . ' ' . $this->clock_out);
-
-            $minutes = $clockOut->diffInMinutes($clockIn);
-            $minutes -= ($this->break_minutes ?? 0);
-
-            return max(0, round($minutes / 60, 2));
-        } catch (\Exception $e) {
-            return 0;
         }
     }
 }

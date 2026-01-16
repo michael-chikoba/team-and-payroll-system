@@ -16,89 +16,142 @@ class Task extends Model
         'description',
         'priority',
         'status',
-        'assigned_to', // This stores user_id
-        'created_by',  // This stores user_id
+        'assigned_to',
+        'created_by',
         'deadline',
+        'tags',
     ];
 
     protected $casts = [
         'deadline' => 'datetime',
+        'tags' => 'array',
     ];
 
     /**
-     * Get the user this task is assigned to
-     * assigned_to field contains user_id
+     * Boot method to add event listeners
      */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Log task creation
+        static::created(function ($task) {
+            TaskHistory::create([
+                'task_id' => $task->id,
+                'user_id' => $task->created_by,
+                'type' => 'created',
+                'action' => 'created this task',
+            ]);
+        });
+
+        // Log task updates
+        static::updated(function ($task) {
+            $changes = $task->getChanges();
+            unset($changes['updated_at']); // Ignore updated_at changes
+
+            foreach ($changes as $field => $newValue) {
+                $oldValue = $task->getOriginal($field);
+                
+                $type = 'updated';
+                $action = "updated $field";
+
+                if ($field === 'status') {
+                    $type = 'status_change';
+                    $action = "changed status from $oldValue to $newValue";
+                } elseif ($field === 'priority') {
+                    $type = 'priority_change';
+                    $action = "changed priority from $oldValue to $newValue";
+                } elseif ($field === 'assigned_to') {
+                    $type = 'assigned';
+                    $oldUser = User::find($oldValue);
+                    $newUser = User::find($newValue);
+                    $action = "reassigned from " . ($oldUser ? $oldUser->first_name . ' ' . $oldUser->last_name : 'Unknown') 
+                            . " to " . ($newUser ? $newUser->first_name . ' ' . $newUser->last_name : 'Unknown');
+                }
+
+                TaskHistory::create([
+                    'task_id' => $task->id,
+                    'user_id' => auth()->id() ?? $task->created_by,
+                    'type' => $type,
+                    'action' => $action,
+                    'field_changed' => $field,
+                    'old_value' => $oldValue,
+                    'new_value' => $newValue,
+                ]);
+            }
+        });
+
+        // Log task deletion
+        static::deleting(function ($task) {
+            TaskHistory::create([
+                'task_id' => $task->id,
+                'user_id' => auth()->id() ?? $task->created_by,
+                'type' => 'deleted',
+                'action' => 'deleted this task',
+            ]);
+        });
+    }
+
+    // Relationships
     public function assignedTo(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
-    /**
-     * Get the user who created this task
-     * created_by field contains user_id
-     */
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Get all comments for this task
-     */
     public function comments(): HasMany
     {
         return $this->hasMany(TaskComment::class)->latest();
     }
 
-    /**
-     * Scope to get tasks assigned to a specific user
-     * @param $query
-     * @param int $userId - The user_id from users table
-     */
+    public function subtasks(): HasMany
+    {
+        return $this->hasMany(Subtask::class)->orderBy('order');
+    }
+
+    public function workLogs(): HasMany
+    {
+        return $this->hasMany(TaskWorkLog::class)->latest();
+    }
+
+    public function history(): HasMany
+    {
+        return $this->hasMany(TaskHistory::class)->latest();
+    }
+
+    public function links(): HasMany
+    {
+        return $this->hasMany(TaskLink::class, 'task_id');
+    }
+
+    public function linkedItems(): HasMany
+    {
+        return $this->hasMany(TaskLink::class, 'task_id')->with('linkedTask');
+    }
+
+    // Scopes
     public function scopeForUser($query, $userId)
     {
         return $query->where('assigned_to', $userId);
     }
 
-    /**
-     * Scope to get tasks created by a specific user
-     * @param $query
-     * @param int $userId - The user_id from users table
-     */
     public function scopeCreatedByUser($query, $userId)
     {
         return $query->where('created_by', $userId);
     }
 
-    /**
-     * Get the employee record of the assigned user
-     * This is a convenience method to access employee details
-     */
-    public function assignedEmployee()
+    // Accessors
+    public function getCompletedSubtasksCountAttribute()
     {
-        return $this->hasOneThrough(
-            Employee::class,
-            User::class,
-            'id',          // Foreign key on users table
-            'user_id',     // Foreign key on employees table
-            'assigned_to', // Local key on tasks table (contains user_id)
-            'id'           // Local key on users table
-        );
+        return $this->subtasks()->where('status', 'completed')->count();
     }
 
-    /**
-     * Get the employee record of the user who created the task
-     */
-    public function creatorEmployee()
+    public function getTotalTimeLoggedAttribute()
     {
-        return $this->hasOneThrough(
-            Employee::class,
-            User::class,
-            'id',         // Foreign key on users table
-            'user_id',    // Foreign key on employees table
-            'created_by', // Local key on tasks table (contains user_id)
-            'id'          // Local key on users table
-        );
+        return $this->workLogs()->sum('hours');
     }
 }

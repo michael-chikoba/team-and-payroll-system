@@ -97,6 +97,19 @@ export default [
         name: 'AdminSettings',
         component: () => import('@/views/admin/Settings.vue')
       },
+      // Add this to your admin routes
+{
+  path: 'tickets',
+  name: 'AdminTickets',
+  component: () => import('@/views/Tickets.vue'),
+  meta: { title: 'Ticket Management' }
+},
+{
+  path: 'Tasks',
+  name: 'AdminTasks',
+  component: () => import('@/views/admin/AdminTasks.vue'),
+  meta: { title: 'Tasks Management' }
+},
       // 13. BUSINESS MANAGEMENT - RESTRICTED TO SPECIFIC USER
       {
         path: 'businesses',

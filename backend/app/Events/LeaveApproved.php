@@ -1,7 +1,5 @@
 <?php
-
 namespace App\Events;
-
 use App\Models\Leave;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -10,8 +8,10 @@ use Illuminate\Queue\SerializesModels;
 class LeaveApproved
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
+    public $leave;
 
-    public function __construct(public Leave $leave)
+    public function __construct(Leave $leave)
     {
+        $this->leave = $leave;
     }
 }

@@ -4,7 +4,7 @@
       <div class="panel-header">
         <h3>Notifications</h3>
         <div class="header-actions">
-          <button @click="$emit('mark-all-read')" class="mark-all-btn">
+          <button @click="markAllAsRead" class="mark-all-btn" v-if="hasUnread">
             Mark all as read
           </button>
           <button @click="$emit('close')" class="close-btn">
@@ -15,41 +15,72 @@
           </button>
         </div>
       </div>
-
-      <div class="notifications-list">
+      
+      <div class="notifications-list" v-if="!loading">
         <div
           v-for="notification in notifications"
           :key="notification.id"
           :class="['notification-item', { unread: !notification.is_read }]"
           @click="handleNotificationClick(notification)">
-          
-          <div :class="['notification-icon', notification.type]">
-            <svg v-if="notification.type === 'assignment'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
+          <div :class="['notification-icon', getIconClass(notification.type)]">
+            <!-- Task Assigned Icon -->
+            <svg v-if="notification.type === 'task_assigned'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <polyline points="16 11 18 13 22 9"></polyline>
             </svg>
-            <svg v-else-if="notification.type === 'reminder'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            
+            <!-- Schedule Icons -->
+            <svg v-else-if="notification.type.includes('schedule')" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+              <circle cx="12" cy="15" r="2"/>
+            </svg>
+            
+            <!-- Leave Icons -->
+            <svg v-else-if="notification.type.includes('leave')" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            
+            <!-- Ticket Icons -->
+            <svg v-else-if="notification.type.includes('ticket')" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2z"/>
+              <path d="M3 7l9 6 9-6"/>
+            </svg>
+            
+            <!-- Updated/Reminder Icon -->
+            <svg v-else-if="notification.type.includes('updated') || notification.type.includes('reminder')" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <polyline points="12 6 12 12 16 14"/>
             </svg>
-            <svg v-else-if="notification.type === 'overdue'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            
+            <!-- Overdue Icon -->
+            <svg v-else-if="notification.type.includes('overdue')" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="12"/>
               <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
+            
+            <!-- Default/Completed Icon -->
             <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </div>
-
+          
           <div class="notification-content">
+            <p class="notification-title" v-if="notification.title">{{ notification.title }}</p>
             <p class="notification-message">{{ notification.message }}</p>
             <span class="notification-time">{{ formatTime(notification.created_at) }}</span>
           </div>
-
+          
           <div v-if="!notification.is_read" class="unread-indicator"></div>
         </div>
-
+        
         <div v-if="notifications.length === 0" class="empty-state">
           <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -58,11 +89,21 @@
           <p>No notifications</p>
         </div>
       </div>
+      
+      <div v-else class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading notifications...</p>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
+import { useNotificationStore } from '@/stores/notification'
+import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+
 export default {
   name: 'NotificationPanel',
   props: {
@@ -71,42 +112,159 @@ export default {
       required: true
     }
   },
-  emits: ['close', 'mark-read', 'mark-all-read'],
+  emits: ['close', 'mark-all-read'],
   setup(props, { emit }) {
-    const handleNotificationClick = (notification) => {
-      if (!notification.is_read) {
-        emit('mark-read', notification);
+    const store = useNotificationStore()
+    const router = useRouter()
+    const authStore = useAuthStore()
+
+    const loading = computed(() => store.loading)
+    const hasUnread = computed(() => props.notifications.some(n => !n.is_read))
+
+    const handleNotificationClick = async (notification) => {
+      try {
+        // Mark as read first
+        if (!notification.is_read) {
+          await store.markAsRead(notification.id)
+        }
+        
+        // Close the panel
+        emit('close')
+        
+        // Navigate to the appropriate page
+        if (notification.action) {
+          const actionUrl = notification.action
+          const userRole = authStore.user?.role
+          
+          // Check notification type and navigate accordingly
+          if (notification.type === 'task_assigned' || actionUrl.includes('/tasks')) {
+            await router.push({ name: 'TaskBoard' })
+            console.log('✅ Navigated to TaskBoard from notification')
+          } 
+          else if (notification.type === 'schedule_assigned' || notification.type === 'schedule_updated' || actionUrl.includes('/schedules')) {
+            await router.push({ name: 'EmployeeSchedules' })
+            console.log('✅ Navigated to Schedules from notification')
+          }
+          else if (notification.type.includes('leave') || actionUrl.includes('/leaves')) {
+            if (userRole === 'employee') {
+              await router.push({ name: 'employeeleaves' })
+            } else if (userRole === 'manager') {
+              await router.push({ name: 'managerleaves' })
+            }
+            console.log('✅ Navigated to leaves from notification')
+          }
+          else if (notification.type.includes('ticket') || actionUrl.includes('/tickets')) {
+            await router.push({ name: 'mytickets' })
+            console.log('✅ Navigated to tickets from notification')
+          }
+          else if (notification.type.includes('shift') || actionUrl.includes('/shifts')) {
+            await router.push({ name: 'myshifts' })
+            console.log('✅ Navigated to shifts from notification')
+          }
+          else if (notification.type.includes('payslip') || actionUrl.includes('/payslips')) {
+            if (userRole === 'employee') {
+              await router.push({ name: 'employeepayslips' })
+            } else if (userRole === 'manager') {
+              await router.push({ name: 'managerpayslips' })
+            }
+            console.log('✅ Navigated to payslips from notification')
+          }
+          // Fallback: try to navigate directly
+          else {
+            try {
+              await router.push(actionUrl)
+              console.log('✅ Navigated to:', actionUrl)
+            } catch (error) {
+              console.warn('⚠️ Could not navigate to:', actionUrl, error)
+              // Navigate to dashboard as fallback
+              const dashboardRoute = userRole === 'employee' ? 'employeedashboard' 
+                : userRole === 'manager' ? 'managerdashboard' 
+                : 'admindashboard'
+              await router.push({ name: dashboardRoute })
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error handling notification click:', error)
       }
-    };
+    }
 
     const formatTime = (timestamp) => {
-      const date = new Date(timestamp);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-
-      if (diffMins < 1) return 'Just now';
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays < 7) return `${diffDays}d ago`;
+      const date = new Date(timestamp)
+      const now = new Date()
+      const diffMs = now - date
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      const diffDays = Math.floor(diffMs / 86400000)
       
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric' 
-      });
-    };
+      if (diffMins < 1) return 'Just now'
+      if (diffMins < 60) return `${diffMins}m ago`
+      if (diffHours < 24) return `${diffHours}h ago`
+      if (diffDays < 7) return `${diffDays}d ago`
+      
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      })
+    }
+
+    const markAllAsRead = async () => {
+      try {
+        await store.markAllAsRead()
+        emit('mark-all-read')
+      } catch (error) {
+        console.error('Error marking all as read:', error)
+      }
+    }
+
+    const getIconClass = (type) => {
+      if (type === 'task_assigned') return 'assignment'
+      if (type.includes('schedule')) return 'schedule'
+      if (type.includes('updated')) return 'reminder'
+      if (type.includes('overdue')) return 'overdue'
+      if (type.includes('leave')) return 'leave'
+      if (type.includes('ticket')) return 'ticket'
+      if (type.includes('shift')) return 'shift'
+      if (type.includes('payslip')) return 'payslip'
+      return 'completed'
+    }
 
     return {
+      loading,
+      hasUnread,
       handleNotificationClick,
-      formatTime
-    };
+      formatTime,
+      markAllAsRead,
+      getIconClass
+    }
   }
-};
+}
 </script>
 
 <style scoped>
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  color: #9ca3af;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f4f6;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 .notification-panel-overlay {
   position: fixed;
   top: 0;
@@ -132,12 +290,7 @@ export default {
   box-shadow: -4px 0 24px rgba(0,0,0,0.2);
   display: flex;
   flex-direction: column;
-  animation: slideIn 0.3s;
-}
-
-@keyframes slideIn {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  max-height: 100vh;
 }
 
 .panel-header {
@@ -146,6 +299,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .panel-header h3 {
@@ -229,6 +383,11 @@ export default {
   color: #3b82f6;
 }
 
+.notification-icon.schedule {
+  background: #fce7f3;
+  color: #ec4899;
+}
+
 .notification-icon.reminder {
   background: #fef3c7;
   color: #f59e0b;
@@ -239,6 +398,26 @@ export default {
   color: #ef4444;
 }
 
+.notification-icon.leave {
+  background: #e0e7ff;
+  color: #6366f1;
+}
+
+.notification-icon.ticket {
+  background: #fef9c3;
+  color: #ca8a04;
+}
+
+.notification-icon.shift {
+  background: #dbeafe;
+  color: #0284c7;
+}
+
+.notification-icon.payslip {
+  background: #d1fae5;
+  color: #059669;
+}
+
 .notification-icon.completed {
   background: #d1fae5;
   color: #10b981;
@@ -246,13 +425,22 @@ export default {
 
 .notification-content {
   flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  margin: 0 0 0.25rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .notification-message {
   margin: 0 0 0.25rem 0;
   font-size: 0.875rem;
-  color: #1f2937;
+  color: #4b5563;
   line-height: 1.5;
+  word-wrap: break-word;
 }
 
 .notification-time {

@@ -12,16 +12,147 @@ use App\Services\PayrollCalculationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class PayrollController extends Controller
 {
     public function __construct(private PayrollCalculationService $payrollService) {}
+
+    /**
+     * Get business-scoped employees query for payroll
+     */
+    private function getBusinessScopedEmployees(Request $request)
+    {
+        $user = $request->user();
+        $requestedBusinessId = $request->input('business_id');
+        $query = Employee::query();
+
+        Log::info('PAYROLL_CONTROLLER: Getting business scoped employees', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'requested_business_id' => $requestedBusinessId,
+        ]);
+
+        // If user is admin
+        if ($user->role === 'admin') {
+            // If admin has a current business, they can only see that business
+            if ($user->current_business_id) {
+                // If they request a different business, deny access
+                if ($requestedBusinessId && (int)$requestedBusinessId !== $user->current_business_id) {
+                    // Check if they have explicit access through businesses relationship
+                    if (!$user->businesses()->where('businesses.id', $requestedBusinessId)->exists()) {
+                        Log::warning('PAYROLL_CONTROLLER: Admin attempting to access unauthorized business', [
+                            'admin_id' => $user->id,
+                            'admin_business_id' => $user->current_business_id,
+                            'requested_business_id' => $requestedBusinessId,
+                        ]);
+                        // Return empty query
+                        $query->where('business_id', 0);
+                        return $query;
+                    }
+                }
+                
+                // Use requested business if authorized, otherwise use current business
+                $businessId = $requestedBusinessId ?: $user->current_business_id;
+                $query->where('business_id', $businessId);
+                
+                Log::info('PAYROLL_CONTROLLER: Admin filtering by business', [
+                    'admin_id' => $user->id,
+                    'business_id' => $businessId,
+                ]);
+            }
+            // If admin manages specific businesses (multi-business admin)
+            elseif ($user->businesses()->exists()) {
+                if ($requestedBusinessId) {
+                    // Verify they manage this business
+                    if ($user->businesses()->where('businesses.id', $requestedBusinessId)->exists()) {
+                        $query->where('business_id', $requestedBusinessId);
+                        Log::info('PAYROLL_CONTROLLER: Multi-business admin filtering by requested business', [
+                            'admin_id' => $user->id,
+                            'business_id' => $requestedBusinessId,
+                        ]);
+                    } else {
+                        Log::warning('PAYROLL_CONTROLLER: Multi-business admin attempting to access unauthorized business', [
+                            'admin_id' => $user->id,
+                            'requested_business_id' => $requestedBusinessId,
+                        ]);
+                        // Return empty query
+                        $query->where('business_id', 0);
+                        return $query;
+                    }
+                } else {
+                    // Show all businesses they manage
+                    $businessIds = $user->businesses()->pluck('businesses.id');
+                    $query->whereIn('business_id', $businessIds);
+                    
+                    Log::info('PAYROLL_CONTROLLER: Multi-business admin filtering by managed businesses', [
+                        'admin_id' => $user->id,
+                        'business_ids' => $businessIds,
+                    ]);
+                }
+            }
+            // Super admin without business restrictions
+            else {
+                if ($requestedBusinessId) {
+                    $query->where('business_id', $requestedBusinessId);
+                    Log::info('PAYROLL_CONTROLLER: Super admin filtering by requested business', [
+                        'admin_id' => $user->id,
+                        'business_id' => $requestedBusinessId,
+                    ]);
+                } else {
+                    Log::info('PAYROLL_CONTROLLER: Super admin - showing all employees', [
+                        'admin_id' => $user->id,
+                    ]);
+                }
+            }
+        }
+        // For managers
+        elseif ($user->role === 'manager') {
+            $managerEmployee = Employee::where('user_id', $user->id)->first();
+            
+            if ($managerEmployee && $managerEmployee->business_id) {
+                $query->where('business_id', $managerEmployee->business_id)
+                      ->where('manager_id', $user->id);
+                      
+                Log::info('PAYROLL_CONTROLLER: Manager filtering by business and team', [
+                    'manager_id' => $user->id,
+                    'business_id' => $managerEmployee->business_id,
+                ]);
+            } else {
+                // Manager without business can only see their direct reports
+                $query->where('manager_id', $user->id);
+                
+                Log::info('PAYROLL_CONTROLLER: Manager filtering team only', [
+                    'manager_id' => $user->id,
+                ]);
+            }
+        }
+        // For regular employees
+        elseif ($user->role === 'employee') {
+            $query->where('user_id', $user->id);
+            
+            Log::info('PAYROLL_CONTROLLER: Employee viewing own record', [
+                'employee_user_id' => $user->id,
+            ]);
+        }
+
+        return $query;
+    }
 
     public function processPayroll(ProcessPayrollRequest $request): JsonResponse
     {
         $validated = $request->validated();
         $period = $validated['payroll_period'];
         $adjustments = $validated['adjustments'] ?? [];
+        $user = $request->user();
+
+        Log::info('PAYROLL_CONTROLLER: Processing payroll', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'payroll_period' => $period,
+        ]);
 
         $payroll = Payroll::firstOrCreate(
             ['payroll_period' => $period],
@@ -34,14 +165,49 @@ class PayrollController extends Controller
 
         try {
             $employeeIds = $validated['employee_ids'] ?? [];
+            
+            // Get business-scoped employees
+            $scopedEmployeesQuery = $this->getBusinessScopedEmployees($request);
+            
             if (empty($employeeIds)) {
-                $employeeIds = Employee::pluck('id')->toArray();
+                $employeeIds = $scopedEmployeesQuery->pluck('id')->toArray();
+            } else {
+                // Verify all requested employee IDs are within scope
+                $authorizedIds = $scopedEmployeesQuery->pluck('id')->toArray();
+                $employeeIds = array_intersect($employeeIds, $authorizedIds);
+                
+                if (count($employeeIds) !== count($validated['employee_ids'] ?? [])) {
+                    Log::warning('PAYROLL_CONTROLLER: Some employee IDs were filtered out due to access restrictions', [
+                        'user_id' => $user->id,
+                        'requested_count' => count($validated['employee_ids'] ?? []),
+                        'authorized_count' => count($employeeIds),
+                    ]);
+                }
+            }
+
+            if (empty($employeeIds)) {
+                return response()->json([
+                    'message' => 'No authorized employees found for payroll processing'
+                ], 403);
             }
 
             $processedCount = 0;
             foreach ($employeeIds as $empId) {
                 $employee = Employee::find($empId);
                 if (!$employee) continue;
+
+                // Double-check business access
+                if ($user->role === 'admin' && $user->current_business_id) {
+                    if ($employee->business_id !== $user->current_business_id) {
+                        Log::warning('PAYROLL_CONTROLLER: Skipping employee from different business', [
+                            'user_id' => $user->id,
+                            'user_business_id' => $user->current_business_id,
+                            'employee_business_id' => $employee->business_id,
+                            'employee_id' => $empId,
+                        ]);
+                        continue;
+                    }
+                }
 
                 $employeeAdjustments = $adjustments[$empId] ?? [];
                 $payslip = Payslip::where('payroll_id', $payroll->id)->where('employee_id', $empId)->first();
@@ -63,13 +229,22 @@ class PayrollController extends Controller
             $payroll->processed_at = now();
             $payroll->save();
 
+            Log::info('PAYROLL_CONTROLLER: Payroll processed successfully', [
+                'user_id' => $user->id,
+                'payroll_id' => $payroll->id,
+                'processed_count' => $processedCount,
+            ]);
+
             return response()->json([
                 'payroll' => new PayrollResource($payroll->fresh()),
                 'message' => "Successfully processed payroll for {$processedCount} employee(s)",
                 'processed_count' => $processedCount,
             ]);
         } catch (\Exception $e) {
-            \Log::error('Payroll processing failed', ['error' => $e->getMessage()]);
+            Log::error('PAYROLL_CONTROLLER: Payroll processing failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['message' => 'Failed to process payroll: ' . $e->getMessage()], 500);
         }
     }
@@ -84,7 +259,6 @@ class PayrollController extends Controller
         $payslip->other_deductions += $deductions;
         
         // Recalculate total deductions based on stored dynamic breakdown if available
-        // If the breakdown exists, we sum the statutory deduction amounts from it
         $statutoryTotal = 0;
         if (isset($payslip->breakdown['deductions_breakdown']['statutory_total'])) {
             $statutoryTotal = $payslip->breakdown['deductions_breakdown']['statutory_total'];
@@ -101,8 +275,6 @@ class PayrollController extends Controller
         $payslip->breakdown = $breakdown;
     }
 
-    // ... updateStatus, employeesSummary (similar logic to previous) ...
-
     public function employeesSummary(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -113,8 +285,16 @@ class PayrollController extends Controller
             'business_id' => 'nullable|integer',
         ]);
 
+        $user = $request->user();
         $period = $validated['payroll_period'];
-        $businessId = $validated['business_id'] ?? null;
+
+        Log::info('PAYROLL_CONTROLLER: Fetching employees summary', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'requested_business_id' => $validated['business_id'] ?? null,
+            'payroll_period' => $period,
+        ]);
 
         $payroll = Payroll::firstOrCreate(['payroll_period' => $period], [
             'start_date' => $validated['start_date'],
@@ -122,9 +302,15 @@ class PayrollController extends Controller
             'status' => 'draft',
         ]);
 
-        $employeeQuery = Employee::with('user');
-        if ($businessId) $employeeQuery->where('business_id', $businessId);
-        $employees = $employeeQuery->get();
+        // Get business-scoped employees
+        $employees = $this->getBusinessScopedEmployees($request)
+            ->with(['user', 'business'])
+            ->get();
+
+        Log::info('PAYROLL_CONTROLLER: Employees fetched for summary', [
+            'user_id' => $user->id,
+            'employee_count' => $employees->count(),
+        ]);
 
         $summaryData = [];
         foreach ($employees as $employee) {
@@ -142,7 +328,9 @@ class PayrollController extends Controller
             $summaryData[] = [
                 'id' => $employee->id,
                 'name' => $employee->user ? $employee->user->first_name . ' ' . $employee->user->last_name : 'Unknown',
+                'email' => $employee->user ? $employee->user->email : null,
                 'position' => $employee->position ?? 'Unassigned',
+                'business_id' => $employee->business_id,
                 'business_name' => $employee->business?->name ?? 'No Business',
                 'base_salary' => (float) $employee->base_salary,
                 'gross_salary' => (float) ($payslipData['summary']['gross_pay'] ?? 0),
@@ -156,9 +344,14 @@ class PayrollController extends Controller
         return response()->json([
             'data' => $summaryData,
             'payroll_id' => $payroll->id,
+            'meta' => [
+                'total' => count($summaryData),
+                'user_business_id' => $user->current_business_id,
+            ]
         ]);
     }
-      public function updateStatus(Request $request): JsonResponse
+
+    public function updateStatus(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'employee_ids' => 'required|array|min:1',
@@ -174,8 +367,41 @@ class PayrollController extends Controller
             'adjustments.*.advance_deductions' => 'sometimes|numeric|min:0',
         ]);
 
+        $user = $request->user();
         $period = $validated['payroll_period'];
         $adjustments = $validated['adjustments'] ?? [];
+        
+        Log::info('PAYROLL_CONTROLLER: Updating payroll status', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'employee_count' => count($validated['employee_ids']),
+        ]);
+
+        // Get business-scoped employees to verify access
+        $scopedEmployeesQuery = $this->getBusinessScopedEmployees($request);
+        $authorizedIds = $scopedEmployeesQuery->pluck('id')->toArray();
+        
+        // Filter employee IDs to only those the user has access to
+        $employeeIds = array_intersect($validated['employee_ids'], $authorizedIds);
+        
+        if (empty($employeeIds)) {
+            Log::warning('PAYROLL_CONTROLLER: No authorized employees found', [
+                'user_id' => $user->id,
+                'requested_count' => count($validated['employee_ids']),
+            ]);
+            return response()->json([
+                'message' => 'No authorized employees found to update'
+            ], 403);
+        }
+
+        if (count($employeeIds) !== count($validated['employee_ids'])) {
+            Log::warning('PAYROLL_CONTROLLER: Some employee IDs were filtered out', [
+                'user_id' => $user->id,
+                'requested_count' => count($validated['employee_ids']),
+                'authorized_count' => count($employeeIds),
+            ]);
+        }
         
         // Find or create payroll for the period
         $payroll = Payroll::firstOrCreate(
@@ -190,11 +416,24 @@ class PayrollController extends Controller
         $updatedCount = 0;
         $createdCount = 0;
 
-        foreach ($validated['employee_ids'] as $empId) {
+        foreach ($employeeIds as $empId) {
             $employee = Employee::find($empId);
             
             if (!$employee) {
                 continue;
+            }
+
+            // Double-check business access
+            if ($user->role === 'admin' && $user->current_business_id) {
+                if ($employee->business_id !== $user->current_business_id) {
+                    Log::warning('PAYROLL_CONTROLLER: Skipping employee from different business in update', [
+                        'user_id' => $user->id,
+                        'user_business_id' => $user->current_business_id,
+                        'employee_business_id' => $employee->business_id,
+                        'employee_id' => $empId,
+                    ]);
+                    continue;
+                }
             }
 
             // Get adjustments for this employee
@@ -242,6 +481,12 @@ class PayrollController extends Controller
             $createdCount
         );
 
+        Log::info('PAYROLL_CONTROLLER: Status updated successfully', [
+            'user_id' => $user->id,
+            'updated_count' => $updatedCount,
+            'created_count' => $createdCount,
+        ]);
+
         return response()->json([
             'message' => $message,
             'updated_count' => $updatedCount,
@@ -250,11 +495,22 @@ class PayrollController extends Controller
         ]);
     }
 
-    
-
     public function viewEmployeePayslip(Request $request, int $employeeId): JsonResponse
     {
+        $user = $request->user();
         $payrollPeriod = $request->query('payroll_period');
+        
+        // Verify access to this employee
+        $scopedEmployees = $this->getBusinessScopedEmployees($request)->pluck('id')->toArray();
+        
+        if (!in_array($employeeId, $scopedEmployees)) {
+            Log::warning('PAYROLL_CONTROLLER: Unauthorized access to employee payslip', [
+                'user_id' => $user->id,
+                'employee_id' => $employeeId,
+            ]);
+            return response()->json(['message' => 'Unauthorized access to employee payslip'], 403);
+        }
+        
         $employee = Employee::with('user')->findOrFail($employeeId);
         
         $payroll = Payroll::where('payroll_period', $payrollPeriod)->first();
@@ -298,7 +554,7 @@ class PayrollController extends Controller
             'earnings' => $previewData['earnings'],
             'deductions' => [
                 'paye' => $previewData['deductions']['paye'],
-                'statutory' => $previewData['deductions']['statutory_breakdown'] ?? [], // Dynamic Array
+                'statutory' => $previewData['deductions']['statutory_breakdown'] ?? [],
                 'other_deductions' => $previewData['deductions']['other_deductions'],
                 'total_deductions' => $previewData['deductions']['total_deductions'],
             ],
@@ -347,7 +603,7 @@ class PayrollController extends Controller
             ],
             'deductions' => [
                 'paye' => (float) $payslip->paye,
-                'statutory' => $statutory, // Dynamic List of {name, amount}
+                'statutory' => $statutory,
                 'other_deductions' => (float) $payslip->other_deductions,
                 'total_deductions' => (float) $payslip->total_deductions,
             ],
@@ -363,7 +619,15 @@ class PayrollController extends Controller
 
     public function history(Request $request): JsonResponse
     {
+        $user = $request->user();
         $period = $request->query('payroll_period', Carbon::now()->format('Y-m'));
+        
+        Log::info('PAYROLL_CONTROLLER: Fetching payroll history', [
+            'user_id' => $user->id,
+            'user_role' => $user->role,
+            'user_business_id' => $user->current_business_id,
+            'payroll_period' => $period,
+        ]);
         
         // Get the payroll for this period
         $payroll = Payroll::where('payroll_period', $period)->first();
@@ -371,8 +635,12 @@ class PayrollController extends Controller
         $data = [];
         
         if ($payroll) {
-            // Get all payslips for this payroll
+            // Get business-scoped employee IDs
+            $scopedEmployeeIds = $this->getBusinessScopedEmployees($request)->pluck('id')->toArray();
+            
+            // Get all payslips for this payroll that belong to authorized employees
             $payslips = Payslip::where('payroll_id', $payroll->id)
+                ->whereIn('employee_id', $scopedEmployeeIds)
                 ->with(['employee.user', 'payroll'])
                 ->get();
             

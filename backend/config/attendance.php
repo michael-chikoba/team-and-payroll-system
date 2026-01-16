@@ -1,89 +1,75 @@
 <?php
 
 return [
+
     /*
     |--------------------------------------------------------------------------
-    | Grace Period (Minutes)
+    | Default Shift Settings
     |--------------------------------------------------------------------------
     |
-    | The number of minutes after the expected start time before an employee
-    | is marked as late. For example, if grace_period_minutes is 15, an
-    | employee can clock in up to 15 minutes after their shift start time
-    | without being marked as late.
+    | These settings are used when an employee doesn't have a shift assigned
     |
     */
+
+    'default_start_time' => env('ATTENDANCE_DEFAULT_START', '08:00'),
+    'default_end_time' => env('ATTENDANCE_DEFAULT_END', '16:00'),
+    'regular_hours' => env('ATTENDANCE_REGULAR_HOURS', 8),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Late Arrival Settings
+    |--------------------------------------------------------------------------
+    |
+    | Grace period before marking an employee as late (in minutes)
+    |
+    */
+
     'grace_period_minutes' => env('ATTENDANCE_GRACE_PERIOD', 15),
 
     /*
     |--------------------------------------------------------------------------
-    | Default Start Time
+    | Auto Clock-Out Settings
     |--------------------------------------------------------------------------
     |
-    | The default expected start time for employees who don't have a shift
-    | assigned. This is used as a fallback when determining if someone is late.
+    | Time when system automatically clocks out employees who forgot
     |
     */
-    'default_start_time' => env('ATTENDANCE_DEFAULT_START_TIME', '08:30'),
+
+    'auto_clockout_time' => env('ATTENDANCE_AUTO_CLOCKOUT', '16:00'),
 
     /*
     |--------------------------------------------------------------------------
-    | Auto Clock-Out Time
+    | Overtime Settings
     |--------------------------------------------------------------------------
     |
-    | The time at which the system will automatically clock out employees
-    | who forgot to clock out. This prevents attendance records from staying
-    | open indefinitely.
+    | Settings for overtime calculation
     |
     */
-    'auto_clock_out_time' => env('ATTENDANCE_AUTO_CLOCK_OUT_TIME', '16:00'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Overtime Threshold (Hours)
-    |--------------------------------------------------------------------------
-    |
-    | The number of hours worked before overtime begins. This is used for
-    | calculating overtime hours in payroll calculations.
-    |
-    */
     'overtime_threshold' => env('ATTENDANCE_OVERTIME_THRESHOLD', 8),
+    'allow_overtime_sessions' => env('ATTENDANCE_ALLOW_OVERTIME', true),
+    'overtime_requires_approval' => env('ATTENDANCE_OVERTIME_APPROVAL', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Break Settings
+    |--------------------------------------------------------------------------
+    |
+    | Default break duration in minutes
+    |
+    */
+
+    'default_break_minutes' => env('ATTENDANCE_DEFAULT_BREAK', 60),
 
     /*
     |--------------------------------------------------------------------------
     | Timezone
     |--------------------------------------------------------------------------
     |
-    | The timezone to use for attendance calculations. This should match
-    | your business location.
+    | Application timezone for attendance tracking
     |
     */
+
     'timezone' => env('ATTENDANCE_TIMEZONE', 'Africa/Lusaka'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Shift-Based Attendance
-    |--------------------------------------------------------------------------
-    |
-    | Enable or disable shift-based attendance tracking. When enabled, the
-    | system will use assigned shifts to determine expected times and late
-    | status. When disabled, it uses default_start_time.
-    |
-    */
-    'shift_based_tracking' => env('ATTENDANCE_SHIFT_BASED', true),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Late Penalties
-    |--------------------------------------------------------------------------
-    |
-    | Configure different late thresholds and their severity levels.
-    | This can be used for reporting or payroll deductions.
-    |
-    */
-    'late_thresholds' => [
-        'minor' => 15,      // Up to 15 minutes
-        'moderate' => 30,   // 15-30 minutes
-        'major' => 60,      // 30-60 minutes
-        'severe' => 999,    // Over 60 minutes
-    ],
 ];

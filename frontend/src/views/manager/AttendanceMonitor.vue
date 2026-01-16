@@ -1,25 +1,6 @@
 <template>
   <div class="attendance-page">
     
-    <!-- Unified Modal System -->
-    <transition name="fade">
-      <div v-if="modal.visible" class="modal-backdrop" @click.self="closeModal">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h3>{{ modal.title }}</h3>
-            <button @click="closeModal" class="btn-close">&times;</button>
-          </div>
-          <div class="modal-body">
-            <p>{{ modal.message }}</p>
-          </div>
-          <div class="modal-footer">
-            <button v-if="modal.type === 'confirm'" @click="handleModalCancel" class="btn btn-secondary">Cancel</button>
-            <button @click="handleModalConfirm" class="btn btn-primary">{{ modal.confirmText || 'OK' }}</button>
-          </div>
-        </div>
-      </div>
-    </transition>
-
     <!-- History Modal -->
     <transition name="fade">
       <div v-if="history.visible" class="modal-backdrop" @click.self="closeHistory">
@@ -47,6 +28,10 @@
                 <span class="label">Late</span>
                 <span class="value">{{ history.summary.late_days || 0 }}</span>
               </div>
+              <div class="stat-card info">
+                <span class="label">Overtime Hrs</span>
+                <span class="value">{{ (history.summary.total_overtime_hours || 0).toFixed(1) }}</span>
+              </div>
             </div>
 
             <!-- History Table -->
@@ -58,6 +43,8 @@
                     <th>Status</th>
                     <th>Clock In</th>
                     <th>Clock Out</th>
+                    <th>Regular</th>
+                    <th>Overtime</th>
                     <th>Total</th>
                   </tr>
                 </thead>
@@ -65,11 +52,15 @@
                   <tr v-for="(record, index) in history.records" :key="index">
                     <td>{{ formatDate(record.date) }}</td>
                     <td>
-                      <span class="badge" :class="getStatusClass(record.status)">{{ formatStatus(record.status) }}</span>
+                      <span class="badge" :class="getStatusClass(record.status)">
+                        {{ formatStatus(record.status) }}
+                      </span>
                     </td>
                     <td>{{ formatTime(record.clock_in) }}</td>
                     <td>{{ formatTime(record.clock_out) }}</td>
-                    <td>{{ formatHours(record.total_hours) }}</td>
+                    <td>{{ formatHours(record.regular_hours || 0) }}</td>
+                    <td class="overtime-cell">{{ formatHours(record.overtime_hours || 0) }}</td>
+                    <td><strong>{{ formatHours(record.total_hours) }}</strong></td>
                   </tr>
                 </tbody>
               </table>
@@ -135,6 +126,10 @@
           <span class="metric-val">{{ teamOverview.lateCount }}</span>
           <span class="metric-label">Late</span>
         </div>
+        <div class="card metric info">
+          <span class="metric-val">{{ teamOverview.totalOvertimeHours }}</span>
+          <span class="metric-label">Overtime Hrs</span>
+        </div>
       </div>
 
       <!-- Employee List -->
@@ -156,6 +151,9 @@
             <div class="info">
               <h3>{{ emp.full_name }}</h3>
               <p>{{ emp.position }}</p>
+              <p v-if="emp.has_shift" class="shift-info">
+                🕐 Shift: {{ emp.shift.start_time }} - {{ emp.shift.end_time }}
+              </p>
             </div>
             <span class="badge" :class="getStatusClass(emp.status)">
               {{ formatStatus(emp.status) }}
@@ -172,20 +170,35 @@
               <strong>{{ formatTime(emp.clock_out_time) }}</strong>
             </div>
             <div class="detail">
-              <span>Hrs</span>
+              <span>Total</span>
               <strong>{{ formatHours(emp.hours_worked) }}</strong>
             </div>
           </div>
 
+          <!-- Overtime Info -->
+          <div v-if="emp.overtime_hours > 0" class="overtime-info">
+            <div class="overtime-badge">
+              ⚡ Overtime
+            </div>
+            <div class="overtime-details">
+              <div class="overtime-item">
+                <span>Regular:</span>
+                <strong>{{ formatHours(emp.regular_hours) }}</strong>
+              </div>
+              <div class="overtime-item">
+                <span>Overtime:</span>
+                <strong class="overtime-value">{{ formatHours(emp.overtime_hours) }}</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Late Info -->
+          <div v-if="emp.is_late && emp.minutes_late > 0" class="late-info">
+            ⚠️ Late by {{ emp.minutes_late }} minutes
+          </div>
+
           <div class="card-actions">
             <button @click="viewHistory(emp)" class="btn btn-secondary small">History</button>
-            <button 
-              v-if="emp.status === 'absent' && isToday" 
-              @click="confirmMarkPresent(emp)" 
-              class="btn btn-outline-success small"
-            >
-              Mark Present
-            </button>
           </div>
         </div>
 
@@ -202,7 +215,7 @@ import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
 
 export default {
-  name: 'AttendanceMonitor',
+  name: 'ManagerAttendanceMonitor',
   
   setup() {
     const authStore = useAuthStore()
@@ -211,19 +224,13 @@ export default {
 
   data() {
     return {
-      // Data
       attendanceData: [],
-      employees: [],
       teamOverview: null,
-      
-      // State
       loading: false,
       error: null,
       retryCount: 0,
       selectedDate: new Date().toISOString().split('T')[0],
       today: new Date().toISOString().split('T')[0],
-      
-      // Filters
       activeFilter: 'all',
       tabs: [
         { key: 'all', label: 'All' },
@@ -231,17 +238,6 @@ export default {
         { key: 'absent', label: 'Absent' },
         { key: 'late', label: 'Late' }
       ],
-
-      // Modals
-      modal: {
-        visible: false,
-        type: 'alert', // 'alert' | 'confirm'
-        title: '',
-        message: '',
-        confirmText: 'OK',
-        resolve: null,
-        reject: null
-      },
       history: {
         visible: false,
         loading: false,
@@ -274,21 +270,21 @@ export default {
   },
 
   methods: {
-    // --- Data Logic ---
     async fetchData() {
       this.loading = true
       this.error = null
       
       try {
-        console.log('Fetching Data for:', this.selectedDate)
-        
-        const [empRes, attRes] = await Promise.all([
-          axios.get('/api/manager/employees', { params: { manager_id: this.authStore.user?.id } }),
-          // FIX: Updated endpoint to fetch team status instead of personal history
-          axios.get('/api/manager/attendance/team-status', { params: { date: this.selectedDate } })
-        ])
+        const response = await axios.get('/api/manager/attendance/team-status', {
+          params: { date: this.selectedDate }
+        })
 
-        this.processData(empRes.data, attRes.data)
+        if (response.data.success) {
+          this.processData(response.data)
+        } else {
+          throw new Error(response.data.message || 'Failed to fetch data')
+        }
+        
         this.retryCount = 0
       } catch (err) {
         this.handleError(err)
@@ -297,70 +293,81 @@ export default {
       }
     },
 
-    processData(employeeData, attendanceData) {
-      // 1. Normalize Employees
-      const rawEmployees = Array.isArray(employeeData) ? employeeData : (employeeData.data || [])
-      this.employees = rawEmployees
+    processData(data) {
+      const attendances = data.attendances || []
+      const summary = data.summary || {}
+      
+      this.attendanceData = attendances.map(att => ({
+        id: att.id || att.employee_id,
+        employee_id: att.employee_id,
+        full_name: att.full_name || att.employee_name || 'Unknown',
+        position: att.position || 'Staff',
+        department: att.department || 'General',
+        status: att.status,
+        clock_in_time: att.clock_in,
+        clock_out_time: att.clock_out,
+        hours_worked: att.total_hours || 0,
+        regular_hours: att.regular_hours || 0,
+        overtime_hours: att.overtime_hours || 0,
+        has_shift: att.has_shift || false,
+        shift: att.shift || null,
+        is_late: att.is_late || false,
+        minutes_late: att.minutes_late || 0,
+        date: att.date
+      }))
 
-      // 2. Normalize Attendance
-      // Adapts to various API response structures
-      let attendances = []
-      if (Array.isArray(attendanceData)) {
-        attendances = attendanceData
-      } else if (attendanceData.data) {
-        attendances = attendanceData.data
-      } else if (attendanceData.attendances) {
-        attendances = attendanceData.attendances
+      // Calculate overview with overtime
+      const totalOvertime = this.attendanceData.reduce((sum, emp) => 
+        sum + (emp.overtime_hours || 0), 0
+      )
+
+      this.teamOverview = {
+        totalEmployees: summary.total_employees || attendances.length,
+        presentCount: summary.present || 0,
+        absentCount: summary.absent || 0,
+        lateCount: summary.late || 0,
+        totalOvertimeHours: totalOvertime.toFixed(1)
       }
-
-      // 3. Map Attendance by ID
-      const attMap = new Map()
-      attendances.forEach(rec => {
-        const id = rec.employee?.id || rec.employee_id
-        if (id) attMap.set(String(id), rec)
-      })
-
-      // 4. Merge
-      this.attendanceData = this.employees.map(emp => {
-        const record = attMap.get(String(emp.id))
-        
-        // Name Resolution
-        let firstName = emp.first_name || emp.user?.first_name || ''
-        let lastName = emp.last_name || emp.user?.last_name || ''
-        const fullName = (firstName && lastName) ? `${firstName} ${lastName}` : (emp.name || 'Unknown')
-
-        return {
-          id: emp.id,
-          full_name: fullName.trim(),
-          employee_id: emp.employee_id || emp.id,
-          department: emp.department || 'General',
-          position: emp.position || 'Staff',
-          
-          // Data Resolution (Handle casing differences)
-          status: record ? record.status : 'absent',
-          clock_in_time: record ? (record.checkIn || record.clock_in || record.clock_in_time) : null,
-          clock_out_time: record ? (record.checkOut || record.clock_out || record.clock_out_time) : null,
-          hours_worked: record ? (record.hoursWorked || record.total_hours || 0) : 0,
-          date: this.selectedDate
-        }
-      })
-
-      this.calculateOverview()
     },
 
-    calculateOverview() {
-      const total = this.attendanceData.length
-      const present = this.attendanceData.filter(e => ['present', 'completed'].includes(e.status)).length
-      const late = this.attendanceData.filter(e => e.status === 'late').length
-      const absent = this.attendanceData.filter(e => ['absent', 'on_leave'].includes(e.status)).length
+    async viewHistory(employee) {
+      this.history.visible = true
+      this.history.loading = true
+      this.history.employeeName = employee.full_name
       
-      this.teamOverview = {
-        totalEmployees: total,
-        presentCount: present,
-        absentCount: absent,
-        lateCount: late,
-        attendanceRate: total ? Math.round(((present + late) / total) * 100) : 0
+      try {
+        const date = new Date(this.selectedDate)
+        const res = await axios.get(`/api/manager/attendance/${employee.employee_id}/history`, {
+          params: {
+            month: date.getMonth() + 1,
+            year: date.getFullYear()
+          }
+        })
+        
+        this.history.records = res.data.data || []
+        
+        // Calculate summary with overtime
+        const records = this.history.records
+        const totalOvertimeHours = records.reduce((sum, r) => 
+          sum + (r.overtime_hours || 0), 0
+        )
+        
+        this.history.summary = {
+          ...res.data.summary,
+          total_overtime_hours: totalOvertimeHours
+        }
+      } catch (e) {
+        this.error = 'Could not load history.'
+        this.closeHistory()
+      } finally {
+        this.history.loading = false
       }
+    },
+
+    closeHistory() {
+      this.history.visible = false
+      this.history.records = []
+      this.history.summary = {}
     },
 
     retryFetch() {
@@ -377,103 +384,51 @@ export default {
       this.error = err.response?.data?.message || 'Failed to load team attendance.'
     },
 
-    // --- Actions ---
-    async confirmMarkPresent(employee) {
-      const confirmed = await this.showModal({
-        type: 'confirm',
-        title: 'Mark Present?',
-        message: `Are you sure you want to mark ${employee.full_name} as present for today?`,
-        confirmText: 'Yes, Mark Present'
-      })
-
-      if (confirmed) {
-        try {
-          await axios.post(`/api/manager/attendance/${employee.id}/mark-present`, { date: this.selectedDate })
-          this.fetchData()
-          this.showModal({ title: 'Success', message: 'Employee marked as present.' })
-        } catch (e) {
-          this.showModal({ title: 'Error', message: 'Failed to update attendance.' })
-        }
-      }
-    },
-
-    async viewHistory(employee) {
-      this.history.visible = true
-      this.history.loading = true
-      this.history.employeeName = employee.full_name
-      
-      try {
-        const res = await axios.get(`/api/manager/attendance/${employee.id}/history`, {
-          params: {
-            month: new Date(this.selectedDate).getMonth() + 1,
-            year: new Date(this.selectedDate).getFullYear()
-          }
-        })
-        this.history.records = res.data.data || []
-        this.history.summary = res.data.summary || {}
-      } catch (e) {
-        this.showModal({ title: 'Error', message: 'Could not load history.' })
-        this.closeHistory()
-      } finally {
-        this.history.loading = false
-      }
-    },
-
-    // --- Modal Logic ---
-    showModal({ type = 'alert', title, message, confirmText }) {
-      this.modal.visible = true
-      this.modal.type = type
-      this.modal.title = title
-      this.modal.message = message
-      this.modal.confirmText = confirmText || 'OK'
-      return new Promise((resolve, reject) => {
-        this.modal.resolve = resolve
-        this.modal.reject = reject
-      })
-    },
-    handleModalConfirm() {
-      if (this.modal.resolve) this.modal.resolve(true)
-      this.modal.visible = false
-    },
-    handleModalCancel() {
-      if (this.modal.resolve) this.modal.resolve(false)
-      this.modal.visible = false
-    },
-    closeModal() {
-      if (this.modal.type === 'confirm') this.handleModalCancel()
-      else this.handleModalConfirm()
-    },
-    closeHistory() {
-      this.history.visible = false
-      this.history.records = []
-    },
-
-    // --- Formatting ---
     getInitials(name) {
       return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '??'
     },
+    
     formatDate(d) {
       if (!d) return '-'
-      return new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+      return new Date(d).toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric' 
+      })
     },
+    
     formatTime(t) {
       if (!t) return '--:--'
-      if (t.includes('M')) return t // Already formatted
+      if (t.includes('M')) return t
       try {
         const date = t.includes('T') ? new Date(t) : new Date(`2000-01-01T${t}`)
-        return isNaN(date) ? t : date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      } catch (e) { return t }
+        return isNaN(date) ? t : date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit' 
+        })
+      } catch (e) { 
+        return t 
+      }
     },
+    
     formatHours(h) {
       const num = parseFloat(h) || 0
       const hrs = Math.floor(num)
       const mins = Math.round((num - hrs) * 60)
       return `${hrs}h ${mins}m`
     },
+    
     formatStatus(s) {
-      const map = { present: 'Present', completed: 'Completed', absent: 'Absent', late: 'Late', on_leave: 'On Leave' }
+      const map = { 
+        present: 'Present', 
+        completed: 'Completed', 
+        absent: 'Absent', 
+        late: 'Late', 
+        on_leave: 'On Leave' 
+      }
       return map[s] || s
     },
+    
     getStatusClass(s) {
       if (['present', 'completed'].includes(s)) return 'badge-success'
       if (['absent', 'on_leave'].includes(s)) return 'badge-danger'
@@ -485,13 +440,13 @@ export default {
 </script>
 
 <style scoped>
-/* Clean CSS Variables */
 :root {
   --primary: #4f46e5;
   --secondary: #64748b;
   --success: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
+  --info: #06b6d4;
   --bg-page: #f8fafc;
   --bg-card: #ffffff;
   --text-main: #1e293b;
@@ -502,13 +457,12 @@ export default {
 
 .attendance-page {
   padding: 2rem;
-  background: var(--bg-page, #f8fafc);
+  background: var(--bg-page);
   min-height: 100vh;
   font-family: 'Inter', system-ui, sans-serif;
-  color: var(--text-main, #1e293b);
+  color: var(--text-main);
 }
 
-/* Header */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -517,54 +471,61 @@ export default {
   flex-wrap: wrap;
   gap: 1rem;
 }
+
 .page-header h1 {
   margin: 0;
   font-size: 1.8rem;
   font-weight: 700;
 }
+
 .header-controls {
   display: flex;
   gap: 1rem;
 }
+
 .date-input {
   padding: 0.6rem;
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
-/* Overview */
 .overview-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
+
 .card {
-  background: var(--bg-card, white);
+  background: var(--bg-card);
   padding: 1.5rem;
-  border-radius: var(--radius, 12px);
+  border-radius: var(--radius);
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border);
 }
+
 .metric {
   text-align: center;
 }
+
 .metric-val {
   display: block;
   font-size: 2rem;
   font-weight: 800;
 }
-.metric.success { color: var(--success, #10b981); }
-.metric.danger { color: var(--danger, #ef4444); }
-.metric.warning { color: var(--warning, #f59e0b); }
+
+.metric.success { color: var(--success); }
+.metric.danger { color: var(--danger); }
+.metric.warning { color: var(--warning); }
+.metric.info { color: var(--info); }
+
 .metric-label {
   font-size: 0.85rem;
-  color: var(--text-light, #64748b);
+  color: var(--text-light);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-/* Filter Tabs */
 .section-header {
   display: flex;
   justify-content: space-between;
@@ -572,51 +533,57 @@ export default {
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
 }
+
 .tabs {
   background: #e2e8f0;
   padding: 0.25rem;
   border-radius: 8px;
   display: flex;
 }
+
 .tab {
   background: none;
   border: none;
   padding: 0.5rem 1rem;
   cursor: pointer;
   border-radius: 6px;
-  color: var(--text-light, #64748b);
+  color: var(--text-light);
   font-weight: 600;
 }
+
 .tab.active {
   background: white;
-  color: var(--primary, #4f46e5);
+  color: var(--primary);
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
-/* Employee Grid */
 .employee-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 1.5rem;
 }
+
 .employee-card {
   background: white;
-  border-radius: var(--radius, 12px);
+  border-radius: var(--radius);
   box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
   overflow: hidden;
   transition: transform 0.2s;
 }
+
 .employee-card:hover {
   transform: translateY(-4px);
 }
+
 .card-top {
   padding: 1.25rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   background: #f8fafc;
-  border-bottom: 1px solid var(--border, #e2e8f0);
+  border-bottom: 1px solid var(--border);
 }
+
 .avatar {
   width: 45px;
   height: 45px;
@@ -627,54 +594,30 @@ export default {
   align-items: center;
   justify-content: center;
   font-weight: bold;
+  flex-shrink: 0;
 }
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
 .info h3 {
   margin: 0;
   font-size: 1.1rem;
 }
+
 .info p {
   margin: 0;
   font-size: 0.85rem;
-  color: var(--text-light, #64748b);
-}
-.card-details {
-  padding: 1.25rem;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
-}
-.detail {
-  display: flex;
-  flex-direction: column;
-  text-align: center;
-}
-.detail span {
-  font-size: 0.75rem;
-  color: var(--text-light, #64748b);
-  text-transform: uppercase;
-}
-.card-actions {
-  padding: 1rem;
-  display: flex;
-  gap: 0.5rem;
-  border-top: 1px solid var(--border, #e2e8f0);
+  color: var(--text-light);
 }
 
-/* Buttons & Badges */
-.btn {
-  padding: 0.6rem 1.2rem;
-  border-radius: 8px;
-  border: none;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+.shift-info {
+  color: var(--info);
+  font-weight: 500;
+  margin-top: 0.25rem;
 }
-.btn-primary { background: var(--primary, #4f46e5); color: white; }
-.btn-primary:hover { opacity: 0.9; }
-.btn-secondary { background: white; border: 1px solid var(--border, #e2e8f0); color: var(--text-main, #1e293b); }
-.btn-outline-success { background: white; border: 1px solid var(--success, #10b981); color: var(--success, #10b981); }
-.btn-outline-success:hover { background: #d1fae5; }
-.small { flex: 1; padding: 0.4rem; font-size: 0.9rem; }
 
 .badge {
   margin-left: auto;
@@ -683,13 +626,117 @@ export default {
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
+  flex-shrink: 0;
 }
+
 .badge-success { background: #d1fae5; color: #065f46; }
 .badge-danger { background: #fee2e2; color: #991b1b; }
 .badge-warning { background: #fef3c7; color: #92400e; }
 .badge-neutral { background: #f3f4f6; color: #4b5563; }
 
-/* Modals */
+.card-details {
+  padding: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.detail span {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  text-transform: uppercase;
+}
+
+.overtime-info {
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-top: 1px solid #fbbf24;
+  border-bottom: 1px solid #fbbf24;
+}
+
+.overtime-badge {
+  font-weight: 700;
+  color: #92400e;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.overtime-details {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.overtime-item {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.overtime-item span {
+  font-size: 0.75rem;
+  color: #92400e;
+  text-transform: uppercase;
+}
+
+.overtime-value {
+  color: #b45309;
+}
+
+.late-info {
+  padding: 0.75rem 1.25rem;
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-top: 1px solid #fed7aa;
+  text-align: center;
+}
+
+.card-actions {
+  padding: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.btn {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary { 
+  background: var(--primary); 
+  color: white; 
+}
+
+.btn-primary:hover { 
+  opacity: 0.9; 
+}
+
+.btn-secondary { 
+  background: white; 
+  border: 1px solid var(--border); 
+  color: var(--text-main); 
+}
+
+.small { 
+  flex: 1; 
+  padding: 0.4rem; 
+  font-size: 0.9rem; 
+}
+
+/* Modal Styles */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -700,6 +747,7 @@ export default {
   z-index: 50;
   backdrop-filter: blur(2px);
 }
+
 .modal-content {
   background: white;
   width: 90%;
@@ -708,38 +756,188 @@ export default {
   box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
   overflow: hidden;
 }
-.modal-content.wide { max-width: 650px; }
+
+.modal-content.wide { 
+  max-width: 750px; 
+}
+
 .modal-header {
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border, #e2e8f0);
+  border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-.modal-body { padding: 1.5rem; }
-.modal-footer { padding: 1rem 1.5rem; background: #f8fafc; text-align: right; }
-.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1.5rem; }
-.stat-card { padding: 0.75rem; border-radius: 8px; text-align: center; border: 1px solid var(--border); background: #f8fafc; }
-.stat-card.success { background: #ecfdf5; border-color: #a7f3d0; }
-.stat-card.danger { background: #fef2f2; border-color: #fecaca; }
 
-/* Table */
-.clean-table { width: 100%; border-collapse: collapse; }
-.clean-table th { text-align: left; padding: 0.75rem; color: var(--text-light); border-bottom: 1px solid var(--border); }
-.clean-table td { padding: 0.75rem; border-bottom: 1px solid #f1f5f9; }
+.modal-body { 
+  padding: 1.5rem; 
+  max-height: 70vh;
+  overflow-y: auto;
+}
 
-/* Utils */
-.alert.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; }
-.loading-state, .empty-state { text-align: center; padding: 3rem; color: var(--text-light); }
-.spinner { width: 30px; height: 30px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.modal-footer { 
+  padding: 1rem 1.5rem; 
+  background: #f8fafc; 
+  text-align: right; 
+}
 
-@media (max-width: 600px) {
-  .page-header { flex-direction: column; text-align: center; }
-  .header-controls { width: 100%; justify-content: center; }
-  .employee-grid { grid-template-columns: 1fr; }
-  .stats-row { grid-template-columns: repeat(2, 1fr); }
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-light);
+}
+
+.stats-row { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); 
+  gap: 0.75rem; 
+  margin-bottom: 1.5rem; 
+}
+
+.stat-card { 
+  padding: 0.75rem; 
+  border-radius: 8px; 
+  text-align: center; 
+  border: 1px solid var(--border); 
+  background: #f8fafc; 
+}
+
+.stat-card .label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-light);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.stat-card .value {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.stat-card.success { 
+  background: #ecfdf5; 
+  border-color: #a7f3d0; 
+}
+
+.stat-card.success .value { 
+  color: var(--success); 
+}
+
+.stat-card.danger { 
+  background: #fef2f2; 
+  border-color: #fecaca; 
+}
+
+.stat-card.danger .value { 
+  color: var(--danger); 
+}
+
+.stat-card.warning { 
+  background: #fef3c7; 
+  border-color: #fde68a; 
+}
+
+.stat-card.warning .value { 
+  color: var(--warning); 
+}
+
+.stat-card.info { 
+  background: #f0f9ff; 
+  border-color: #bae6fd; 
+}
+
+.stat-card.info .value { 
+  color: var(--info); 
+}
+
+.clean-table { 
+  width: 100%; 
+  border-collapse: collapse; 
+}
+
+.clean-table th { 
+  text-align: left; 
+  padding: 0.75rem; 
+  color: var(--text-light); 
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.clean-table td { 
+  padding: 0.75rem; 
+  border-bottom: 1px solid #f1f5f9; 
+}
+
+.overtime-cell {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.alert.error { 
+  background: #fef2f2; 
+  color: #991b1b; 
+  border: 1px solid #fecaca; 
+  padding: 1rem; 
+  border-radius: 8px; 
+  margin-bottom: 1rem; 
+}
+
+.loading-state, .empty-state { 
+  text-align: center; 
+  padding: 3rem; 
+  color: var(--text-light); 
+}
+
+.spinner { 
+  width: 30px; 
+  height: 30px; 
+  border: 3px solid #e2e8f0; 
+  border-top-color: var(--primary); 
+  border-radius: 50%; 
+  animation: spin 1s linear infinite; 
+  margin: 0 auto 1rem; 
+}
+
+@keyframes spin { 
+  to { transform: rotate(360deg); } 
+}
+
+.fade-enter-active, .fade-leave-active { 
+  transition: opacity 0.2s; 
+}
+
+.fade-enter-from, .fade-leave-to { 
+  opacity: 0; 
+}
+
+@media (max-width: 768px) {
+  .page-header { 
+    flex-direction: column; 
+    text-align: center; 
+  }
+  
+  .header-controls { 
+    width: 100%; 
+    justify-content: center; 
+  }
+  
+  .employee-grid { 
+    grid-template-columns: 1fr; 
+  }
+  
+  .stats-row { 
+    grid-template-columns: repeat(2, 1fr); 
+  }
+  
+  .overtime-details {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

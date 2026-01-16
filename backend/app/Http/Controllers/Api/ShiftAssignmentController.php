@@ -28,6 +28,20 @@ class ShiftAssignmentController extends Controller
         $this->leaveService = $leaveService;
     }
 
+    
+    /**
+     * Normalize time format helper
+     */
+    private function normalizeTime(string $time): string
+    {
+        // If time is in H:i format, add seconds
+        if (strlen($time) === 5 && substr_count($time, ':') === 1) {
+            return $time . ':00';
+        }
+        // If already in H:i:s format, return as is
+        return $time;
+    }
+
     /**
      * Get available employees for shift assignment
      * GET /api/shifts/available-employees?date=2025-12-26
@@ -76,15 +90,24 @@ class ShiftAssignmentController extends Controller
                 'employee_id' => 'required|integer|exists:employees,id',
                 'shift_date' => 'required|date',
                 'shift_type' => 'required|string|in:morning,day,night',
-                'start_time' => 'required|date_format:H:i:s',
-                'end_time' => 'required|date_format:H:i:s',
+                'start_time' => 'required|date_format:H:i',
+                'end_time' => 'required|date_format:H:i',
                 'notes' => 'nullable|string|max:500',
                 'business_id' => 'nullable|integer|exists:businesses,id',
                 'country_id' => 'nullable|integer|exists:countries,id',
                 'department_id' => 'nullable|integer|exists:departments,id',
             ]);
 
+            // Normalize times to H:i:s format
+            $validated['start_time'] = $this->normalizeTime($validated['start_time']);
+            $validated['end_time'] = $this->normalizeTime($validated['end_time']);
+
             $validated['assigned_by'] = $request->user()->employee->id ?? $request->user()->id;
+
+            Log::info('Assigning shift with times', [
+                'start_time' => $validated['start_time'],
+                'end_time' => $validated['end_time']
+            ]);
 
             $result = $this->shiftService->assignShift($validated);
 
@@ -133,10 +156,14 @@ class ShiftAssignmentController extends Controller
                 'employee_ids.*' => 'required|integer|exists:employees,id',
                 'shift_date' => 'required|date',
                 'shift_type' => 'required|string|in:morning,day,night',
-                'start_time' => 'required|date_format:H:i:s',
-                'end_time' => 'required|date_format:H:i:s',
+                'start_time' => 'required|date_format:H:i',
+                'end_time' => 'required|date_format:H:i',
                 'notes' => 'nullable|string|max:500',
             ]);
+
+            // Normalize times
+            $validated['start_time'] = $this->normalizeTime($validated['start_time']);
+            $validated['end_time'] = $this->normalizeTime($validated['end_time']);
 
             $assignedBy = $request->user()->employee->id ?? $request->user()->id;
 
@@ -177,6 +204,7 @@ class ShiftAssignmentController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Accept shift
@@ -362,143 +390,75 @@ class ShiftAssignmentController extends Controller
             ], 500);
         }
     }
-    public function index(Request $request)
+    
+  public function index(Request $request)
     {
         $user = auth()->user();
         
         Log::info('=== Shift Assignment Index Called ===', [
             'user_id' => $user->id,
-            'user_name' => $user->name,
-            'user_email' => $user->email,
-            'employee_id' => $user->employee ? $user->employee->id : null,
             'request_params' => $request->all()
         ]);
 
-        // Debug user roles
-        $userRoles = $user->roles->pluck('name')->toArray();
-        Log::info('=== User Roles Debug ===', [
-            'roles_count' => count($userRoles),
-            'roles_array' => $userRoles,
-            'has_manager_role' => $user->hasRole('manager'),
-            'has_admin_role' => $user->hasRole('admin'),
-            'has_super_admin_role' => $user->hasRole('super-admin')
-        ]);
-
-        // Start with a base query
         $query = ShiftAssignment::with([
             'employee.user', 
             'assignedBy',
             'department'
         ]);
 
-        // --- IMPORTANT: First check if we should show all or use filters ---
         $showAll = $request->has('show_all') && $request->show_all == 1;
         
-        // --- Determine user's access level ---
-        // Check if user has any of the management roles
-        $isSuperAdmin = $user->hasRole('super-admin') || in_array('super-admin', $userRoles);
-        $isAdmin = $user->hasRole('admin') || in_array('admin', $userRoles);
-        $isManager = $user->hasRole('manager') || in_array('manager', $userRoles);
-        
-        // If no roles found, check if user is an employee
+        $isSuperAdmin = $user->hasRole('super-admin');
+        $isAdmin = $user->hasRole('admin');
+        $isManager = $user->hasRole('manager');
         $isEmployee = $user->employee ? true : false;
         
-        Log::info('=== Access Level ===', [
-            'is_super_admin' => $isSuperAdmin,
-            'is_admin' => $isAdmin,
-            'is_manager' => $isManager,
-            'is_employee' => $isEmployee,
-            'employee_id' => $isEmployee ? $user->employee->id : null
-        ]);
-
-        // --- CRITICAL FIX: Check if user can see shifts they assigned ---
-        // Even if user doesn't have a role, if they assigned shifts, they should see them
         $assignmentsAssignedByUser = ShiftAssignment::where('assigned_by', $user->id)->count();
-        
-        Log::info('=== User Assignment Stats ===', [
-            'assignments_assigned_by_user' => $assignmentsAssignedByUser,
-            'user_id' => $user->id
-        ]);
 
-        // --- Role-Based Filtering ---
         if ($isSuperAdmin) {
-            // Super admin can see all shifts
             if ($request->has('business_id')) {
                 $query->where('business_id', $request->business_id);
             }
-            Log::info('Applied super-admin filter: Can see all shifts');
         } 
         elseif ($isAdmin) {
             $adminEmployee = $user->employee;
             if ($adminEmployee && $adminEmployee->business_id) {
                 $query->where('business_id', $adminEmployee->business_id);
-                Log::info('Applied admin business filter', ['business_id' => $adminEmployee->business_id]);
             } else {
-                Log::info('Admin has no employee record, showing all shifts assigned by them');
-                // Fallback: show shifts they assigned
                 $query->where('assigned_by', $user->id);
             }
         }
         elseif ($isManager) {
-            // For managers, show ALL shifts they should see
             $managerEmployee = $user->employee;
             
             if ($managerEmployee) {
                 $query->where(function($q) use ($managerEmployee, $user) {
-                    // Show shifts the manager created
                     $q->where('assigned_by', $user->id);
                     
-                    // OR show shifts in the manager's business
                     if ($managerEmployee->business_id) {
                         $q->orWhere('business_id', $managerEmployee->business_id);
                     }
                     
-                    // OR show shifts in the manager's department
                     if ($managerEmployee->department_id) {
-                        $q->orWhere(function($deptQ) use ($managerEmployee) {
-                            $deptQ->where('department_id', $managerEmployee->department_id);
-                        });
+                        $q->orWhere('department_id', $managerEmployee->department_id);
                     }
                 });
-                
-                Log::info('Applied manager filter', [
-                    'assigned_by' => $user->id,
-                    'business_id' => $managerEmployee->business_id ?? 'null',
-                    'department_id' => $managerEmployee->department_id ?? 'null'
-                ]);
             } else {
-                // Fallback: show only shifts they assigned
                 $query->where('assigned_by', $user->id);
-                Log::info('Applied manager fallback filter (assigned_by only)', [
-                    'assigned_by' => $user->id
-                ]);
             }
         } 
         else {
-            // --- CRITICAL FIX: Handle users with no roles but who assigned shifts ---
             if ($assignmentsAssignedByUser > 0) {
-                // User has assigned shifts, so they should see shifts they assigned
-                Log::info('User has no roles but has assigned shifts. Showing assigned shifts.', [
-                    'user_id' => $user->id,
-                    'assignments_assigned' => $assignmentsAssignedByUser
-                ]);
-                
                 $query->where(function($q) use ($user) {
-                    // Show shifts they assigned
                     $q->where('assigned_by', $user->id);
                     
-                    // ALSO show their own shifts if they have an employee record
                     if ($user->employee) {
                         $q->orWhere('employee_id', $user->employee->id);
                     }
                 });
             } elseif ($isEmployee) {
-                // Regular employee sees only their own shifts
                 $query->where('employee_id', $user->employee->id);
-                Log::info('Applied employee filter', ['employee_id' => $user->employee->id]);
             } else {
-                // User has no roles and no employee record
-                Log::warning('User has no roles and no employee record', ['user_id' => $user->id]);
                 return response()->json([
                     'assignments' => [],
                     'pagination' => [
@@ -508,48 +468,29 @@ class ShiftAssignmentController extends Controller
                         'last_page' => 1,
                         'from' => 0,
                         'to' => 0,
-                    ],
-                    'debug' => [
-                        'user_id' => $user->id,
-                        'user_name' => $user->name,
-                        'has_roles' => !empty($userRoles),
-                        'has_employee_record' => $isEmployee,
-                        'assignments_assigned' => $assignmentsAssignedByUser,
-                        'message' => 'User has no roles and no employee record'
                     ]
                 ]);
             }
         }
 
-        // --- IMPORTANT: If show_all is not set or is false, apply default date filters ---
-        // BUT only if no specific date filters are provided
         if (!$showAll) {
             if (!$request->filled('from_date') && !$request->filled('to_date')) {
-                // Default: show last 30 days and future for admins/managers
                 if ($isSuperAdmin || $isAdmin || $isManager) {
                     $query->whereDate('shift_date', '>=', Carbon::today()->subDays(30));
-                    Log::info('Applied default date filter: last 30 days + future for admin/manager');
                 } else {
-                    // Employees see from today onward
                     $query->whereDate('shift_date', '>=', Carbon::today());
-                    Log::info('Applied default date filter: today onward for employee');
                 }
             }
         }
 
-        // --- Additional Filters ---
-        
-        // Status filter
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
         
-        // Shift type filter
         if ($request->filled('shift_type')) {
             $query->where('shift_type', $request->shift_type);
         }
         
-        // Employee name filter (search)
         if ($request->filled('employee_name')) {
             $query->whereHas('employee.user', function($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->employee_name . '%')
@@ -557,7 +498,6 @@ class ShiftAssignmentController extends Controller
             });
         }
         
-        // Date range filters (if provided)
         if ($request->filled('from_date')) {
             $query->whereDate('shift_date', '>=', $request->from_date);
         }
@@ -566,59 +506,18 @@ class ShiftAssignmentController extends Controller
             $query->whereDate('shift_date', '<=', $request->to_date);
         }
 
-        // Employee ID filter (for specific employee)
         if ($request->filled('employee_id')) {
             $query->where('employee_id', $request->employee_id);
         }
 
-        // Department filter
         if ($request->filled('department_id')) {
             $query->where('department_id', $request->department_id);
         }
 
-        // --- Debug: Log the query SQL ---
-        $sql = $query->toSql();
-        $bindings = $query->getBindings();
-        Log::info('=== Query SQL ===', ['sql' => $sql, 'bindings' => $bindings]);
-
-        // Get total count for debugging
-        $totalCount = $query->count();
-        Log::info('=== Query Total Count ===', ['total' => $totalCount]);
-
-        // Get paginated results
         $perPage = $request->input('per_page', 50);
         $assignments = $query->orderBy('shift_date', 'desc')
                             ->orderBy('start_time', 'asc')
                             ->paginate($perPage);
-
-        // Log first few assignments for debugging
-        if ($assignments->count() > 0) {
-            Log::info('=== First Assignment Details ===', [
-                'assignment_id' => $assignments[0]->id,
-                'shift_date' => $assignments[0]->shift_date,
-                'employee_id' => $assignments[0]->employee_id,
-                'employee_name' => $assignments[0]->employee->user->name ?? 'Unknown',
-                'assigned_by' => $assignments[0]->assigned_by,
-                'assigned_by_name' => $assignments[0]->assignedBy->name ?? 'Unknown'
-            ]);
-        } else {
-            Log::warning('=== No Assignments Found ===', [
-                'user_id' => $user->id,
-                'user_name' => $user->name,
-                'user_roles' => $userRoles,
-                'is_super_admin' => $isSuperAdmin,
-                'is_admin' => $isAdmin,
-                'is_manager' => $isManager,
-                'is_employee' => $isEmployee,
-                'employee_id' => $user->employee ? $user->employee->id : null,
-                'assignments_assigned_by_user' => $assignmentsAssignedByUser,
-                'filters' => $request->all(),
-                'show_all' => $showAll,
-                'query_sql' => $sql,
-                'query_bindings' => $bindings,
-                'suggestion' => 'Check if user has roles assigned in database'
-            ]);
-        }
 
         return response()->json([
             'assignments' => $assignments->items(),
@@ -629,251 +528,181 @@ class ShiftAssignmentController extends Controller
                 'last_page' => $assignments->lastPage(),
                 'from' => $assignments->firstItem(),
                 'to' => $assignments->lastItem(),
-            ],
-            'debug' => [
-                'user_info' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'roles' => $userRoles,
-                    'employee_id' => $user->employee ? $user->employee->id : null
-                ],
-                'access_level' => [
-                    'is_super_admin' => $isSuperAdmin,
-                    'is_admin' => $isAdmin,
-                    'is_manager' => $isManager,
-                    'is_employee' => $isEmployee
-                ],
-                'total_shifts_found' => $totalCount,
-                'date_filter_applied' => $request->filled('from_date') || $request->filled('to_date'),
-                'show_all_mode' => $showAll,
-                'query_conditions' => [
-                    'has_status_filter' => $request->filled('status'),
-                    'has_date_filters' => $request->filled('from_date') || $request->filled('to_date'),
-                    'has_employee_filter' => $request->filled('employee_name')
-                ]
             ]
         ]);
     }
-    /**
-     * Create shift assignment (Manager/Admin only)
-     */
-    /**
- * Create shift assignment (Manager/Admin only)
- */
-public function store(Request $request)
-{
-    Log::info('=== Shift Assignment Store Request ===', [
-        'user_id' => auth()->id(),
-        'user_role' => auth()->user()->roles->pluck('name'),
-        'request_data' => $request->all(),
-    ]);
 
-    // Handle both single date and date range
-    $validator = Validator::make($request->all(), [
-        'employee_id' => 'required|exists:employees,id',
-        'shift_date' => 'sometimes|date',
-        'start_date' => 'sometimes|date', // For range
-        'end_date' => 'sometimes|date|after_or_equal:start_date', // For range
-        'use_date_range' => 'sometimes|boolean',
-        'shift_type' => 'required|in:day,night,evening,morning',
-        'start_time' => 'required|date_format:H:i',
-        'end_time' => 'required|date_format:H:i|after:start_time',
-        'department_id' => 'nullable|exists:departments,id',
-        'notes' => 'nullable|string|max:500'
-    ]);
-
-    if ($validator->fails()) {
-        Log::warning('=== Validation Failed ===', [
-            'errors' => $validator->errors()->toArray(),
-        ]);
-        
-        return response()->json([
-            'message' => 'Validation failed',
-            'errors' => $validator->errors()
-        ], 422);
-    }
-
-    try {
-        $user = auth()->user();
-        $employee = Employee::findOrFail($request->employee_id);
-        
-        Log::info('=== Employee Found ===', [
-            'employee_id' => $employee->id,
-            'business_id' => $employee->business_id ?? 'null',
-            'department_id' => $employee->department_id ?? 'null',
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'employee_id' => 'required|exists:employees,id',
+            'shift_date' => 'sometimes|date',
+            'start_date' => 'sometimes|date',
+            'end_date' => 'sometimes|date|after_or_equal:start_date',
+            'use_date_range' => 'sometimes|boolean',
+            'shift_type' => 'required|in:day,night,evening,morning',
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i|after:start_time',
+            'department_id' => 'nullable|exists:departments,id',
+            'notes' => 'nullable|string|max:500'
         ]);
 
-        // Determine if we're creating a single assignment or bulk
-        $useDateRange = $request->boolean('use_date_range') && 
-                       $request->has('start_date') && 
-                       $request->has('end_date');
-        
-        if ($useDateRange) {
-            // Bulk create for date range
-            return $this->createDateRangeAssignments($request, $user, $employee);
-        } else {
-            // Single assignment
-            return $this->createSingleAssignment($request, $user, $employee);
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
-    } catch (\Exception $e) {
-        Log::error('=== Shift Assignment Failed ===', [
-            'error_message' => $e->getMessage(),
-            'error_trace' => $e->getTraceAsString(),
-        ]);
+        try {
+            $user = auth()->user();
+            $employee = Employee::findOrFail($request->employee_id);
+            
+            // Normalize times
+            $startTime = $this->normalizeTime($request->start_time);
+            $endTime = $this->normalizeTime($request->end_time);
+            
+            $useDateRange = $request->boolean('use_date_range') && 
+                           $request->has('start_date') && 
+                           $request->has('end_date');
+            
+            if ($useDateRange) {
+                return $this->createDateRangeAssignments($request, $user, $employee, $startTime, $endTime);
+            } else {
+                return $this->createSingleAssignment($request, $user, $employee, $startTime, $endTime);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('=== Shift Assignment Failed ===', [
+                'error_message' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to assign shift',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function createSingleAssignment(Request $request, $user, $employee, $startTime, $endTime)
+    {
+        $shiftDate = $request->shift_date ?? $request->start_date;
         
-        return response()->json([
-            'message' => 'Failed to assign shift',
-            'error' => $e->getMessage()
-        ], 500);
-    }
-}
-
-/**
- * Create single shift assignment
- */
-private function createSingleAssignment(Request $request, $user, $employee)
-{
-    // Use shift_date if provided, otherwise use start_date
-    $shiftDate = $request->shift_date ?? $request->start_date;
-    
-    // Check for duplicate assignments
-    $existing = ShiftAssignment::where('employee_id', $request->employee_id)
-        ->whereDate('shift_date', $shiftDate)
-        ->whereIn('status', ['pending', 'accepted'])
-        ->exists();
-
-    if ($existing) {
-        return response()->json([
-            'message' => 'Employee already has a shift assigned for this date'
-        ], 400);
-    }
-
-    // Create assignment
-    $assignmentData = [
-        'employee_id' => $request->employee_id,
-        'assigned_by' => $user->id,
-        'shift_date' => $shiftDate,
-        'shift_type' => $request->shift_type,
-        'start_time' => $request->start_time,
-        'end_time' => $request->end_time,
-        'notes' => $request->notes,
-        'status' => 'pending'
-    ];
-
-    // Add optional fields
-    if ($employee->business_id) {
-        $assignmentData['business_id'] = $employee->business_id;
-    }
-    if ($employee->country_id) {
-        $assignmentData['country_id'] = $employee->country_id;
-    }
-    if ($request->department_id) {
-        $assignmentData['department_id'] = $request->department_id;
-    } elseif ($employee->department_id) {
-        $assignmentData['department_id'] = $employee->department_id;
-    }
-
-    $assignment = ShiftAssignment::create($assignmentData);
-    $assignment->load(['employee.user', 'assignedBy']);
-
-    Log::info('=== Shift Assigned Successfully ===', [
-        'assignment_id' => $assignment->id,
-    ]);
-
-    return response()->json([
-        'message' => 'Shift assigned successfully',
-        'assignment' => $assignment
-    ], 201);
-}
-
-/**
- * Create multiple assignments for date range
- */
-private function createDateRangeAssignments(Request $request, $user, $employee)
-{
-    $startDate = new Carbon($request->start_date);
-    $endDate = new Carbon($request->end_date);
-    $created = [];
-    $skipped = [];
-
-    // Validate date range isn't too large
-    $daysDiff = $startDate->diffInDays($endDate) + 1;
-    if ($daysDiff > 30) {
-        return response()->json([
-            'message' => 'Date range cannot exceed 30 days'
-        ], 400);
-    }
-
-    // Loop through each date in the range
-    $currentDate = $startDate->copy();
-    while ($currentDate <= $endDate) {
-        $dateString = $currentDate->toDateString();
-        
-        // Check for duplicate on this date
         $existing = ShiftAssignment::where('employee_id', $request->employee_id)
-            ->whereDate('shift_date', $dateString)
+            ->whereDate('shift_date', $shiftDate)
             ->whereIn('status', ['pending', 'accepted'])
             ->exists();
 
         if ($existing) {
-            $skipped[] = [
-                'date' => $dateString,
-                'reason' => 'Employee already has a shift assigned'
-            ];
-        } else {
-            // Create assignment for this date
-            $assignmentData = [
-                'employee_id' => $request->employee_id,
-                'assigned_by' => $user->id,
-                'shift_date' => $dateString,
-                'shift_type' => $request->shift_type,
-                'start_time' => $request->start_time,
-                'end_time' => $request->end_time,
-                'notes' => $request->notes,
-                'status' => 'pending'
-            ];
-
-            // Add optional fields
-            if ($employee->business_id) {
-                $assignmentData['business_id'] = $employee->business_id;
-            }
-            if ($employee->country_id) {
-                $assignmentData['country_id'] = $employee->country_id;
-            }
-            if ($request->department_id) {
-                $assignmentData['department_id'] = $request->department_id;
-            } elseif ($employee->department_id) {
-                $assignmentData['department_id'] = $employee->department_id;
-            }
-
-            $assignment = ShiftAssignment::create($assignmentData);
-            $assignment->load(['employee.user', 'assignedBy']);
-            $created[] = $assignment;
+            return response()->json([
+                'message' => 'Employee already has a shift assigned for this date'
+            ], 400);
         }
 
-        $currentDate->addDay();
+        $assignmentData = [
+            'employee_id' => $request->employee_id,
+            'assigned_by' => $user->id,
+            'shift_date' => $shiftDate,
+            'shift_type' => $request->shift_type,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'notes' => $request->notes,
+            'status' => 'pending'
+        ];
+
+        if ($employee->business_id) {
+            $assignmentData['business_id'] = $employee->business_id;
+        }
+        if ($employee->country_id) {
+            $assignmentData['country_id'] = $employee->country_id;
+        }
+        if ($request->department_id) {
+            $assignmentData['department_id'] = $request->department_id;
+        } elseif ($employee->department_id) {
+            $assignmentData['department_id'] = $employee->department_id;
+        }
+
+        $assignment = ShiftAssignment::create($assignmentData);
+        $assignment->load(['employee.user', 'assignedBy']);
+
+        return response()->json([
+            'message' => 'Shift assigned successfully',
+            'assignment' => $assignment
+        ], 201);
     }
 
-    Log::info('=== Bulk Shift Assignments Created ===', [
-        'total_dates' => $daysDiff,
-        'created' => count($created),
-        'skipped' => count($skipped)
-    ]);
+    private function createDateRangeAssignments(Request $request, $user, $employee, $startTime, $endTime)
+    {
+        $startDate = new Carbon($request->start_date);
+        $endDate = new Carbon($request->end_date);
+        $created = [];
+        $skipped = [];
 
-    return response()->json([
-        'message' => 'Bulk assignments created successfully',
-        'created' => count($created),
-        'skipped' => count($skipped),
-        'assignments' => $created,
-        'summary' => [
-            'total_days' => $daysDiff,
-            'successful' => count($created),
-            'skipped' => $skipped
-        ]
-    ], 201);
-}
+        $daysDiff = $startDate->diffInDays($endDate) + 1;
+        if ($daysDiff > 30) {
+            return response()->json([
+                'message' => 'Date range cannot exceed 30 days'
+            ], 400);
+        }
 
+        $currentDate = $startDate->copy();
+        while ($currentDate <= $endDate) {
+            $dateString = $currentDate->toDateString();
+            
+            $existing = ShiftAssignment::where('employee_id', $request->employee_id)
+                ->whereDate('shift_date', $dateString)
+                ->whereIn('status', ['pending', 'accepted'])
+                ->exists();
+
+            if ($existing) {
+                $skipped[] = [
+                    'date' => $dateString,
+                    'reason' => 'Employee already has a shift assigned'
+                ];
+            } else {
+                $assignmentData = [
+                    'employee_id' => $request->employee_id,
+                    'assigned_by' => $user->id,
+                    'shift_date' => $dateString,
+                    'shift_type' => $request->shift_type,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                    'notes' => $request->notes,
+                    'status' => 'pending'
+                ];
+
+                if ($employee->business_id) {
+                    $assignmentData['business_id'] = $employee->business_id;
+                }
+                if ($employee->country_id) {
+                    $assignmentData['country_id'] = $employee->country_id;
+                }
+                if ($request->department_id) {
+                    $assignmentData['department_id'] = $request->department_id;
+                } elseif ($employee->department_id) {
+                    $assignmentData['department_id'] = $employee->department_id;
+                }
+
+                $assignment = ShiftAssignment::create($assignmentData);
+                $assignment->load(['employee.user', 'assignedBy']);
+                $created[] = $assignment;
+            }
+
+            $currentDate->addDay();
+        }
+
+        return response()->json([
+            'message' => 'Bulk assignments created successfully',
+            'created' => count($created),
+            'skipped' => count($skipped),
+            'assignments' => $created,
+            'summary' => [
+                'total_days' => $daysDiff,
+                'successful' => count($created),
+                'skipped' => $skipped
+            ]
+        ], 201);
+    }
     /**
      * Bulk assign shifts
      */
