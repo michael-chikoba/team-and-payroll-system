@@ -222,7 +222,7 @@ const reassignTicket = async () => {
   error.value = null
   
   try {
-    const response = await axios.patch(`/api/tickets/${props.ticket.id}/reassign`, {
+    const response = await axios.post(`/api/tickets/${props.ticket.id}/reassign`, {
       new_approver_id: selectedApprover.value.id,
       reason: reason.value || null
     })

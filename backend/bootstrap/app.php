@@ -35,4 +35,12 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
+         })
+    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule) {
+        // Check for idle sessions every 5 minutes
+        $schedule->command('sessions:check-idle')
+            ->everyFiveMinutes()
+            ->name('check-idle-overtime-sessions')
+            ->withoutOverlapping()
+            ->runInBackground();
     })->create();

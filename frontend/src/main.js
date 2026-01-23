@@ -6,6 +6,7 @@ import router from './router'
 import axios from 'axios'
 import { useAuthStore } from './stores/auth'
 import ChatInterface from './components/ChatInterface.vue'
+import IntegrationsModal from './components/IntegrationsModal.vue'
  //import './assets/main.css';
 import './assets/styles/main.css'
 
@@ -19,6 +20,7 @@ axios.defaults.withCredentials = true
 const app = createApp(App)
 const pinia = createPinia()
 app.component('ChatInterface', ChatInterface)
+app.component('IntegrationsModal', IntegrationsModal)
 
 app.use(pinia)
 app.use(router)

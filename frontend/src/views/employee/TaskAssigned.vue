@@ -4,8 +4,8 @@
     <div class="absolute inset-0 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50"></div>
     
     <!-- Main Content -->
-    <div class="relative z-10 min-h-screen py-8 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-6xl mx-auto"> <!-- Increased max-width for more space -->
+    <div class="relative z-10 min-h-screen py-8 px-4 sm:px-6 lg:px-8 flex flex-col">
+      <div class="max-w-6xl mx-auto w-full flex-1 flex flex-col">
         <!-- Header Section -->
         <div class="mb-8 text-center">
           <div class="flex items-center justify-center mb-4">
@@ -41,7 +41,7 @@
         </div>
 
         <!-- Loading State -->
-        <div v-if="loadingTasks" class="loading-container">
+        <div v-if="loadingTasks" class="loading-container flex-1 flex items-center justify-center">
           <div class="flex flex-col items-center justify-center p-12 text-center">
             <div class="spinner mb-4"></div>
             <p class="text-lg text-gray-600">Loading your tasks...</p>
@@ -49,8 +49,8 @@
         </div>
 
         <!-- Task Board Section -->
-        <div v-else-if="myTasks.length > 0" class="task-board-section">
-          <div class="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+        <div v-else-if="myTasks.length > 0" class="task-board-section flex-1 flex flex-col">
+          <div class="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
             <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-purple-50">
               <h2 class="text-xl font-semibold text-gray-800 flex items-center justify-center">
                 <svg class="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -59,19 +59,19 @@
                 Your Active Tasks
               </h2>
             </div>
-            <div class="p-8 min-h-[600px]"> <!-- Increased padding and added min-height for more visible space -->
+            <div class="p-6 flex-1 min-h-0">
               <TaskBoard 
                 :tasks="myTasks"
                 :employee-view="true"
                 @task-updated="fetchMyTasks"
-                class="w-full"
+                class="w-full h-full"
               />
             </div>
           </div>
         </div>
 
         <!-- Empty State -->
-        <div v-else class="empty-state">
+        <div v-else class="empty-state flex-1 flex items-center justify-center">
           <div class="bg-white rounded-2xl shadow-xl border border-gray-200 p-12 text-center">
             <div class="empty-icon mb-6">🎉</div>
             <h3 class="text-2xl font-semibold text-gray-800 mb-2">No Tasks Assigned</h3>
@@ -126,8 +126,6 @@ async function fetchMyTasks() {
       errorMessage = err.response.data.message;
     }
    
-    // Modern toast notification instead of alert
-    // For now, console log; integrate with a toast lib if available
     console.error(`Error: ${errorMessage}`);
     myTasks.value = [];
   } finally {
@@ -145,6 +143,9 @@ onMounted(async () => {
 .employee-task-page {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   position: relative;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .employee-task-page::before {
@@ -157,6 +158,16 @@ onMounted(async () => {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(236, 72, 153, 0.05) 100%);
   pointer-events: none;
   z-index: 0;
+}
+
+/* Ensure the main content area takes full height */
+.min-h-screen {
+  min-height: 100vh;
+}
+
+/* Ensure TaskBoard container has proper height constraints */
+.min-h-0 {
+  min-height: 0;
 }
 
 /* Loading Spinner */
@@ -189,13 +200,17 @@ onMounted(async () => {
     font-size: 2rem;
   }
   
-  .empty-state {
-    padding: 3rem 2rem;
+  .employee-task-page {
+    height: auto;
+    min-height: 100vh;
+  }
+  
+  .empty-state .p-12 {
+    padding: 3rem 1.5rem;
   }
 
-  .task-board-section .p-8 {
-    padding: 2rem 1.5rem; /* Reduced padding on mobile for better fit */
-    min-height: 500px; /* Adjusted min-height for mobile */
+  .task-board-section .p-6 {
+    padding: 1rem;
   }
 }
 </style>

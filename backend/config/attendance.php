@@ -49,6 +49,21 @@ return [
     'overtime_threshold' => env('ATTENDANCE_OVERTIME_THRESHOLD', 8),
     'allow_overtime_sessions' => env('ATTENDANCE_ALLOW_OVERTIME', true),
     'overtime_requires_approval' => env('ATTENDANCE_OVERTIME_APPROVAL', false),
+     // Idle detection settings
+    'idle_threshold_minutes' => env('ATTENDANCE_IDLE_THRESHOLD', 15),
+    'idle_check_interval_minutes' => env('ATTENDANCE_IDLE_CHECK_INTERVAL', 5),
+    
+    // Heartbeat settings
+    'heartbeat_interval_seconds' => env('ATTENDANCE_HEARTBEAT_INTERVAL', 60),
+    
+    // Regular hours and overtime
+    'regular_hours' => env('ATTENDANCE_REGULAR_HOURS', 8),
+    'default_start_time' => env('ATTENDANCE_DEFAULT_START', '08:00'),
+    'grace_period_minutes' => env('ATTENDANCE_GRACE_PERIOD', 15),
+    
+    // Activity tracking
+    'track_activity' => env('ATTENDANCE_TRACK_ACTIVITY', true),
+    'activity_log_max_entries' => env('ATTENDANCE_ACTIVITY_LOG_MAX', 100),
 
     /*
     |--------------------------------------------------------------------------

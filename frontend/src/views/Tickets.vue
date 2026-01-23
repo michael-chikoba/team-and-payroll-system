@@ -1,62 +1,149 @@
 <template>
   <div class="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-indigo-100 selection:text-indigo-700">
    
-    <!-- Top Navigation / Header -->
-    <header class="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
-          <div class="flex items-center gap-3">
-            <div class="bg-indigo-600/10 p-2 rounded-lg border border-indigo-100">
-              <TicketIcon class="h-6 w-6 text-indigo-600" />
+      <!-- Top Navigation / Header -->
+      <header class="sticky top-0 z-40 w-full backdrop-blur-xl bg-white/70 border-b border-gray-200/60 transition-all duration-300">
+      <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-20">
+          <div class="flex items-center gap-4">
+            <div class="relative group">
+              <div class="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl blur opacity-20 group-hover:opacity-40 transition duration-200"></div>
+              <div class="relative bg-white p-2.5 rounded-xl border border-gray-200 shadow-sm">
+                <TicketIcon class="h-6 w-6 text-indigo-600" />
+              </div>
             </div>
             <div>
-              <h1 class="text-lg font-bold text-slate-900 leading-tight tracking-tight">Ticket System</h1>
-              <p class="text-xs text-slate-500 font-medium">Workspace Dashboard</p>
+              <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-gray-900 to-gray-600">HelpDesk</h1>
+              <p class="text-xs text-gray-500 font-medium tracking-wide">Workspace Dashboard</p>
             </div>
           </div>
-          <button
-            @click="openCreateModal"
-            class="group inline-flex items-center px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-lg transition-all duration-200 shadow-sm hover:shadow-md focus:ring-2 focus:ring-offset-2 focus:ring-slate-900"
-          >
-            <PlusIcon class="w-5 h-5 mr-2 group-hover:scale-110 transition-transform duration-200" />
-            Create Ticket
-          </button>
+          <div class="flex items-center gap-4">
+            <!-- Ticket Type Quick Stats Pills -->
+            <div class="hidden md:flex items-center gap-3 bg-gray-100/50 p-1.5 rounded-xl border border-gray-200/60">
+              <div class="px-3 py-1.5 rounded-lg flex items-center gap-2 bg-white shadow-sm border border-gray-100">
+                <div class="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse"></div>
+                <span class="text-xs font-semibold text-gray-600">{{ ticketStats.issues || 0 }} Issues</span>
+              </div>
+              <div class="px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white hover:shadow-sm transition-all cursor-default">
+                <div class="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
+                <span class="text-xs font-medium text-gray-500">{{ ticketStats.requests || 0 }} Requests</span>
+              </div>
+              <div class="px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white hover:shadow-sm transition-all cursor-default">
+                <div class="h-1.5 w-1.5 rounded-full bg-purple-500"></div>
+                <span class="text-xs font-medium text-gray-500">{{ ticketStats.change_requests || 0 }} Changes</span>
+              </div>
+            </div>
+            <div class="h-8 w-px bg-gray-200 hidden md:block"></div>
+            <button
+              @click="openCreateModal"
+              class="relative inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 bg-gray-900 border border-transparent rounded-xl hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30 active:scale-95"
+            >
+              <PlusIcon class="w-5 h-5 mr-2 -ml-1" />
+              New Ticket
+            </button>
+          </div>
         </div>
       </div>
     </header>
    
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
      
-      <!-- Stats Overview -->
+      <!-- Enhanced Stats Overview -->
       <section>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div
-            v-for="stat in statistics"
-            :key="stat.name"
-            class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden"
-          >
-            <!-- Decorative Accent -->
-            <div :class="`absolute top-0 left-0 w-1 h-full ${stat.accent}`"></div>
-            
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <!-- Total Tickets -->
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-blue-600"></div>
             <div class="flex items-start justify-between">
               <div>
-                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">{{ stat.name }}</p>
-                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ stat.value }}</h3>
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Tickets</p>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.total || 0 }}</h3>
                 <div class="flex items-center mt-2 gap-1">
-                  <span v-if="stat.trend" class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    {{ stat.trend }}
+                  <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    All Types
                   </span>
                 </div>
               </div>
-              <div :class="`p-3 rounded-lg ${stat.bg} group-hover:scale-110 transition-transform duration-300`">
-                <component :is="stat.icon" :class="`w-6 h-6 ${stat.color}`" />
+              <div class="p-3 rounded-lg bg-blue-50 group-hover:scale-110 transition-transform duration-300">
+                <TicketIcon class="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+          </div>
+          <!-- Pending Review -->
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Pending Review</p>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.pending || 0 }}</h3>
+                <div class="flex items-center mt-2 gap-1">
+                  <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    Any admin can approve
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 rounded-lg bg-amber-50 group-hover:scale-110 transition-transform duration-300">
+                <ClockIcon class="w-6 h-6 text-amber-600" />
+              </div>
+            </div>
+          </div>
+          <!-- In Progress -->
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">In Progress</p>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.in_progress || 0 }}</h3>
+                <div class="flex items-center mt-2 gap-1">
+                  <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    Active work
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 rounded-lg bg-indigo-50 group-hover:scale-110 transition-transform duration-300">
+                <PlayIcon class="w-6 h-6 text-indigo-600" />
+              </div>
+            </div>
+          </div>
+          <!-- Overdue -->
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Overdue</p>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.overdue || 0 }}</h3>
+                <div class="flex items-center mt-2 gap-1">
+                  <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                    Needs attention
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 rounded-lg bg-red-50 group-hover:scale-110 transition-transform duration-300">
+                <ExclamationCircleIcon class="w-6 h-6 text-red-600" />
+              </div>
+            </div>
+          </div>
+          <!-- SLA Compliance -->
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">SLA Compliance</p>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.sla_compliance?.percentage || 0 }}%</h3>
+                <div class="flex items-center mt-2 gap-1">
+                  <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    {{ statistics.sla_compliance?.compliant || 0 }}/{{ statistics.sla_compliance?.total || 0 }}
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 rounded-lg bg-emerald-50 group-hover:scale-110 transition-transform duration-300">
+                <CheckCircleIcon class="w-6 h-6 text-emerald-600" />
               </div>
             </div>
           </div>
         </div>
       </section>
-
-      <!-- Filters & Toolbar -->
+      <!-- Enhanced Filters & Toolbar -->
       <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-1">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3">
           <!-- Search -->
@@ -67,34 +154,55 @@
             <input
               v-model="filters.search"
               type="text"
-              placeholder="Search by title, ID, or user..."
+              placeholder="Search by title, ID, category, or description..."
               class="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-lg leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 sm:text-sm transition-all"
             />
           </div>
          
-          <!-- Filter Dropdowns -->
+          <!-- Enhanced Filter Dropdowns -->
           <div class="flex items-center gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
             <div class="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg shrink-0">
               <FunnelIcon class="w-4 h-4 text-slate-500" />
               <span class="text-xs font-bold uppercase tracking-wide text-slate-500">Filters</span>
             </div>
-            
+           
+            <!-- Type Filter -->
+            <div class="relative">
+              <select
+                v-model="filters.type"
+                class="appearance-none block w-36 pl-3 pr-8 py-2 text-sm border border-slate-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-shadow cursor-pointer hover:border-slate-300"
+              >
+                <option value="">All Types</option>
+                <option value="issue">Issue</option>
+                <option value="request">Request</option>
+                <option value="change_request">Change Request</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+              </div>
+            </div>
+            <!-- Status Filter -->
             <div class="relative">
               <select
                 v-model="filters.status"
                 class="appearance-none block w-36 pl-3 pr-8 py-2 text-sm border border-slate-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-shadow cursor-pointer hover:border-slate-300"
               >
                 <option value="">All Status</option>
+                <option value="draft">Draft</option>
                 <option value="pending">Pending</option>
+                <option value="in_review">In Review</option>
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
                 <option value="in_progress">In Progress</option>
+                <option value="on_hold">On Hold</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
               </select>
               <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
                 <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
               </div>
             </div>
-
+            <!-- Priority Filter -->
             <div class="relative">
               <select
                 v-model="filters.priority"
@@ -110,9 +218,32 @@
                 <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
               </div>
             </div>
+            <!-- Category Filter -->
+            <div class="relative">
+              <select
+                v-model="filters.category"
+                class="appearance-none block w-36 pl-3 pr-8 py-2 text-sm border border-slate-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-shadow cursor-pointer hover:border-slate-300"
+              >
+                <option value="">All Categories</option>
+                <option v-for="category in uniqueCategories" :key="category" :value="category">
+                  {{ category }}
+                </option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+              </div>
+            </div>
            
             <div class="h-8 w-px bg-slate-200 mx-1"></div>
-
+            <!-- Clear Filters Button -->
+            <button
+              @click="clearFilters"
+              class="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all"
+              title="Clear All Filters"
+            >
+              <XMarkIcon class="w-5 h-5" />
+            </button>
+            <!-- Refresh Button -->
             <button
               @click="refreshData"
               class="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 rounded-lg transition-all"
@@ -123,7 +254,6 @@
           </div>
         </div>
       </section>
-
       <!-- Main Data Table -->
       <section class="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden relative min-h-[400px]">
         <!-- Loading Overlay -->
@@ -140,10 +270,16 @@
           <table class="min-w-full divide-y divide-slate-200">
             <thead class="bg-slate-50/50">
               <tr>
-                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Ticket Details</th>
+                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <div class="flex items-center gap-2">
+                    Ticket Details
+                    <span class="text-xs font-normal text-slate-400">(Type)</span>
+                  </div>
+                </th>
+                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</th>
                 <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Priority</th>
-                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Ownership</th>
+                <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Assigned To</th>
                 <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Due Date</th>
                 <th scope="col" class="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -151,7 +287,7 @@
             <tbody class="bg-white divide-y divide-slate-200">
               <!-- Empty State -->
               <tr v-if="!isLoading && tickets.data.length === 0">
-                <td colspan="6" class="px-6 py-16 text-center">
+                <td colspan="7" class="px-6 py-16 text-center">
                   <div class="flex flex-col items-center justify-center max-w-sm mx-auto">
                     <div class="h-16 w-16 rounded-full bg-slate-50 flex items-center justify-center mb-4 border border-slate-100">
                       <TicketIcon class="h-8 w-8 text-slate-300" />
@@ -160,8 +296,8 @@
                     <p class="text-sm text-slate-500 mt-2 text-center">
                       There are no tickets matching your current filters. Try clearing filters or create a new one.
                     </p>
-                    <button 
-                      @click="filters = { status: '', priority: '', search: '', page: 1 }" 
+                    <button
+                      @click="clearFilters"
                       class="mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-800"
                     >
                       Clear all filters
@@ -176,26 +312,61 @@
                 :key="ticket.id"
                 class="hover:bg-slate-50/80 transition-colors duration-150 group"
               >
-                <!-- Title & Desc -->
+                <!-- Ticket Details with Type -->
                 <td class="px-6 py-4">
                   <div class="flex items-start gap-3">
                     <div class="mt-1 min-w-[2rem] text-xs font-mono text-slate-400">#{{ ticket.id }}</div>
-                    <div>
-                      <div class="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors cursor-pointer" @click="viewTicket(ticket)">
+                    <div class="min-w-0 flex-1">
+                      <!-- Type Badge -->
+                      <div class="mb-1">
+                        <span :class="[
+                          'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                          getTypeBadgeClass(ticket.type)
+                        ]">
+                          <component :is="getTypeIcon(ticket.type)" class="w-3 h-3 mr-1" />
+                          {{ getTypeLabel(ticket.type) }}
+                        </span>
+                      </div>
+                      <!-- Title -->
+                      <div class="text-sm font-semibold text-slate-900 group-hover:text-indigo-600 transition-colors cursor-pointer truncate" @click="viewTicket(ticket)">
                         {{ ticket.title }}
                       </div>
-                      <div class="text-sm text-slate-500 line-clamp-1 max-w-[240px] mt-0.5">
+                      <!-- Description -->
+                      <div class="text-sm text-slate-500 line-clamp-1 mt-0.5">
                         {{ ticket.description }}
+                      </div>
+                      <!-- Tags -->
+                      <div class="flex items-center gap-1 mt-1">
+                        <span v-if="ticket.department" class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700">
+                          {{ ticket.department?.name }}
+                        </span>
+                        <span v-if="ticket.estimated_hours" class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-700">
+                          <ClockIcon class="w-3 h-3 mr-1" />
+                          {{ ticket.estimated_hours }}h
+                        </span>
                       </div>
                     </div>
                   </div>
                 </td>
-
+                <!-- Category -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex flex-col">
+                    <span class="text-sm font-medium text-slate-900">{{ ticket.category }}</span>
+                    <span v-if="ticket.subcategory" class="text-xs text-slate-500">{{ ticket.subcategory }}</span>
+                  </div>
+                </td>
                 <!-- Status -->
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <StatusBadge :status="ticket.status" class="shadow-sm" />
+                  <div class="flex flex-col gap-1">
+                    <StatusBadge :status="ticket.status" class="shadow-sm" />
+                    <div v-if="ticket.is_overdue" class="mt-1">
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                        <ClockIcon class="w-3 h-3 mr-1" />
+                        Overdue
+                      </span>
+                    </div>
+                  </div>
                 </td>
-
                 <!-- Priority -->
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center gap-2">
@@ -211,56 +382,76 @@
                     </button>
                   </div>
                 </td>
-
-                <!-- Users (Ownership) -->
-                <td class="px-6 py-4 whitespace-nowrap">
+                <!-- Assigned To (Multiple Users) -->
+                <td class="px-6 py-4">
                   <div class="flex flex-col gap-2">
                     <!-- Requester -->
                     <div class="flex items-center text-sm">
-                       <div class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-medium text-slate-600 border border-slate-200 mr-2" title="Requester">
+                      <div class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-medium text-slate-600 border border-slate-200 mr-2" title="Requester">
                         {{ getUserInitials(ticket.user) }}
                       </div>
                       <div class="flex flex-col">
                         <span class="text-xs text-slate-400 leading-none mb-0.5">From</span>
-                        <span class="font-medium text-slate-900 text-xs">{{ getUserName(ticket.user) }}</span>
+                        <span class="font-medium text-slate-900 text-xs truncate max-w-[120px]">{{ getUserName(ticket.user) }}</span>
                       </div>
                     </div>
-
-                    <!-- Approver -->
-                    <div class="flex items-center text-sm">
-                      <div class="h-6 w-6 rounded-full bg-indigo-50 flex items-center justify-center text-xs font-medium text-indigo-600 border border-indigo-100 mr-2" title="Approver">
-                         <UserPlusIcon class="w-3 h-3" v-if="!ticket.approver" />
-                         <span v-else>{{ getApproverInitials(ticket) }}</span>
-                      </div>
-                      <div class="flex flex-col relative w-full">
-                         <span class="text-xs text-slate-400 leading-none mb-0.5">Assigned to</span>
-                         <div class="flex items-center gap-2">
-                            <span class="font-medium text-slate-700 text-xs truncate max-w-[100px]" :class="{'text-slate-400 italic': !ticket.approver}">
-                              {{ getApproverName(ticket) }}
-                            </span>
-                             <!-- Reassign Button -->
-                            <button
-                              v-if="canReassignTicket(ticket)"
-                              @click="openReassignModal(ticket)"
-                              class="text-slate-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100"
-                              title="Reassign Ticket"
-                            >
-                              <UserPlusIcon class="w-3.5 h-3.5" />
-                            </button>
-                         </div>
+                    <!-- Assigned Users -->
+                    <div v-if="ticket.assigned_users && ticket.assigned_users.length > 0" class="flex flex-col gap-1">
+                      <span class="text-xs text-slate-400 leading-none">Assigned to</span>
+                      <div class="flex items-center flex-wrap gap-1">
+                        <div
+                          v-for="user in ticket.assigned_users.slice(0, 2)"
+                          :key="user.id"
+                          class="flex items-center gap-1 px-2 py-1 bg-indigo-50 rounded-full text-xs"
+                          :title="getUserName(user)"
+                        >
+                          <div class="h-4 w-4 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-medium text-indigo-600">
+                            {{ getUserInitials(user) }}
+                          </div>
+                          <span class="truncate max-w-[60px] text-indigo-700">{{ getUserName(user) }}</span>
+                        </div>
+                        <span v-if="ticket.assigned_users.length > 2" class="text-xs text-slate-500">
+                          +{{ ticket.assigned_users.length - 2 }} more
+                        </span>
                       </div>
                     </div>
+                    <div v-else-if="ticket.approver" class="flex flex-col gap-1">
+                      <span class="text-xs text-slate-400 leading-none">Approver</span>
+                      <div class="flex items-center flex-wrap gap-1">
+                        <div
+                          class="flex items-center gap-1 px-2 py-1 bg-indigo-50 rounded-full text-xs"
+                          :title="getApproverName(ticket)"
+                        >
+                          <div class="h-4 w-4 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-medium text-indigo-600">
+                            {{ getApproverInitials(ticket) }}
+                          </div>
+                          <span class="truncate max-w-[60px] text-indigo-700">{{ getApproverName(ticket) }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else class="text-xs text-slate-400 italic">Not assigned</div>
                   </div>
                 </td>
-
-                <!-- Date -->
+                <!-- Date with SLA indicator -->
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="flex items-center text-sm text-slate-600">
-                    <ClockIcon class="w-4 h-4 mr-1.5 text-slate-400" />
-                    <span>{{ formatDate(ticket.due_date) }}</span>
+                  <div class="flex flex-col">
+                    <div class="flex items-center text-sm text-slate-600">
+                      <ClockIcon class="w-4 h-4 mr-1.5 text-slate-400" />
+                      <span>{{ formatDate(ticket.due_date) }}</span>
+                    </div>
+                    <div class="mt-1">
+                      <span :class="[
+                        'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+                        getSlaBadgeClass(ticket.sla_status)
+                      ]">
+                        {{ getSlaLabel(ticket.sla_status) }}
+                      </span>
+                    </div>
+                    <div v-if="ticket.time_spent > 0" class="mt-1 text-xs text-slate-500">
+                      Spent: {{ ticket.time_spent }}h
+                    </div>
                   </div>
                 </td>
-
                 <!-- Actions -->
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div class="flex items-center justify-end space-x-2">
@@ -272,18 +463,19 @@
                     >
                       View
                     </button>
-                    
-                    <!-- Hero Action: Approve (Pending only) -->
+                   
+                    <!-- Hero Action: Approve (Pending only - ANY ADMIN can approve) -->
                     <button
                       v-if="canApproveTicket(ticket)"
                       @click="openApprovalModal(ticket)"
                       class="inline-flex items-center px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700 rounded-md transition-colors text-xs font-semibold shadow-sm ring-1 ring-emerald-700 ring-offset-1 ring-offset-transparent"
+                      :title="getApproveButtonTitle(ticket)"
                     >
                       <CheckCircleIcon class="w-3.5 h-3.5 mr-1.5" />
                       Approve
                     </button>
-                    
-                    <!-- Hero Action: Update Status (Active only) -->
+                   
+                    <!-- Hero Action: Update Status (Active only - ANY ADMIN) -->
                     <button
                       v-if="canUpdateStatus(ticket) && ticket.status !== 'pending'"
                       @click="openStatusModal(ticket)"
@@ -292,7 +484,7 @@
                       <CheckCircleIcon class="w-3.5 h-3.5 mr-1.5" />
                       Update
                     </button>
-                    
+                   
                     <!-- Context Menu for Secondary Actions -->
                     <div class="relative inline-block text-left">
                       <button
@@ -302,7 +494,7 @@
                       >
                         <EllipsisHorizontalIcon class="w-5 h-5" />
                       </button>
-                      
+                     
                       <!-- Dropdown Menu -->
                       <transition
                         enter-active-class="transition ease-out duration-100"
@@ -343,8 +535,35 @@
                               <UserPlusIcon class="w-4 h-4 mr-3 text-slate-400 group-hover:text-indigo-500" />
                               Reassign Ticket
                             </button>
+                            <button
+                              v-if="canTakeQuickActions(ticket)"
+                              @click="handleActionClick('assign', ticket)"
+                              class="group flex items-center w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                            >
+                              <UserGroupIcon class="w-4 h-4 mr-3 text-slate-400 group-hover:text-indigo-500" />
+                              Assign Users
+                            </button>
                           </div>
-                          
+                         
+                          <div class="py-1">
+                            <button
+                              v-if="canResolveTicket(ticket)"
+                              @click="resolveTicket(ticket)"
+                              class="group flex items-center w-full px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50"
+                            >
+                              <CheckCircleIcon class="w-4 h-4 mr-3 text-emerald-400 group-hover:text-emerald-500" />
+                              Mark Resolved
+                            </button>
+                            <button
+                              v-if="canReopenTicket(ticket)"
+                              @click="reopenTicket(ticket)"
+                              class="group flex items-center w-full px-4 py-2 text-sm text-amber-600 hover:bg-amber-50"
+                            >
+                              <ArrowPathIcon class="w-4 h-4 mr-3 text-amber-400 group-hover:text-amber-500" />
+                              Reopen Ticket
+                            </button>
+                          </div>
+                         
                           <div class="py-1">
                             <button
                               v-if="canDeleteTicket(ticket)"
@@ -370,12 +589,11 @@
           <Pagination :meta="tickets.meta" @page-change="changePage" />
         </div>
       </section>
-
       <!-- Modals -->
-      <!-- Keep existing modals as they are logic-bound, styling is handled within them usually -->
       <CreateTicketModal
         v-if="showCreateModal"
         :show="showCreateModal"
+        :assignable-users="assignableUsers"
         :approvers="approvers"
         @close="closeCreateModal"
         @created="handleTicketCreated"
@@ -396,7 +614,7 @@
         @close="closeApprovalModal"
         @approved="handleStatusUpdated"
       />
-      
+     
       <PriorityEditModal
         v-if="showPriorityModal"
         :show="showPriorityModal"
@@ -404,16 +622,17 @@
         @close="closePriorityModal"
         @priority-updated="handlePriorityUpdated"
       />
-      
+     
       <ReassignTicketModal
         v-if="showReassignModal"
         :show="showReassignModal"
         :ticket="selectedTicket"
+        :assignable-users="assignableUsers"
         :approvers="filteredApprovers"
         @close="closeReassignModal"
         @reassigned="handleTicketReassigned"
       />
-      
+     
       <StatusUpdateModal
         v-if="showStatusModal"
         :show="showStatusModal"
@@ -421,10 +640,18 @@
         @close="closeStatusModal"
         @status-updated="handleStatusUpdated"
       />
+      <!-- Assign Users Modal -->
+      <AssignUsersModal
+        v-if="showAssignModal"
+        :show="showAssignModal"
+        :ticket="selectedTicket"
+        :assignable-users="assignableUsers"
+        @close="closeAssignModal"
+        @assigned="handleUsersAssigned"
+      />
     </main>
   </div>
 </template>
-
 <script setup>
 import { ref, onMounted, watch, computed, onUnmounted } from 'vue'
 import axios from 'axios'
@@ -437,12 +664,15 @@ import {
   ClockIcon,
   CheckCircleIcon,
   PlayIcon,
-  EyeIcon,
   PencilIcon,
   TrashIcon,
   UserPlusIcon,
   EllipsisHorizontalIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  XMarkIcon,
+  ExclamationCircleIcon,
+  DocumentTextIcon,
+  UserGroupIcon
 } from '@heroicons/vue/24/outline'
 import StatusBadge from '@/components/StatusBadge.vue'
 import PriorityBadge from '@/components/PriorityBadge.vue'
@@ -453,16 +683,22 @@ import ApprovalModal from '@/components/Tickets/ApprovalModal.vue'
 import PriorityEditModal from '@/components/Tickets/PriorityEditModal.vue'
 import ReassignTicketModal from '@/components/Tickets/ReassignTicketModal.vue'
 import StatusUpdateModal from '@/components/Tickets/StatusUpdateModal.vue'
-
+import AssignUsersModal from '@/components/Tickets/AssignUsersModal.vue'
 // ===== Reactive State =====
 const tickets = ref({ data: [], meta: {} })
-const statistics = ref([])
+const statistics = ref({})
+const ticketStats = ref({})
 const approvers = ref([])
+const assignableUsers = ref([])
 const filters = ref({
+  type: '',
   status: '',
   priority: '',
+  category: '',
   search: '',
-  page: 1
+  page: 1,
+  sort_by: 'created_at',
+  sort_order: 'desc'
 })
 const isLoading = ref(false)
 const isRefreshing = ref(false)
@@ -472,18 +708,26 @@ const showApprovalModal = ref(false)
 const showPriorityModal = ref(false)
 const showReassignModal = ref(false)
 const showStatusModal = ref(false)
+const showAssignModal = ref(false)
 const selectedTicket = ref(null)
 const currentUser = ref(null)
 const showQuickActions = ref(null)
-
 // ===== Computed Properties =====
 const filteredApprovers = computed(() => {
   if (!selectedTicket.value || !approvers.value.length) return []
-  return approvers.value.filter(approver => 
+  return approvers.value.filter(approver =>
     approver.id !== selectedTicket.value.approver_id
   )
 })
-
+const uniqueCategories = computed(() => {
+  const categories = new Set()
+  tickets.value.data.forEach(ticket => {
+    if (ticket.category) {
+      categories.add(ticket.category)
+    }
+  })
+  return Array.from(categories).sort()
+})
 // ===== Helper Functions for Initials =====
 const getInitials = (name) => {
   if (!name) return '??'
@@ -494,29 +738,94 @@ const getInitials = (name) => {
     .toUpperCase()
     .slice(0, 2)
 }
-
 const getUserInitials = (user) => {
   return getInitials(getUserName(user))
 }
-
 const getApproverInitials = (ticket) => {
   return getInitials(getApproverName(ticket))
 }
-
+// ===== Ticket Type Helpers =====
+const getTypeIcon = (type) => {
+  switch(type) {
+    case 'issue':
+      return ExclamationCircleIcon
+    case 'request':
+      return DocumentTextIcon
+    case 'change_request':
+      return AdjustmentsHorizontalIcon
+    default:
+      return TicketIcon
+  }
+}
+const getTypeLabel = (type) => {
+  switch(type) {
+    case 'issue':
+      return 'Issue'
+    case 'request':
+      return 'Request'
+    case 'change_request':
+      return 'Change Request'
+    default:
+      return type
+  }
+}
+const getTypeBadgeClass = (type) => {
+  switch(type) {
+    case 'issue':
+      return 'bg-red-100 text-red-800'
+    case 'request':
+      return 'bg-emerald-100 text-emerald-800'
+    case 'change_request':
+      return 'bg-purple-100 text-purple-800'
+    default:
+      return 'bg-slate-100 text-slate-800'
+  }
+}
+const getSlaBadgeClass = (slaStatus) => {
+  switch(slaStatus) {
+    case 'on_track':
+      return 'bg-green-100 text-green-800'
+    case 'warning':
+      return 'bg-amber-100 text-amber-800'
+    case 'breached':
+      return 'bg-red-100 text-red-800'
+    case 'completed':
+      return 'bg-slate-100 text-slate-800'
+    default:
+      return 'bg-slate-100 text-slate-800'
+  }
+}
+const getSlaLabel = (slaStatus) => {
+  switch(slaStatus) {
+    case 'on_track':
+      return 'On Track'
+    case 'warning':
+      return 'Warning'
+    case 'breached':
+      return 'Breached'
+    case 'completed':
+      return 'Completed'
+    default:
+      return slaStatus
+  }
+}
 // ===== API Fetchers =====
 const fetchTickets = async () => {
   isLoading.value = true
   try {
     const params = { ...filters.value }
     Object.keys(params).forEach(key => !params[key] && delete params[key])
-   
+    
     const response = await axios.get('/api/tickets', { params })
-   
+    console.log('Tickets response:', response.data)
+    
     if (response.data) {
       tickets.value = {
         data: Array.isArray(response.data.data) ? response.data.data : [],
         meta: response.data.meta || {}
       }
+      
+      updateTicketStats()
     }
   } catch (error) {
     console.error('Error fetching tickets:', error)
@@ -525,76 +834,77 @@ const fetchTickets = async () => {
     setTimeout(() => isLoading.value = false, 300)
   }
 }
-
 const fetchStatistics = async () => {
   try {
     const response = await axios.get('/api/tickets/statistics')
-    const stats = response.data || {}
-   
-    statistics.value = [
-      {
-        name: 'Total Tickets',
-        value: stats.total || 0,
-        trend: '+12%',
-        icon: TicketIcon,
-        color: 'text-blue-600',
-        bg: 'bg-blue-50',
-        accent: 'bg-blue-600'
-      },
-      {
-        name: 'Pending Review',
-        value: stats.pending || 0,
-        trend: 'Wait time: 2h',
-        icon: ClockIcon,
-        color: 'text-amber-600',
-        bg: 'bg-amber-50',
-        accent: 'bg-amber-500'
-      },
-      {
-        name: 'Approved',
-        value: stats.approved || 0,
-        trend: 'This week',
-        icon: CheckCircleIcon,
-        color: 'text-emerald-600',
-        bg: 'bg-emerald-50',
-        accent: 'bg-emerald-500'
-      },
-      {
-        name: 'In Progress',
-        value: stats.in_progress || 0,
-        trend: 'Active',
-        icon: PlayIcon,
-        color: 'text-indigo-600',
-        bg: 'bg-indigo-50',
-        accent: 'bg-indigo-500'
-      },
-    ]
+    statistics.value = response.data || {}
+    
+    if (response.data.by_type) {
+      ticketStats.value = {
+        issues: response.data.by_type.issue?.reduce((sum, item) => sum + (item.count || 0), 0) || 0,
+        requests: response.data.by_type.request?.reduce((sum, item) => sum + (item.count || 0), 0) || 0,
+        change_requests: response.data.by_type.change_request?.reduce((sum, item) => sum + (item.count || 0), 0) || 0
+      }
+    }
   } catch (error) {
     console.error('Failed to load stats:', error)
-    statistics.value = []
+    statistics.value = {}
+    ticketStats.value = {}
   }
 }
-
-const fetchApprovers = async () => {
+const fetchAssignableUsers = async () => {
   try {
-    const response = await axios.get('/api/tickets/approvers')
-    if (Array.isArray(response.data)) {
-      approvers.value = response.data.map(approver => ({
-        id: approver.id,
-        name: approver.name || `${approver.first_name || ''} ${approver.last_name || ''}`.trim(),
-        email: approver.email || '',
-        business_id: approver.business_id,
-        position: approver.position || 'Admin'
-      }))
+    console.log('Fetching assignable users from /api/tickets/assignable-users')
+    const response = await axios.get('/api/tickets/assignable-users')
+    console.log('Assignable users response:', response.data)
+    
+    if (response.data) {
+      if (response.data.assignable_users && response.data.approvers) {
+        assignableUsers.value = response.data.assignable_users.map(user => ({
+          id: user.id,
+          name: user.name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
+          email: user.email || '',
+          position: user.position || '',
+          department: user.department || '',
+          is_admin: user.is_admin || false
+        }))
+       
+        approvers.value = response.data.approvers.map(approver => ({
+          id: approver.id,
+          name: approver.name || `${approver.first_name || ''} ${approver.last_name || ''}`.trim(),
+          email: approver.email || '',
+          business_id: approver.business_id,
+          position: approver.position || 'Admin'
+        }))
+       
+        console.log('Parsed assignableUsers:', assignableUsers.value)
+        console.log('Parsed approvers:', approvers.value)
+      } else if (Array.isArray(response.data)) {
+        console.log('Using old format (just approvers array)')
+        approvers.value = response.data.map(approver => ({
+          id: approver.id,
+          name: approver.name || `${approver.first_name || ''} ${approver.last_name || ''}`.trim(),
+          email: approver.email || '',
+          business_id: approver.business_id,
+          position: approver.position || 'Admin'
+        }))
+       
+        assignableUsers.value = [...approvers.value]
+      } else {
+        console.warn('Unexpected response format:', response.data)
+        assignableUsers.value = []
+        approvers.value = []
+      }
     } else {
+      assignableUsers.value = []
       approvers.value = []
     }
   } catch (error) {
-    console.error('Error fetching approvers:', error)
+    console.error('Error fetching assignable users:', error.response || error)
+    assignableUsers.value = []
     approvers.value = []
   }
 }
-
 const fetchUserWithRoles = async () => {
   try {
     const response = await axios.get('/api/user')
@@ -612,76 +922,119 @@ const fetchUserWithRoles = async () => {
     }
   }
 }
-
+// ===== Helper Functions =====
+const updateTicketStats = () => {
+  const stats = { issues: 0, requests: 0, change_requests: 0 }
+  tickets.value.data.forEach(ticket => {
+    if (ticket.type === 'issue') stats.issues++
+    else if (ticket.type === 'request') stats.requests++
+    else if (ticket.type === 'change_request') stats.change_requests++
+  })
+  ticketStats.value = stats
+}
+const clearFilters = () => {
+  filters.value = {
+    type: '',
+    status: '',
+    priority: '',
+    category: '',
+    search: '',
+    page: 1,
+    sort_by: 'created_at',
+    sort_order: 'desc'
+  }
+}
 // ===== Lifecycle =====
 onMounted(() => {
   fetchUserWithRoles()
   fetchTickets()
   fetchStatistics()
-  fetchApprovers()
-  
+  fetchAssignableUsers()
+ 
   document.addEventListener('click', closeQuickActions)
 })
-
 onUnmounted(() => {
   document.removeEventListener('click', closeQuickActions)
 })
-
 // ===== Watchers =====
 watch(filters, () => {
   fetchTickets()
 }, { deep: true })
-
-// ===== Permission Check Functions =====
+// ===== Permission Check Functions - UPDATED FOR MULTI-ADMIN APPROVAL =====
 const canApproveTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
-  const isAssignedApprover = ticket.approver_id === currentUser.value.id
   const isPending = ticket.status === 'pending'
-  return isAdmin && isAssignedApprover && isPending
+  
+  // ANY admin from the same business can approve, not just the assigned approver
+  return isAdmin && isPending
 }
 
+// Helper to get approve button title
+const getApproveButtonTitle = (ticket) => {
+  if (!currentUser.value || !ticket) return 'Approve'
+  
+  const isAssignedApprover = ticket.approver_id === currentUser.value.id
+  if (isAssignedApprover) {
+    return 'Approve ticket (assigned to you)'
+  } else {
+    return 'Approve ticket (as business admin)'
+  }
+}
 const canEditTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
-  return ticket.user_id === currentUser.value.id && ticket.status === 'pending'
+  return ticket.user_id === currentUser.value.id && ['draft', 'pending'].includes(ticket.status)
 }
-
 const canDeleteTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
-  return ticket.user_id === currentUser.value.id && ticket.status === 'pending'
+  return ticket.user_id === currentUser.value.id && ['draft', 'pending', 'rejected'].includes(ticket.status)
 }
-
 const canEditPriority = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
-  const isAssignedApprover = ticket.approver_id === currentUser.value.id
-  const isEditableStatus = ['pending', 'approved'].includes(ticket.status)
-  return isAdmin && isAssignedApprover && isEditableStatus
+  const isEditableStatus = ['pending', 'approved', 'in_progress'].includes(ticket.status)
+  
+  // ANY admin from the same business can edit priority
+  return isAdmin && isEditableStatus
 }
-
 const canReassignTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
-  const isAssignedApprover = ticket.approver_id === currentUser.value.id
   const isReassignableStatus = ['pending', 'approved'].includes(ticket.status)
-  return isAdmin && isAssignedApprover && isReassignableStatus
+  
+  // ANY admin from the same business can reassign
+  return isAdmin && isReassignableStatus
 }
-
 const canTakeQuickActions = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
-  const isAssignedApprover = ticket.approver_id === currentUser.value.id
-  return isAdmin && isAssignedApprover
+  
+  // ANY admin from the same business can take quick actions
+  return isAdmin
 }
-
 const canUpdateStatus = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
-  const isAssignedApprover = ticket.approver_id === currentUser.value.id
   const isUpdatable = !['completed', 'closed'].includes(ticket.status)
-  return isAdmin && isAssignedApprover && isUpdatable
+  
+  // ANY admin from the same business can update status
+  return isAdmin && isUpdatable
 }
-
+const canResolveTicket = (ticket) => {
+  if (!currentUser.value || !ticket) return false
+  const isAdmin = currentUser.value.role === 'admin'
+  const isAssigned = ticket.assigned_users?.some(user => user.id === currentUser.value.id)
+  const canResolve = ['in_progress', 'on_hold'].includes(ticket.status)
+  return (isAdmin || isAssigned) && canResolve
+}
+const canReopenTicket = (ticket) => {
+  if (!currentUser.value || !ticket) return false
+  const isAdmin = currentUser.value.role === 'admin'
+  const canReopen = ['resolved', 'closed'].includes(ticket.status)
+  
+  // ANY admin from the same business can reopen
+  return isAdmin && canReopen
+}
 const getApproverName = (ticket) => {
   const approver = ticket?.approver
   if (!approver) return 'Unassigned'
@@ -691,7 +1044,6 @@ const getApproverName = (ticket) => {
   }
   return approver.email || 'Unassigned'
 }
-
 const getUserName = (user) => {
   if (!user) return 'Unknown User'
   if (user.name) return user.name
@@ -700,28 +1052,27 @@ const getUserName = (user) => {
   }
   return user.email || 'Unknown User'
 }
-
 // ===== Actions =====
 const openCreateModal = async () => {
-  if (approvers.value.length === 0) {
-    await fetchApprovers()
+  console.log('Opening create modal, assignableUsers:', assignableUsers.value)
+  console.log('Approvers:', approvers.value)
+ 
+  if (assignableUsers.value.length === 0 || approvers.value.length === 0) {
+    console.log('Refetching assignable users...')
+    await fetchAssignableUsers()
   }
   showCreateModal.value = true
 }
-
 const closeCreateModal = () => {
   showCreateModal.value = false
 }
-
 const editTicket = (ticket) => {
-  // Logic to trigger edit mode or modal
   console.log('Edit ticket', ticket.id)
   closeQuickActions()
 }
-
 const deleteTicket = async (ticket) => {
   closeQuickActions()
-  if (confirm(`Are you sure you want to delete ticket #${ticket.id}?`)) {
+  if (confirm(`Are you sure you want to delete ticket #${ticket.id}? This action cannot be undone.`)) {
     try {
       await axios.delete(`/api/tickets/${ticket.id}`)
       fetchTickets()
@@ -732,61 +1083,89 @@ const deleteTicket = async (ticket) => {
     }
   }
 }
-
 const viewTicket = (ticket) => {
   selectedTicket.value = ticket
   showViewModal.value = true
 }
-
 const closeViewModal = () => {
   showViewModal.value = false
   selectedTicket.value = null
 }
-
 const openApprovalModal = (ticket) => {
   selectedTicket.value = ticket
   showApprovalModal.value = true
   closeQuickActions()
 }
-
 const closeApprovalModal = () => {
   showApprovalModal.value = false
   selectedTicket.value = null
 }
-
 const openPriorityModal = (ticket) => {
   selectedTicket.value = ticket
   showPriorityModal.value = true
   closeQuickActions()
 }
-
 const closePriorityModal = () => {
   showPriorityModal.value = false
   selectedTicket.value = null
 }
-
 const openReassignModal = (ticket) => {
   selectedTicket.value = ticket
   showReassignModal.value = true
   closeQuickActions()
 }
-
 const closeReassignModal = () => {
   showReassignModal.value = false
   selectedTicket.value = null
 }
-
 const openStatusModal = (ticket) => {
   selectedTicket.value = ticket
   showStatusModal.value = true
   closeQuickActions()
 }
-
 const closeStatusModal = () => {
   showStatusModal.value = false
   selectedTicket.value = null
 }
-
+const openAssignModal = (ticket) => {
+  selectedTicket.value = ticket
+  showAssignModal.value = true
+  closeQuickActions()
+}
+const closeAssignModal = () => {
+  showAssignModal.value = false
+  selectedTicket.value = null
+}
+const resolveTicket = async (ticket) => {
+  closeQuickActions()
+  if (confirm(`Mark ticket #${ticket.id} as resolved?`)) {
+    try {
+      await axios.post(`/api/tickets/${ticket.id}/update-status`, {
+        status: 'resolved'
+      })
+      fetchTickets()
+      fetchStatistics()
+    } catch (error) {
+      console.error('Error resolving ticket:', error)
+      alert('Failed to resolve ticket')
+    }
+  }
+}
+const reopenTicket = async (ticket) => {
+  closeQuickActions()
+  if (confirm(`Reopen ticket #${ticket.id}?`)) {
+    try {
+      await axios.post(`/api/tickets/${ticket.id}/update-status`, {
+        status: 'reopened'
+      })
+      fetchTickets()
+      fetchStatistics()
+    } catch (error) {
+      console.error('Error reopening ticket:', error)
+      alert('Failed to reopen ticket')
+    }
+  }
+}
 const handleActionClick = (actionType, ticket) => {
   closeQuickActions()
   switch(actionType) {
@@ -796,12 +1175,14 @@ const handleActionClick = (actionType, ticket) => {
     case 'reassign':
       openReassignModal(ticket)
       break
+    case 'assign':
+      openAssignModal(ticket)
+      break
     case 'status':
       openStatusModal(ticket)
       break
   }
 }
-
 const toggleQuickActions = (ticketId) => {
   if (showQuickActions.value === ticketId) {
     showQuickActions.value = null
@@ -809,32 +1190,27 @@ const toggleQuickActions = (ticketId) => {
     showQuickActions.value = ticketId
   }
 }
-
 const closeQuickActions = () => {
   showQuickActions.value = null
 }
-
 const changePage = (page) => {
   filters.value.page = page
 }
-
 const refreshData = async () => {
   isRefreshing.value = true
   await Promise.all([
     fetchTickets(),
     fetchStatistics(),
-    fetchApprovers()
+    fetchAssignableUsers()
   ])
   isRefreshing.value = false
 }
-
 const handleTicketCreated = () => {
   closeCreateModal()
   filters.value.status = ''
   fetchTickets()
   fetchStatistics()
 }
-
 const handleStatusUpdated = () => {
   closeViewModal()
   closeApprovalModal()
@@ -843,21 +1219,24 @@ const handleStatusUpdated = () => {
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
-
 const handlePriorityUpdated = () => {
   closePriorityModal()
   fetchTickets()
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
-
 const handleTicketReassigned = () => {
   closeReassignModal()
   fetchTickets()
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
-
+const handleUsersAssigned = () => {
+  closeAssignModal()
+  fetchTickets()
+  fetchStatistics()
+  window.dispatchEvent(new CustomEvent('ticket-updated'))
+}
 const formatDate = (date) => {
   if (!date) return 'N/A'
   try {
@@ -871,7 +1250,6 @@ const formatDate = (date) => {
   }
 }
 </script>
-
 <style scoped>
 /* Scrollbar Styling */
 .scrollbar-hide::-webkit-scrollbar {
@@ -881,7 +1259,6 @@ const formatDate = (date) => {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
-
 .overflow-x-auto::-webkit-scrollbar {
   height: 6px;
 }
@@ -895,7 +1272,6 @@ const formatDate = (date) => {
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
-
 /* Transitions */
 .fade-enter-active,
 .fade-leave-active {
@@ -904,5 +1280,12 @@ const formatDate = (date) => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+/* Line clamp utility */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 </style>

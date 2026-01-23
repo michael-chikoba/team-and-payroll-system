@@ -2,66 +2,120 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Builder;
-use Carbon\Carbon;
 
 class ChatMessage extends Model
 {
-    use HasFactory, SoftDeletes;
-
     protected $fillable = [
         'chat_group_id',
         'user_id',
         'message',
         'type',
         'reply_to_message_id',
+        'thread_id',
+        'is_thread_reply',
+        'mentions',
         'attachment_url',
         'attachment_name',
         'attachment_size',
-        'attachments',
         'is_edited',
         'edited_at',
         'is_deleted',
+        'is_pinned',
+        'pinned_at',
+        'pinned_by',
     ];
 
     protected $casts = [
-        'attachments' => 'array',
+        'mentions' => 'array',
         'is_edited' => 'boolean',
         'is_deleted' => 'boolean',
+        'is_thread_reply' => 'boolean',
+        'is_pinned' => 'boolean',
         'edited_at' => 'datetime',
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-        'deleted_at' => 'datetime',
+        'pinned_at' => 'datetime',
+        'metadata' => 'array',
     ];
 
-    /**
-     * Get the chat group.
-     */
+    public function isFromIntegration(): bool
+{
+    return $this->type === 'integration';
+}
+
+public function getIntegrationName(): ?string
+{
+    return $this->metadata['integration_name'] ?? null;
+}
+
+public function getIntegrationIcon(): ?string
+{
+    return $this->metadata['icon_url'] ?? null;
+}
+
     public function chatGroup(): BelongsTo
     {
         return $this->belongsTo(ChatGroup::class);
     }
 
-    /**
-     * Get the user who sent the message.
-     */
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Get the message this is replying to.
-     */
     public function replyTo(): BelongsTo
     {
         return $this->belongsTo(ChatMessage::class, 'reply_to_message_id');
     }
+
+    public function thread(): BelongsTo
+    {
+        return $this->belongsTo(ChatThread::class);
+    }
+
+    public function reactions(): HasMany
+    {
+        return $this->hasMany(ChatReaction::class);
+    }
+
+    public function pinnedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'pinned_by');
+    }
+
+    public function mentions(): HasMany
+    {
+        return $this->hasMany(ChatMention::class);
+    }
+
+    public function scopeNotDeleted($query)
+    {
+        return $query->where('is_deleted', false);
+    }
+
+    public function scopePinned($query)
+    {
+        return $query->where('is_pinned', true);
+    }
+
+    public function getFormattedTimeAttribute(): string
+    {
+        $now = now();
+        $messageTime = $this->created_at;
+
+        if ($messageTime->isToday()) {
+            return $messageTime->format('g:i A');
+        } elseif ($messageTime->isYesterday()) {
+            return 'Yesterday ' . $messageTime->format('g:i A');
+        } else {
+            return $messageTime->format('M j, Y g:i A');
+        }
+    }
+  
+
+
+
 
     /**
      * Get replies to this message.
@@ -71,13 +125,7 @@ class ChatMessage extends Model
         return $this->hasMany(ChatMessage::class, 'reply_to_message_id');
     }
 
-    /**
-     * Scope: Get messages that are not deleted.
-     */
-    public function scopeNotDeleted(Builder $query): Builder
-    {
-        return $query->where('is_deleted', false);
-    }
+ 
 
     /**
      * Scope: Get messages by type.
@@ -144,24 +192,7 @@ class ChatMessage extends Model
         ]);
     }
 
-    /**
-     * Get formatted time.
-     */
-    public function getFormattedTimeAttribute(): string
-    {
-        $now = now();
-        $messageTime = $this->created_at;
-
-        if ($messageTime->isToday()) {
-            return $messageTime->format('g:i A');
-        } elseif ($messageTime->isYesterday()) {
-            return 'Yesterday ' . $messageTime->format('g:i A');
-        } elseif ($messageTime->diffInDays($now) < 7) {
-            return $messageTime->format('l g:i A');
-        } else {
-            return $messageTime->format('M j, Y g:i A');
-        }
-    }
+  
 
     /**
      * Get formatted attachments.

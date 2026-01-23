@@ -58,13 +58,16 @@
               class="form-control"
               :disabled="loading || loadingEmployees"
             >
-              <option value="">Select employee</option>
+              <option value="">Select team member</option>
               <option
                 v-for="employee in employees"
-                :key="employee.user_id || employee.id"
-                :value="employee.user_id"
+                :key="employee.id"
+                :value="employee.id"
               >
-                {{ getEmployeeDisplayName(employee) }} - {{ employee.position }} ({{ employee.department }})
+                {{ getEmployeeDisplayName(employee) }}
+                <span v-if="employee.position">- {{ employee.position }}</span>
+                <span v-if="employee.department">({{ employee.department }})</span>
+                <span v-if="employee.role !== 'employee'">[{{ employee.role }}]</span>
               </option>
             </select>
             <div v-if="loadingEmployees" class="loading-text">
@@ -73,8 +76,8 @@
             <div v-if="employeeError" class="error-text">
               {{ employeeError }}
             </div>
-            <div v-if="!loadingEmployees && employees.length === 0" class="error-text">
-              No team members available for assignment.
+            <div v-if="!loadingEmployees && employees.length === 0" class="info-text">
+              No team members available in your business.
             </div>
           </div>
         </div>
@@ -102,7 +105,7 @@
           <button 
             type="submit" 
             class="btn-primary"
-            :disabled="loading || loadingEmployees"
+            :disabled="loading || loadingEmployees || !formData.assigned_to"
           >
             <span v-if="loading">Processing...</span>
             <span v-else>{{ task ? 'Update' : 'Create' }} Task</span>
@@ -114,23 +117,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import axios from 'axios';
+import { useAuthStore } from '@/stores/auth';
 
 const props = defineProps({
   task: Object,
-  employees: {
-    type: Array,
-    default: () => []
-  },
-  loadingEmployees: {
-    type: Boolean,
-    default: false
-  }
 });
 
 const emit = defineEmits(['close', 'save']);
 
+const authStore = useAuthStore();
 const formData = ref({
   title: '',
   description: '',
@@ -140,104 +137,79 @@ const formData = ref({
 });
 
 const loading = ref(false);
+const employees = ref([]);
+const loadingEmployees = ref(false);
 const employeeError = ref('');
 
-// Local employees state in case we need to fetch directly
-const localEmployees = ref([]);
-const localLoadingEmployees = ref(false);
-
-// Get the final employees list (prefer props, fallback to local)
-const employees = computed(() => {
-  const employeeList = props.employees && props.employees.length > 0 ? props.employees : localEmployees.value;
-  
-  // Filter out employees without user_id
-  const validEmployees = employeeList.filter(emp => emp.user_id);
-  
-  console.log('Valid employees with user_id:', validEmployees);
-  
-  return validEmployees;
+const currentUser = computed(() => {
+  return {
+    id: authStore.user?.id,
+    name: authStore.user?.name || authStore.user?.first_name + ' ' + authStore.user?.last_name,
+    first_name: authStore.user?.first_name,
+    last_name: authStore.user?.last_name,
+    email: authStore.user?.email,
+    employee_id: authStore.user?.employee?.employee_id,
+    position: authStore.user?.employee?.position,
+    department: authStore.user?.employee?.department,
+    is_self: true,
+    role: authStore.user?.role
+  };
 });
 
-// Get the final loading state
-const isLoadingEmployees = computed(() => {
-  return props.loadingEmployees || localLoadingEmployees.value;
-});
-
-// Alias for template use
-const loadingEmployees = isLoadingEmployees;
-
-onMounted(() => {
+onMounted(async () => {
   if (props.task) {
     formData.value = {
       title: props.task.title,
       description: props.task.description || '',
       priority: props.task.priority,
-      assigned_to: props.task.assigned_to?.id || props.task.assigned_to?.user_id || '',
+      assigned_to: props.task.assigned_to?.id || '',
       deadline: props.task.deadline ? formatDateLocal(props.task.deadline) : '',
     };
   }
 
-  // Always try to fetch employees using the simple endpoint
-  fetchEmployeesDirectly();
+  await fetchEmployees();
 });
 
-// Watch for employees prop changes
-watch(() => props.employees, (newEmployees) => {
-  if (newEmployees && newEmployees.length > 0) {
-    console.log('Received employees from props:', newEmployees);
-    // Transform to ensure user_id is present
-    localEmployees.value = newEmployees.map(emp => ({
-      ...emp,
-      user_id: emp.user_id || emp.id // Fallback to id if user_id not present
-    }));
-  }
-}, { immediate: true });
-
-// Fetch employees using the simple endpoint that returns user_id
-const fetchEmployeesDirectly = async () => {
-  localLoadingEmployees.value = true;
+const fetchEmployees = async () => {
+  loadingEmployees.value = true;
   employeeError.value = '';
   
   try {
-    // Use the SIMPLE employees endpoint that returns user_id correctly
+    console.log('Fetching employees for task assignment...');
     const response = await axios.get('/api/tasks/employees/simple');
     const employeesData = response.data.employees || [];
     
-    console.log('Fetched employees from simple endpoint:', employeesData);
+    console.log('Employees fetched:', employeesData);
     
-    // The simple endpoint should already return user_id as 'id'
-    localEmployees.value = employeesData.map(employee => ({
-      id: employee.id, // This is actually user_id from backend
-      user_id: employee.id, // Explicitly set user_id
-      name: employee.full_name || `${employee.first_name} ${employee.last_name}`,
-      first_name: employee.first_name,
-      last_name: employee.last_name,
-      email: employee.email,
-      position: employee.position,
-      department: employee.department,
-      employee_id: employee.employee_id
-    }));
+    // If no employees returned, include current user
+    if (employeesData.length === 0) {
+      console.log('No employees found, adding current user');
+      employees.value = [currentUser.value];
+    } else {
+      employees.value = employeesData;
+    }
     
-    console.log('Transformed employees:', localEmployees.value);
-    
-    if (localEmployees.value.length === 0) {
-      employeeError.value = 'No team members available for task assignment.';
+    // For new tasks, default to current user if not already selected
+    if (!props.task && !formData.value.assigned_to && employees.value.length > 0) {
+      const currentUserInList = employees.value.find(emp => emp.id === currentUser.value.id);
+      if (currentUserInList) {
+        formData.value.assigned_to = currentUser.value.id;
+      } else if (employees.value[0]) {
+        formData.value.assigned_to = employees.value[0].id;
+      }
     }
     
   } catch (err) {
     console.error('Failed to fetch employees:', err);
-    employeeError.value = 'Failed to load team members. Please try again.';
+    employeeError.value = 'Failed to load team members.';
     
-    // Provide more specific error message
-    if (err.response?.status === 401) {
-      employeeError.value = 'Your session has expired. Please log in again.';
-    } else if (err.response?.status === 403) {
-      employeeError.value = 'You do not have permission to access team members.';
-    } else if (err.code === 'ERR_NETWORK') {
-      employeeError.value = 'Network error. Please check your connection.';
+    // Fallback: show current user only
+    employees.value = [currentUser.value];
+    if (!props.task) {
+      formData.value.assigned_to = currentUser.value.id;
     }
   } finally {
-    localLoadingEmployees.value = false;
+    loadingEmployees.value = false;
   }
 };
 
@@ -251,36 +223,24 @@ const formatDateLocal = (dateString) => {
 };
 
 const getEmployeeDisplayName = (employee) => {
-  // Use the formatted name like in the employee management page
-  if (employee.name) return employee.name;
-  if (employee.first_name && employee.last_name) {
-    return `${employee.first_name} ${employee.last_name}`;
+  let name = employee.full_name || `${employee.first_name} ${employee.last_name}`;
+  
+  // Add "You" indicator
+  if (employee.is_self) {
+    name += ' (You)';
   }
-  if (employee.email) return employee.email;
-  return 'Unknown Employee';
+  
+  return name;
 };
 
 const handleSubmit = async () => {
-  if (isLoadingEmployees.value) {
-    alert('Please wait while team members are loading...');
-    return;
-  }
-
-  if (!formData.value.assigned_to) {
-    alert('Please select a team member to assign this task to.');
-    return;
-  }
-
-  // Basic validation
   if (!formData.value.title.trim()) {
     alert('Please enter a task title.');
     return;
   }
 
-  // Verify the assigned_to value is a valid user_id
-  const selectedEmployee = employees.value.find(emp => emp.user_id === formData.value.assigned_to);
-  if (!selectedEmployee) {
-    alert('Invalid employee selection. Please select again.');
+  if (!formData.value.assigned_to) {
+    alert('Please select a team member to assign this task to.');
     return;
   }
 
@@ -292,12 +252,11 @@ const handleSubmit = async () => {
       title: formData.value.title.trim(),
       description: formData.value.description.trim(),
       priority: formData.value.priority,
-      assigned_to: formData.value.assigned_to, // This should be user_id
+      assigned_to: formData.value.assigned_to,
       ...(formData.value.deadline && { deadline: new Date(formData.value.deadline).toISOString() })
     };
 
     console.log('Submitting task data:', submitData);
-    console.log('Selected employee:', selectedEmployee);
     
     emit('save', submitData);
   } catch (err) {
@@ -308,6 +267,7 @@ const handleSubmit = async () => {
   }
 };
 </script>
+
 
 <style scoped>
 .modal-overlay {
@@ -467,6 +427,13 @@ const handleSubmit = async () => {
   font-size: 12px;
   color: #e53e3e;
   margin-top: 4px;
+}
+
+.info-text {
+  font-size: 12px;
+  color: #718096;
+  margin-top: 4px;
+  font-style: italic;
 }
 
 @media (max-width: 640px) {

@@ -1,5 +1,8 @@
 <template>
   <div class="attendance-view">
+    <!-- Activity Monitor (shows when overtime is active) -->
+    <ActivityMonitor v-if="isInOvertimeSession" />
+    
     <header class="header">
       <div class="header-left">
         <h1 class="title">{{ pageName }}</h1>
@@ -283,9 +286,14 @@
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+import ActivityMonitor from '@/components/ActivityMonitor.vue';
 
 export default {
   name: 'EmployeeAttendance',
+  
+  components: {
+    ActivityMonitor
+  },
   
   setup() {
     const authStore = useAuthStore()
@@ -898,6 +906,49 @@ export default {
   box-shadow: 0 0 10px #ef4444;
 }
 
+.overtime-indicator {
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  animation: pulse-gold 2s ease-in-out infinite;
+}
+
+@keyframes pulse-gold {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.shift-info-card {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.shift-label {
+  font-weight: 600;
+}
+
+.shift-time {
+  background: rgba(255, 255, 255, 0.3);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.shift-type {
+  font-style: italic;
+  opacity: 0.9;
+}
+
 /* Filters Section */
 .filters-section {
   margin-bottom: 2rem;
@@ -952,7 +1003,7 @@ export default {
 }
 
 .btn-secondary,
-.btn-export {
+.btn-overtime {
   padding: 0.75rem 1.5rem;
   border: none;
   border-radius: 10px;
@@ -972,15 +1023,15 @@ export default {
   transform: translateY(-2px);
 }
 
-.btn-export {
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+.btn-overtime {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
   color: white;
-  box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
 }
 
-.btn-export:hover {
+.btn-overtime:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
 }
 
 /* Summary Cards */
@@ -1171,6 +1222,14 @@ export default {
   color: #1f2937;
 }
 
+.overtime-hours {
+  color: #d97706;
+}
+
+.total-hours {
+  color: #1d4ed8;
+}
+
 .status-badge-table {
   padding: 0.375rem 0.75rem;
   border-radius: 20px;
@@ -1197,6 +1256,24 @@ export default {
 .status-badge-table.early_leave {
   background: #cffafe;
   color: #0e7490;
+}
+
+.session-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.session-badge.regular {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.session-badge.overtime {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .notes-cell {

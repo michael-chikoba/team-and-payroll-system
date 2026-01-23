@@ -29,6 +29,12 @@ export default [
         name: 'TeamReports',
         component: () => import('../../views/manager/TeamReports.vue')
       },
+       {
+        path: 'tickets',
+        name: 'ManagerTickets', // Changed from AdminTickets to ManagerTickets
+        component: () => import('@/views/Tickets.vue'),
+        meta: { title: 'Ticket Management' }
+      },
       {
         path: 'productivity',
         name: 'ProductivityMonitor',

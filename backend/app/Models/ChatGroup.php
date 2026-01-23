@@ -18,87 +18,98 @@ class ChatGroup extends Model
         'name',
         'description',
         'type',
+        'is_channel',
+        'is_private',
         'department_id',
         'created_by',
         'avatar',
         'is_active',
+        'is_archived',
+        'archived_at',
+        'last_message_id',
+        'channel_prefix',
+        'settings',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_channel' => 'boolean',
+        'is_private' => 'boolean',
+        'is_archived' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'archived_at' => 'datetime',
+        'settings' => 'array',
     ];
 
-    /**
-     * Get the business that owns the chat group.
-     */
+    // Relationships
     public function business(): BelongsTo
     {
         return $this->belongsTo(Business::class);
     }
 
-    /**
-     * Get the department if this is a department group.
-     */
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class);
     }
 
-    /**
-     * Get the user who created the group.
-     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Get all members of the group.
-     */
     public function members(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'chat_group_members')
-            ->withPivot(['role', 'last_read_at', 'is_muted', 'muted_until'])
+            ->withPivot([
+                'role',
+                'last_read_at',
+                'is_muted',
+                'muted_until',
+                'joined_at',
+                'invited_by',
+                'notification_preferences',
+                'is_favorite'
+            ])
             ->withTimestamps();
     }
 
-    /**
-     * Get member records (through relationship).
-     */
     public function memberships(): HasMany
     {
         return $this->hasMany(ChatGroupMember::class);
     }
 
-    /**
-     * Get all messages in the group.
-     */
     public function messages(): HasMany
     {
         return $this->hasMany(ChatMessage::class);
     }
 
-    /**
-     * Get the latest message.
-     */
-    public function latestMessage(): HasMany
+    public function threads(): HasMany
     {
-        return $this->messages()->latest();
+        return $this->hasMany(ChatThread::class);
     }
 
-    /**
-     * Get the last message relationship.
-     */
+    public function files(): HasMany
+    {
+        return $this->hasMany(ChatFile::class);
+    }
+
+    public function invitations(): HasMany
+    {
+        return $this->hasMany(ChatInvitation::class);
+    }
+
+    public function pinnedMessages(): HasMany
+    {
+        return $this->messages()->where('is_pinned', true)->orderByDesc('pinned_at');
+    }
+
     public function lastMessage(): BelongsTo
     {
         return $this->belongsTo(ChatMessage::class, 'last_message_id');
     }
 
-    /**
-     * Scope: Get groups for a specific user.
-     */
+    // Scopes
     public function scopeForUser(Builder $query, int $userId): Builder
     {
         return $query->whereHas('members', function($q) use ($userId) {
@@ -106,41 +117,52 @@ class ChatGroup extends Model
         });
     }
 
-    /**
-     * Scope: Get only active groups.
-     */
     public function scopeActive(Builder $query): Builder
     {
-        return $query->where('is_active', true);
+        return $query->where('is_active', true)->where('is_archived', false);
     }
 
-    /**
-     * Scope: Get groups by type.
-     */
+    public function scopeChannels(Builder $query): Builder
+    {
+        return $query->where('is_channel', true);
+    }
+
+    public function scopeDirectMessages(Builder $query): Builder
+    {
+        return $query->where('type', 'direct');
+    }
+
+    public function scopePublicChannels(Builder $query): Builder
+    {
+        return $query->where('is_channel', true)->where('is_private', false);
+    }
+
+    public function scopePrivateChannels(Builder $query): Builder
+    {
+        return $query->where('is_channel', true)->where('is_private', true);
+    }
+
     public function scopeOfType(Builder $query, string $type): Builder
     {
         return $query->where('type', $type);
     }
 
-    /**
-     * Scope: Get groups for a business.
-     */
     public function scopeForBusiness(Builder $query, int $businessId): Builder
     {
         return $query->where('business_id', $businessId);
     }
 
-    /**
-     * Check if user is a member.
-     */
+    public function scopeSearchByName(Builder $query, string $search): Builder
+    {
+        return $query->where('name', 'like', "%{$search}%");
+    }
+
+    // Helper Methods
     public function isMember(int $userId): bool
     {
         return $this->members()->where('user_id', $userId)->exists();
     }
 
-    /**
-     * Check if user is admin.
-     */
     public function isAdmin(int $userId): bool
     {
         return $this->members()
@@ -149,36 +171,75 @@ class ChatGroup extends Model
             ->exists();
     }
 
-    /**
-     * Add a member to the group.
-     */
-    public function addMember(int $userId, string $role = 'member'): void
+    public function isChannel(): bool
+    {
+        return (bool) $this->is_channel;
+    }
+
+    public function isDirectMessage(): bool
+    {
+        return $this->type === 'direct';
+    }
+
+    public function isPrivate(): bool
+    {
+        return $this->is_private;
+    }
+
+    public function addMember(int $userId, string $role = 'member', ?int $invitedBy = null): void
     {
         if (!$this->isMember($userId)) {
             $this->members()->attach($userId, [
                 'role' => $role,
                 'last_read_at' => now(),
+                'joined_at' => now(),
+                'invited_by' => $invitedBy,
                 'created_at' => now(),
                 'updated_at' => now(),
+            ]);
+
+            // Create system message
+            $inviter = $invitedBy ? User::find($invitedBy) : null;
+            $addedUser = User::find($userId);
+
+            $groupType = $this->isDirectMessage() ? 'conversation' : ($this->isChannel() ? 'channel' : 'group');
+
+            ChatMessage::create([
+                'chat_group_id' => $this->id,
+                'user_id' => $invitedBy ?? $userId,
+                'message' => $inviter
+                    ? "{$inviter->name} added {$addedUser->name} to the {$groupType}"
+                    : "{$addedUser->name} joined the {$groupType}",
+                'type' => 'system',
             ]);
         }
     }
 
-    /**
-     * Remove a member from the group.
-     */
-    public function removeMember(int $userId): bool
+    public function removeMember(int $userId, ?int $removedBy = null): bool
     {
         if ($this->isMember($userId)) {
             $this->members()->detach($userId);
+
+            // Create system message
+            $remover = $removedBy ? User::find($removedBy) : null;
+            $removedUser = User::find($userId);
+
+            $groupType = $this->isDirectMessage() ? 'conversation' : ($this->isChannel() ? 'channel' : 'group');
+
+            ChatMessage::create([
+                'chat_group_id' => $this->id,
+                'user_id' => $removedBy ?? $userId,
+                'message' => $userId === $removedBy || !$removedBy
+                    ? "{$removedUser->name} left the {$groupType}"
+                    : "{$remover->name} removed {$removedUser->name} from the {$groupType}",
+                'type' => 'system',
+            ]);
+
             return true;
         }
         return false;
     }
 
-    /**
-     * Update member role.
-     */
     public function updateMemberRole(int $userId, string $role): bool
     {
         if ($this->isMember($userId)) {
@@ -191,9 +252,6 @@ class ChatGroup extends Model
         return false;
     }
 
-    /**
-     * Mark messages as read for a user.
-     */
     public function markAsRead(int $userId): void
     {
         $this->memberships()
@@ -201,87 +259,93 @@ class ChatGroup extends Model
             ->update(['last_read_at' => now()]);
     }
 
-    /**
-     * Get unread count for a specific user.
-     */
     public function getUnreadCountForUser(int $userId): int
     {
         $membership = $this->memberships()->where('user_id', $userId)->first();
-        
+
         if (!$membership) {
             return 0;
         }
-
         return $this->messages()
             ->where('user_id', '!=', $userId)
             ->where('created_at', '>', $membership->last_read_at ?? $this->created_at)
+            ->whereNull('thread_id') // Only count main messages, not thread replies
             ->count();
     }
 
-    /**
-     * Get member count.
-     */
-    public function getMemberCountAttribute(): int
+    public function archive(?int $archivedBy = null): void
     {
-        return $this->members()->count();
+        $this->update([
+            'is_archived' => true,
+            'archived_at' => now(),
+        ]);
+        if ($archivedBy) {
+            $archiver = User::find($archivedBy);
+            $groupType = $this->isChannel() ? 'channel' : 'group';
+            ChatMessage::create([
+                'chat_group_id' => $this->id,
+                'user_id' => $archivedBy,
+                'message' => "{$archiver->name} archived this {$groupType}",
+                'type' => 'system',
+            ]);
+        }
     }
 
-    /**
-     * Toggle mute for a user.
-     */
-    public function toggleMute(int $userId): bool
+    public function unarchive(?int $unarchivedBy = null): void
+    {
+        $this->update([
+            'is_archived' => false,
+            'archived_at' => null,
+        ]);
+        if ($unarchivedBy) {
+            $unarchiver = User::find($unarchivedBy);
+            $groupType = $this->isChannel() ? 'channel' : 'group';
+            ChatMessage::create([
+                'chat_group_id' => $this->id,
+                'user_id' => $unarchivedBy,
+                'message' => "{$unarchiver->name} unarchived this {$groupType}",
+                'type' => 'system',
+            ]);
+        }
+    }
+
+    public function toggleFavorite(int $userId): bool
     {
         $membership = $this->memberships()->where('user_id', $userId)->first();
-        
+
         if ($membership) {
-            $membership->update([
-                'is_muted' => !$membership->is_muted
-            ]);
-            return $membership->is_muted;
+            $newStatus = !$membership->is_favorite;
+            $membership->update(['is_favorite' => $newStatus]);
+            return $newStatus;
         }
-        
+
         return false;
     }
 
-    /**
-     * Check if group is muted for user.
-     */
-    public function isMutedForUser(int $userId): bool
+    public function getDisplayName(): string
     {
-        $membership = $this->memberships()->where('user_id', $userId)->first();
-        return $membership ? $membership->is_muted : false;
+        if ($this->isChannel()) {
+            return ($this->is_private ? '🔒 ' : '#') . $this->name;
+        }
+        return $this->name;
     }
 
-    /**
-     * Get member role for user.
-     */
-    public function getMemberRole(int $userId): ?string
-    {
-        $member = $this->members()->where('user_id', $userId)->first();
-        return $member ? $member->pivot->role : null;
-    }
-
-    /**
-     * Boot method to handle model events.
-     */
     protected static function boot()
     {
         parent::boot();
 
-        // When creating a group, set is_active to true by default
         static::creating(function ($group) {
             if (!isset($group->is_active)) {
                 $group->is_active = true;
             }
-        });
 
-        // Update last_message_id when a new message is created
-        static::saved(function ($group) {
-            $lastMessage = $group->messages()->latest()->first();
-            if ($lastMessage && $group->last_message_id !== $lastMessage->id) {
-                $group->withoutEvents(function () use ($group, $lastMessage) {
-                    $group->update(['last_message_id' => $lastMessage->id]);
-                });
+            if (!isset($group->is_channel)) {
+                $group->is_channel = in_array($group->type, ['channel', 'department']);
+            }
+
+            // Set channel prefix for channels
+            if ($group->is_channel && !$group->channel_prefix) {
+                $group->channel_prefix = $group->is_private ? '🔒' : '#';
             }
         });
     }

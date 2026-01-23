@@ -1,1568 +1,1430 @@
 <template>
-  <div class="chat-interface">
-    <div class="chat-container">
-      <!-- Sidebar with groups list -->
-      <div class="chat-sidebar" :class="{ 'mobile-hidden': selectedGroup }">
-        <div class="sidebar-header">
-          <h2>Messages</h2>
-          <button @click="showNewGroupModal = true" class="btn-new-chat">
-            ➕ <span class="desktop-only">New Chat</span>
-          </button>
-        </div>
-
-        <div class="search-box">
-          <input 
-            v-model="searchQuery" 
-            type="text" 
-            placeholder="Search conversations..."
-            class="search-input"
-          />
-        </div>
-
-        <div class="groups-list">
-          <div v-if="loadingGroups && groups.length === 0" class="loading-state">
-            Loading chats...
-          </div>
-          <div v-else-if="filteredGroups.length === 0" class="empty-state">
-            No conversations found.
-          </div>
-          <div 
-            v-else
-            v-for="group in filteredGroups" 
-            :key="group.id"
-            @click="selectGroup(group)"
-            :class="['group-item', { active: selectedGroup?.id === group.id }]"
+  <div class="flex h-screen bg-white">
+    <!-- Sidebar -->
+    <div class="w-64 bg-purple-900 text-white flex flex-col">
+      <!-- Workspace Header -->
+      <div class="p-4 border-b border-purple-800">
+        <div class="flex items-center justify-between">
+          <h1 class="text-lg font-bold truncate">My Chats</h1>
+          <button 
+            @click="showIntegrationsModal = true" 
+            class="p-1 hover:bg-purple-800 rounded" 
+            title="Settings"
           >
-            <div class="group-avatar">
-              <img v-if="group.avatar" :src="group.avatar" :alt="group.name" />
-              <div v-else class="avatar-placeholder">
-                {{ group.name ? group.name.charAt(0).toUpperCase() : '#' }}
-              </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M12 1v6m0 6v6m-9-9h6m6 0h6"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Channels Container -->
+      <div class="flex-1 overflow-y-auto">
+        <div class="p-2">
+          <button @click="showChannelBrowser = true" class="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-purple-800 rounded">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Browse channels</span>
+          </button>
+        </div>
+        
+        <!-- Starred -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between px-4 py-2 text-sm font-semibold text-purple-100">
+            <div class="flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+              <span>Starred</span>
             </div>
-            <div class="group-info">
-              <div class="group-name-row">
-                <span class="group-name">{{ group.name }}</span>
-                <span v-if="group.unread_count > 0" class="unread-badge">
-                  {{ group.unread_count }}
-                </span>
-              </div>
-              <p v-if="group.last_message" class="last-message">
-                {{ truncateMessage(group.last_message.message || group.last_message.content) }}
-              </p>
-              <p v-else class="last-message">No messages yet</p>
+          </div>
+          <div v-if="starredItems.length === 0" class="px-4 py-2 text-sm text-purple-300 italic">No starred items</div>
+          <div v-else v-for="item in starredItems" :key="item.id" @click="selectChat(item)" class="flex items-center justify-between px-4 py-1.5 hover:bg-purple-800 cursor-pointer" :class="{'bg-blue-600 border-r-2 border-blue-300' : selectedChat?.id === item.id}">
+            <div class="flex items-center gap-2 flex-1 min-w-0">
+              <span class="text-sm truncate" :class="{'font-bold': item.unread_count > 0}">{{ getChatDisplayName(item) }}</span>
             </div>
+            <span v-if="item.unread_count > 0" class="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{{ item.unread_count }}</span>
+          </div>
+        </div>
+        
+        <!-- Channels -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between px-4 py-2 text-sm font-semibold text-purple-100">
+            <div class="flex items-center gap-2">
+              <span>Channels</span>
+            </div>
+            <button @click="showCreateChannel = true" class="p-1 hover:bg-purple-800 rounded">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+          <div v-if="channels.length === 0" class="px-4 py-2 text-sm text-purple-300 italic">No channels</div>
+          <div v-else v-for="item in channels" :key="item.id" @click="selectChat(item)" class="flex items-center justify-between px-4 py-1.5 hover:bg-purple-800 cursor-pointer" :class="{'bg-blue-600 border-r-2 border-blue-300' : selectedChat?.id === item.id}">
+            <span class="text-sm truncate" :class="{'font-bold': item.unread_count > 0}">{{ getChatDisplayName(item) }}</span>
+            <span v-if="item.unread_count > 0" class="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{{ item.unread_count }}</span>
+          </div>
+        </div>
+        
+        <!-- Direct Messages -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between px-4 py-2 text-sm font-semibold text-purple-100">
+            <div class="flex items-center gap-2">
+              <span>Direct Messages</span>
+            </div>
+            <button @click="showNewDM = true" class="p-1 hover:bg-purple-800 rounded">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+          <div v-if="directMessages.length === 0" class="px-4 py-2 text-sm text-purple-300 italic">No direct messages</div>
+          <div v-else v-for="item in directMessages" :key="item.id" @click="selectChat(item)" class="flex items-center justify-between px-4 py-1.5 hover:bg-purple-800 cursor-pointer" :class="{'bg-blue-600 border-r-2 border-blue-300' : selectedChat?.id === item.id}">
+            <span class="text-sm truncate" :class="{'font-bold': item.unread_count > 0}">{{ getChatDisplayName(item) }}</span>
+            <span v-if="item.unread_count > 0" class="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{{ item.unread_count }}</span>
+          </div>
+        </div>
+        
+        <!-- Groups -->
+        <div class="mb-4">
+          <div class="flex items-center justify-between px-4 py-2 text-sm font-semibold text-purple-100">
+            <span>Groups</span>
+            <button @click="showCreateGroup = true" class="p-1 hover:bg-purple-800 rounded">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+          <div v-if="groups.length === 0" class="px-4 py-2 text-sm text-purple-300 italic">No groups</div>
+          <div v-else v-for="item in groups" :key="item.id" @click="selectChat(item)" class="flex items-center justify-between px-4 py-1.5 hover:bg-purple-800 cursor-pointer" :class="{'bg-blue-600 border-r-2 border-blue-300' : selectedChat?.id === item.id}">
+            <span class="text-sm truncate" :class="{'font-bold': item.unread_count > 0}">{{ getChatDisplayName(item) }}</span>
+            <span v-if="item.unread_count > 0" class="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">{{ item.unread_count }}</span>
           </div>
         </div>
       </div>
-
-      <!-- Chat area -->
-      <div class="chat-area" :class="{ 'mobile-visible': selectedGroup }">
-        <!-- State 1: No Group Selected (Desktop Only) -->
-        <div v-if="!selectedGroup" class="no-chat-selected">
-          <div class="empty-chat-placeholder">
-            <h3>Select a conversation</h3>
-            <p>Choose a group from the sidebar to send a message.</p>
+      
+      <!-- User Profile -->
+      <div class="p-4 border-t border-purple-800">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded flex items-center justify-center font-semibold text-sm">
+            {{ getUserInitials }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold truncate">{{ getUserFullName }}</div>
+            <div class="text-xs text-purple-300">🟢 Active</div>
           </div>
         </div>
-
-        <!-- State 2: Group Selected -->
-        <div v-else class="chat-content">
-          <!-- Chat header (Fixed Top) -->
-          <div class="chat-header">
-            <div class="chat-header-left">
-              <!-- Back Button (Mobile Only) -->
-              <button @click="deselectGroup" class="btn-back mobile-only">
-                ←
-              </button>
-              <div class="chat-header-info">
-                <h3>{{ selectedGroup.name }}</h3>
-                <p>{{ selectedGroup.member_count || 0 }} member{{ selectedGroup.member_count !== 1 ? 's' : '' }}</p>
+      </div>
+    </div>
+    
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col">
+      <div v-if="!selectedChat" class="flex-1 flex items-center justify-center text-gray-500">
+        <div class="text-center">
+          <h3 class="text-xl font-semibold mb-2">Select a conversation</h3>
+          <p>Choose a channel or direct message to start chatting</p>
+        </div>
+      </div>
+      <template v-else>
+        <!-- Chat Header -->
+        <div class="h-14 border-b border-gray-200 px-6 flex items-center justify-between">
+          <h2 class="text-lg font-bold">{{ getChatDisplayName(selectedChat) }}</h2>
+          <button @click="toggleFavorite" class="p-2 hover:bg-gray-100 rounded">
+            <svg width="18" height="18" viewBox="0 0 24 24" :fill="selectedChat.is_favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" :class="selectedChat.is_favorite ? 'text-yellow-500' : 'text-gray-600'">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Messages Area -->
+        <div ref="messagesContainer" class="flex-1 overflow-y-auto p-4">
+          <div v-if="loadingMessages" class="text-center text-gray-500">Loading...</div>
+          <div v-else-if="messages.length === 0" class="text-center text-gray-500">No messages yet</div>
+          <div v-else>
+            <div v-for="message in messages" :key="message.id" class="mb-4">
+              <div class="flex gap-3">
+                <div class="w-9 h-9 bg-blue-500 rounded text-white flex items-center justify-center font-semibold">
+                  {{ getUserInitialsFromMessage(message) }}
+                </div>
+                <div class="flex-1">
+                  <div class="flex items-baseline gap-2 mb-1">
+                    <span class="font-semibold">{{ getUserNameFromMessage(message) }}</span>
+                    <span class="text-xs text-gray-500">{{ formatTime(message.created_at) }}</span>
+                  </div>
+                  <div class="text-sm">{{ message.message }}</div>
+                </div>
               </div>
             </div>
-            <div class="chat-header-actions">
-              <button @click="openAddMemberModal" class="btn-icon" title="Add Members">
-                👥
-              </button>
-              <button @click="showGroupDetails = true" class="btn-icon" title="Group Details">
-                ℹ️
-              </button>
-            </div>
           </div>
-
-          <!-- Messages area (Scrollable Middle) -->
-          <div ref="messagesContainer" class="messages-container">
-            <div v-if="loadingMessages && messages.length === 0" class="loading">Loading messages...</div>
-            <div v-else-if="messages.length === 0" class="empty-messages">
-              <p>No messages here yet. Be the first to write!</p>
-            </div>
-            
-            <div 
-              v-else
-              v-for="message in messages" 
-              :key="message.id"
-              :class="['message', { 'message-own': message.is_own }]"
+        </div>
+        
+        <!-- Message Input -->
+        <div class="border-t p-4">
+          <div class="flex gap-2">
+            <input 
+              v-model="newMessage" 
+              type="text" 
+              :placeholder="`Message ${getChatDisplayName(selectedChat)}`"
+              class="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              @keydown.enter="sendMessage"
+            />
+            <button 
+              @click="sendMessage" 
+              :disabled="!canSendMessage"
+              class="px-4 py-2 bg-green-600 text-white rounded-lg disabled:bg-gray-300"
             >
-              <div v-if="!message.is_own" class="message-avatar">
-                {{ message.user?.name?.charAt(0).toUpperCase() || 'U' }}
-              </div>
-              <div class="message-content">
-                <div v-if="!message.is_own" class="message-sender">
-                  {{ message.user?.name || 'Unknown' }}
-                </div>
-                
-                <div v-if="message.reply_to" class="message-reply">
-                  <strong>{{ message.reply_to.user_name }}:</strong>
-                  {{ message.reply_to.message }}
-                </div>
-                
-                <div class="message-bubble">
-                  <!-- System messages -->
-                  <p v-if="message.type === 'system'" style="font-style: italic; color: #666;">
-                    {{ message.message }}
-                  </p>
-                  
-                  <!-- Regular messages -->
-                  <p v-else>{{ message.message }}</p>
-                  
-                  <!-- File attachments -->
-                  <div v-if="message.attachment_url" class="message-attachment">
-                    <a v-if="message.type === 'image'" :href="message.attachment_url" target="_blank">
-                      <img :src="message.attachment_url" :alt="message.attachment_name" class="attachment-image" />
-                    </a>
-                    <a v-else :href="message.attachment_url" target="_blank" download>
-                      📎 {{ message.attachment_name || 'Attachment' }}
-                    </a>
-                  </div>
-                  
-                  <span class="message-time">
-                    {{ formatMessageTime(message.created_at) }}
-                    <span v-if="message.is_edited"> (edited)</span>
-                  </span>
-                </div>
-              </div>
-            </div>
+              Send
+            </button>
           </div>
-
-          <!-- Message input area (Fixed Bottom) -->
-          <div class="message-input-area">
-            <div v-if="selectedFile" class="selected-file-preview">
-              <span class="file-name">📎 {{ selectedFile.name }}</span>
-              <button @click="selectedFile = null" class="btn-remove-file" title="Remove file">✕</button>
+        </div>
+      </template>
+    </div>
+    
+    <!-- Modals (simplified) -->
+    <div v-if="showChannelBrowser" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="showChannelBrowser = false">
+      <div class="bg-white rounded-lg p-6 max-w-2xl w-full" @click.stop>
+        <h2 class="text-2xl font-bold mb-4">Browse Channels</h2>
+        <input v-model="channelSearchQuery" placeholder="Search..." class="w-full p-2 border rounded mb-4" />
+        <div class="space-y-2">
+          <div v-for="channel in filteredBrowsableChannels" :key="channel.id" class="flex justify-between items-center p-4 border rounded">
+            <div>
+              <div class="font-semibold">{{ channel.name }}</div>
+              <div class="text-sm text-gray-500">{{ channel.description }}</div>
             </div>
-
-            <form @submit.prevent="sendMessage" class="message-form">
-              <input 
-                type="file" 
-                ref="fileInput" 
-                @change="handleFileSelect"
-                style="display: none"
-                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-              />
-              
-              <button 
-                type="button" 
-                @click="$refs.fileInput.click()"
-                class="btn-attach"
-                title="Attach file"
-              >
-                📎
-              </button>
-              
-              <input 
-                v-model="newMessage" 
-                type="text" 
-                placeholder="Message..."
-                class="message-input"
-                :disabled="sending"
-                autocomplete="off"
-                @keydown.enter.exact.prevent="sendMessage"
-              />
-              
-              <button 
-                type="submit" 
-                class="btn-send"
-                :disabled="(!newMessage.trim() && !selectedFile) || sending"
-                title="Send Message"
-              >
-                <span v-if="sending">...</span>
-                <span v-else>➤</span>
-              </button>
-            </form>
+            <button @click="joinChannel(channel)" class="px-4 py-2 bg-blue-600 text-white rounded">Join</button>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Modals (Unchanged) -->
-    <!-- New Group Modal -->
-    <div v-if="showNewGroupModal" class="modal-overlay" @click.self="showNewGroupModal = false">
-      <div class="modal" @click.stop>
-        <div class="modal-header">
-          <h3>New Chat</h3>
-          <button @click="showNewGroupModal = false" class="btn-close">✕</button>
-        </div>
-        
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Group Name <span class="required">*</span></label>
-            <input v-model="newGroupName" type="text" placeholder="Enter group name" />
+    
+    <div v-if="showNewDM" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="showNewDM = false">
+      <div class="bg-white rounded-lg p-6 max-w-2xl w-full" @click.stop>
+        <h2 class="text-2xl font-bold mb-4">New Direct Message</h2>
+        <input v-model="userSearchQuery" placeholder="Search users..." class="w-full p-2 border rounded mb-4" />
+        <div class="space-y-2">
+          <div v-for="user in filteredAvailableUsers" :key="user.id" @click="startDM(user)" class="p-4 border rounded hover:bg-gray-50 cursor-pointer">
+            <div class="font-semibold">{{ getUserDisplayName(user) }}</div>
+            <div class="text-sm text-gray-500">{{ user.email }}</div>
           </div>
-          
-          <div class="form-group">
-            <label>Group Type <span class="required">*</span></label>
-            <select v-model="newGroupType">
-              <option value="" disabled selected>Select a type</option>
-              <option value="custom">Custom Group</option>
-              <option value="department">Department Group</option>
-            </select>
-          </div>
-          
-          <div class="form-group">
-            <label>Add Members <span class="required">*</span></label>
-            <input 
-              v-model="userSearch" 
-              type="text" 
-              placeholder="Search users..."
-              @input="searchUsers"
-            />
-            <div class="user-list">
-              <div v-if="filteredUsers.length === 0" class="no-users">
-                No users found
-              </div>
-              <div 
-                v-else
-                v-for="user in filteredUsers" 
-                :key="user.id"
-                @click="toggleUserSelection(user)"
-                :class="['user-item', { selected: selectedUserIds.includes(user.id) }]"
-              >
-                <div class="user-item-info">
-                  <span class="user-name">{{ user.name }}</span>
-                  <span class="user-email">{{ user.email }}</span>
-                </div>
-                <div class="user-checkbox">
-                  <span v-if="selectedUserIds.includes(user.id)">☑️</span>
-                  <span v-else>⬜</span>
-                </div>
-              </div>
-            </div>
-            <div class="selection-summary" v-if="selectedUserIds.length > 0">
-              {{ selectedUserIds.length }} user(s) selected
-            </div>
-          </div>
-        </div>
-        
-        <div class="modal-footer">
-          <button @click="showNewGroupModal = false" class="btn-cancel">Cancel</button>
-          <button 
-            @click="createGroup" 
-            class="btn-primary" 
-            :disabled="!isFormValid">
-            Create
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Add Member Modal -->
-    <div v-if="showAddMemberModal" class="modal-overlay" @click.self="showAddMemberModal = false">
-      <div class="modal" @click.stop>
-        <div class="modal-header">
-          <h3>Add Members to {{ selectedGroup?.name }}</h3>
-          <button @click="showAddMemberModal = false" class="btn-close">✕</button>
-        </div>
-        
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Search Users</label>
-            <input 
-              v-model="addMemberSearch" 
-              type="text" 
-              placeholder="Search users to add..."
-              @input="searchUsersForAdding"
-            />
-            <div class="user-list">
-              <div v-if="addMemberFilteredUsers.length === 0" class="no-users">
-                No users found
-              </div>
-              <div 
-                v-else
-                v-for="user in addMemberFilteredUsers" 
-                :key="user.id"
-                @click="toggleAddMemberSelection(user)"
-                :class="['user-item', { selected: selectedAddMemberIds.includes(user.id), disabled: isExistingMember(user.id) }]"
-              >
-                <div class="user-item-info">
-                  <span class="user-name">{{ user.name }}</span>
-                  <span class="user-email">{{ user.email }}</span>
-                  <span v-if="isExistingMember(user.id)" class="existing-member-badge">Already a member</span>
-                </div>
-                <div class="user-checkbox">
-                  <span v-if="selectedAddMemberIds.includes(user.id)">☑️</span>
-                  <span v-else-if="isExistingMember(user.id)">✓</span>
-                  <span v-else>⬜</span>
-                </div>
-              </div>
-            </div>
-            <div class="selection-summary" v-if="selectedAddMemberIds.length > 0">
-              {{ selectedAddMemberIds.length }} user(s) selected to add
-            </div>
-          </div>
-        </div>
-        
-        <div class="modal-footer">
-          <button @click="showAddMemberModal = false" class="btn-cancel">Cancel</button>
-          <button 
-            @click="addMembersToGroup" 
-            class="btn-primary" 
-            :disabled="selectedAddMemberIds.length === 0 || addingMembers">
-            <span v-if="addingMembers">Adding...</span>
-            <span v-else>Add Members</span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Group Details Modal -->
-    <div v-if="showGroupDetails" class="modal-overlay" @click.self="showGroupDetails = false">
-      <div class="modal" @click.stop>
-        <div class="modal-header">
-          <h3>Group Details</h3>
-          <button @click="showGroupDetails = false" class="btn-close">✕</button>
-        </div>
-        
-        <div class="modal-body">
-          <div v-if="loadingGroupDetails" class="loading">Loading group details...</div>
-          <div v-else-if="groupDetails">
-            <div class="form-group">
-              <label>Group Name</label>
-              <p class="detail-value">{{ groupDetails.name }}</p>
-            </div>
-            
-            <div class="form-group">
-              <label>Group Type</label>
-              <p class="detail-value">{{ groupDetails.type }}</p>
-            </div>
-            
-            <div class="form-group">
-              <label>Created</label>
-              <p class="detail-value">{{ formatDate(groupDetails.created_at) }}</p>
-            </div>
-            
-            <div class="form-group">
-              <label>Members ({{ groupDetails.members?.length || 0 }})</label>
-              <div class="members-list">
-                <div v-if="!groupDetails.members || groupDetails.members.length === 0" class="no-members">
-                  No members found
-                </div>
-                <div 
-                  v-else
-                  v-for="member in groupDetails.members" 
-                  :key="member.id"
-                  class="member-item"
-                >
-                  <div class="member-avatar">
-                    {{ member.name?.charAt(0).toUpperCase() || 'U' }}
-                  </div>
-                  <div class="member-info">
-                    <span class="member-name">{{ member.name }}</span>
-                    <span class="member-email">{{ member.email }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div class="modal-footer">
-          <button @click="showGroupDetails = false" class="btn-primary">Close</button>
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import axios from 'axios'
-import { format } from 'date-fns'
+<script>
+import axios from 'axios';
+import { useAuthStore } from '@/stores/auth';
 
-// Data
-const groups = ref([])
-const loadingGroups = ref(false)
-const selectedGroup = ref(null)
-
-const messages = ref([])
-const loadingMessages = ref(false)
-const sending = ref(false)
-
-// Inputs
-const newMessage = ref('')
-const searchQuery = ref('')
-const selectedFile = ref(null)
-const messagesContainer = ref(null)
-const refreshInterval = ref(null)
-
-// New group modal data
-const showNewGroupModal = ref(false)
-const showGroupDetails = ref(false)
-const newGroupName = ref('')
-const newGroupType = ref('')
-const userSearch = ref('')
-const availableUsers = ref([])
-const selectedUserIds = ref([])
-
-// Add member modal data
-const showAddMemberModal = ref(false)
-const addMemberSearch = ref('')
-const addMemberAvailableUsers = ref([])
-const selectedAddMemberIds = ref([])
-const addingMembers = ref(false)
-const groupDetails = ref(null)
-const loadingGroupDetails = ref(false)
-
-// Computed
-const filteredGroups = computed(() => {
-  if (!searchQuery.value) return groups.value
-  
-  const query = searchQuery.value.toLowerCase()
-  return groups.value.filter(g => 
-    g.name.toLowerCase().includes(query) ||
-    (g.last_message?.message?.toLowerCase().includes(query))
-  )
-})
-
-const filteredUsers = computed(() => {
-  if (!userSearch.value) return availableUsers.value
-  
-  const query = userSearch.value.toLowerCase()
-  return availableUsers.value.filter(user => 
-    user.name.toLowerCase().includes(query) ||
-    user.email.toLowerCase().includes(query)
-  )
-})
-
-const addMemberFilteredUsers = computed(() => {
-  if (!addMemberSearch.value) return addMemberAvailableUsers.value
-  
-  const query = addMemberSearch.value.toLowerCase()
-  return addMemberAvailableUsers.value.filter(user => 
-    user.name.toLowerCase().includes(query) ||
-    user.email.toLowerCase().includes(query)
-  )
-})
-
-const isFormValid = computed(() => {
-  return newGroupName.value.trim() !== '' && 
-         newGroupType.value !== '' && 
-         selectedUserIds.value.length > 0
-})
-
-// Helper methods
-function truncateMessage(message, length = 35) {
-  if (!message) return ''
-  return message.length > length ? message.substring(0, length) + '...' : message
-}
-
-function formatMessageTime(timestamp) {
-  if (!timestamp) return ''
-  try {
-    const date = new Date(timestamp)
-    return format(date, 'hh:mm a')
-  } catch (e) {
-    return timestamp
-  }
-}
-
-function formatDate(timestamp) {
-  if (!timestamp) return ''
-  try {
-    const date = new Date(timestamp)
-    return format(date, 'MMM dd, yyyy hh:mm a')
-  } catch (e) {
-    return timestamp
-  }
-}
-
-function scrollToBottom() {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-}
-
-function isExistingMember(userId) {
-  if (!groupDetails.value || !groupDetails.value.members) return false
-  return groupDetails.value.members.some(member => member.id === userId)
-}
-
-// API Methods
-async function fetchGroups(isBackground = false) {
-  if (!isBackground) loadingGroups.value = true
-  
-  try {
-    const response = await axios.get('/api/chat/groups')
-    if (response.data.success) {
-      groups.value = response.data.groups || []
-    }
-  } catch (err) {
-    console.error('Failed to fetch groups:', err)
-  } finally {
-    if (!isBackground) loadingGroups.value = false
-  }
-}
-
-async function fetchMessages(isBackground = false) {
-  if (!selectedGroup.value) return
-  
-  if (!isBackground) loadingMessages.value = true
-  
-  try {
-    const response = await axios.get(`/api/chat/groups/${selectedGroup.value.id}/messages`)
-    if (response.data.success) {
-      const newMessages = response.data.messages || []
-      
-      const container = messagesContainer.value
-      let isNearBottom = true
-      
-      if (container) {
-        const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-        isNearBottom = distanceToBottom < 100
+export default {
+  name: 'SlackChat',
+  setup() {
+    const authStore = useAuthStore();
+    return { authStore };
+  },
+  data() {
+    return {
+      userProfile: { first_name: '', last_name: '', email: '', position: '' },
+      showIntegrationsModal: false,
+      channels: [],
+      directMessages: [],
+      groups: [],
+      selectedChat: null,
+      messages: [],
+      newMessage: '',
+      selectedFile: null,
+      replyingTo: null,
+      loadingMessages: false,
+      showChannelBrowser: false,
+      browsableChannels: [],
+      channelSearchQuery: '',
+      refreshInterval: null,
+      availableUsers: [],
+      showCreateChannel: false,
+      newChannelName: '',
+      newChannelDesc: '',
+      showCreateGroup: false,
+      newGroupName: '',
+      selectedMembers: [],
+      userSearchQuery: '',
+      showNewDM: false,
+      showMembersModal: false,
+      currentMembers: [],
+      memberSearchQuery: '',
+      selectedNewMembers: [],
+      userIdToNameMap: new Map(),
+    };
+  },
+  computed: {
+    starredItems() {
+      return [...this.channels, ...this.directMessages, ...this.groups].filter(item => item.is_favorite);
+    },
+    canSendMessage() {
+      return this.newMessage.trim() || this.selectedFile;
+    },
+    filteredBrowsableChannels() {
+      if (!this.channelSearchQuery) return this.browsableChannels;
+      const q = this.channelSearchQuery.toLowerCase();
+      return this.browsableChannels.filter(ch => ch.name.toLowerCase().includes(q));
+    },
+    filteredAvailableUsers() {
+      if (!this.userSearchQuery) return this.availableUsers;
+      const q = this.userSearchQuery.toLowerCase();
+      return this.availableUsers.filter(u => this.getUserDisplayName(u).toLowerCase().includes(q));
+    },
+    filteredNonMembers() {
+      return this.availableUsers.filter(u => !this.currentMembers.some(m => m.id === u.id));
+    },
+    getUserFullName() {
+      if (this.userProfile.first_name && this.userProfile.last_name) {
+        return `${this.userProfile.first_name} ${this.userProfile.last_name}`;
       }
-
-      messages.value = newMessages
-      
-      if (!isBackground || isNearBottom) {
-        scrollToBottom()
+      return this.authStore.user ? `${this.authStore.user.first_name || ''} ${this.authStore.user.last_name || ''}`.trim() : 'User';
+    },
+    getUserInitials() {
+      const name = this.getUserFullName;
+      const parts = name.split(' ');
+      return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name[0]?.toUpperCase() || 'U';
+    }
+  },
+  mounted() {
+    this.initializeApp();
+  },
+  beforeUnmount() {
+    if (this.refreshInterval) clearInterval(this.refreshInterval);
+  },
+  watch: {
+    showChannelBrowser(val) { if (val) this.fetchBrowsableChannels(); },
+    showNewDM(val) { if (val) this.fetchAvailableUsers(); }
+  },
+  methods: {
+    async initializeApp() {
+      await this.fetchUserProfile();
+      await this.fetchAvailableUsers();
+      await this.fetchChats();
+      this.startAutoRefresh();
+    },
+    
+    getUserDisplayName(user) {
+      if (!user) return 'Unknown';
+      if (user.name?.trim()) return user.name;
+      if (user.full_name?.trim()) return user.full_name;
+      if (user.username?.trim()) return user.username;
+      const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+      if (fullName) return fullName;
+      if (user.email) return user.email;
+      return `User ${user.id}`;
+    },
+    
+    getChatDisplayName(chat) {
+      if (!chat) return '';
+      if (chat.type === 'direct') {
+        if (chat.members?.length > 0) {
+          const others = chat.members.filter(m => m.id !== this.authStore.user?.id);
+          if (others.length > 0) return others.map(m => this.getUserDisplayName(m)).join(', ');
+        }
+        if (chat.display_name && chat.display_name !== 'Direct message') return chat.display_name;
+        return 'Direct Message';
       }
-    }
-  } catch (err) {
-    console.error('Failed to fetch messages:', err)
-  } finally {
-    if (!isBackground) loadingMessages.value = false
-  }
-}
-
-async function sendMessage() {
-  if ((!newMessage.value.trim() && !selectedFile.value) || sending.value) return
-  
-  sending.value = true
-  try {
-    const formData = new FormData()
+      return chat.display_name || chat.name || `Chat ${chat.id}`;
+    },
     
-    if (newMessage.value.trim()) {
-      formData.append('message', newMessage.value.trim())
-    }
+    extractUserIdsFromChat(chat) {
+      const ids = [];
+      if (chat.members?.length) chat.members.forEach(m => m.id && ids.push(m.id));
+      return ids;
+    },
     
-    if (selectedFile.value) {
-      formData.append('attachment', selectedFile.value)
-    }
+    getUserNameFromMessage(message) {
+      if (!message?.user) return 'Unknown';
+      if (message.user.id && !message.user.name) {
+        const user = this.availableUsers.find(u => u.id === message.user.id);
+        if (user) return this.getUserDisplayName(user);
+      }
+      return this.getUserDisplayName(message.user);
+    },
     
-    const response = await axios.post(
-      `/api/chat/groups/${selectedGroup.value.id}/messages`,
-      formData,
-      {
-        headers: { 
-          'Content-Type': 'multipart/form-data',
-          'Accept': 'application/json'
+    getUserInitialsFromMessage(message) {
+      const name = this.getUserNameFromMessage(message);
+      const parts = name.split(' ');
+      return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : name[0]?.toUpperCase() || 'U';
+    },
+    
+    buildUserIdToNameMap() {
+      this.userIdToNameMap.clear();
+      this.availableUsers.forEach(user => {
+        if (user.id) this.userIdToNameMap.set(user.id, this.getUserDisplayName(user));
+      });
+    },
+    
+    async fetchUserProfile() {
+      try {
+        const res = await axios.get('/api/profile');
+        const user = res.data.user || res.data;
+        this.userProfile = {
+          first_name: user.first_name || '',
+          last_name: user.last_name || '',
+          email: user.email || '',
+          position: ''
+        };
+      } catch (err) {
+        console.error('Failed to fetch profile:', err);
+      }
+    },
+    
+    formatTime(timestamp) {
+      return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    },
+    
+    async fetchChats() {
+      try {
+        const res = await axios.get('/api/chat/groups');
+        if (res.data.success) {
+          this.channels = (res.data.channels || []).map(ch => ({...ch, type: 'channel'}));
+          this.directMessages = (res.data.direct_messages || []).map(dm => ({...dm, type: 'direct'}));
+          this.groups = (res.data.groups || []).map(gr => ({...gr, type: 'group'}));
+          await this.enhanceDirectMessageNames();
+        }
+      } catch (err) {
+        console.error('Failed to fetch chats:', err);
+      }
+    },
+    
+    async enhanceDirectMessageNames() {
+      if (this.availableUsers.length === 0) await this.fetchAvailableUsers();
+      const currentUserId = this.authStore.user?.id;
+      for (const dm of this.directMessages) {
+        if (dm.type === 'direct') {
+          if (!dm.members?.length) {
+            try {
+              const res = await axios.get(`/api/chat/groups/${dm.id}/members`);
+              dm.members = res.data.members || res.data.data || [];
+            } catch (err) {
+              console.error(`Failed to fetch DM members:`, err);
+            }
+          }
+          if (dm.members?.length) {
+            const others = dm.members.filter(m => m.id !== currentUserId);
+            if (others.length) {
+              const names = others.map(m => this.getUserDisplayName(m)).filter(n => n && n !== 'Unknown');
+              if (names.length) dm.display_name = names.join(', ');
+            }
+          }
         }
       }
-    )
+    },
     
-    if (response.data.success) {
-      newMessage.value = ''
-      selectedFile.value = null
-      await fetchMessages(false) 
-    } else {
-      alert('Failed to send message: ' + response.data.message)
-    }
-  } catch (err) {
-    console.error('Failed to send message:', err)
-    alert('Failed to send message.')
-  } finally {
-    sending.value = false
-  }
-}
-
-async function selectGroup(group) {
-  selectedGroup.value = group
-  await fetchMessages(false)
-  
-  if (group.unread_count > 0) {
-    try {
-      await axios.post(`/api/chat/groups/${group.id}/read`)
-      group.unread_count = 0
-    } catch (err) {
-      console.error('Failed to mark as read:', err)
-    }
-  }
-  fetchGroups(true)
-}
-
-function deselectGroup() {
-  selectedGroup.value = null
-  fetchGroups(false)
-}
-
-function handleFileSelect(event) {
-  const file = event.target.files[0]
-  if (file) {
-    if (file.size > 10 * 1024 * 1024) {
-      alert('File size must be less than 10MB')
-      return
-    }
-    selectedFile.value = file
-  }
-  event.target.value = null
-}
-
-async function fetchAvailableUsers() {
-  try {
-    const response = await axios.get('/api/chat/available-users')
-    if (response.data.success) {
-      availableUsers.value = response.data.users || []
-    }
-  } catch (err) {
-    console.error('Failed to fetch users:', err)
-  }
-}
-
-async function fetchUsersForAdding() {
-  try {
-    const response = await axios.get('/api/chat/available-users')
-    if (response.data.success) {
-      addMemberAvailableUsers.value = response.data.users || []
-    }
-  } catch (err) {
-    console.error('Failed to fetch users for adding:', err)
-  }
-}
-
-function searchUsers() {}
-function searchUsersForAdding() {}
-
-function toggleUserSelection(user) {
-  const index = selectedUserIds.value.indexOf(user.id)
-  if (index > -1) {
-    selectedUserIds.value.splice(index, 1)
-  } else {
-    selectedUserIds.value.push(user.id)
-  }
-}
-
-function toggleAddMemberSelection(user) {
-  if (isExistingMember(user.id)) return
-  
-  const index = selectedAddMemberIds.value.indexOf(user.id)
-  if (index > -1) {
-    selectedAddMemberIds.value.splice(index, 1)
-  } else {
-    selectedAddMemberIds.value.push(user.id)
-  }
-}
-
-async function createGroup() {
-  if (!isFormValid.value) return
-  
-  try {
-    const response = await axios.post('/api/chat/groups', {
-      name: newGroupName.value.trim(),
-      type: newGroupType.value,
-      member_ids: selectedUserIds.value
-    })
-    
-    if (response.data.success) {
-      const newGroup = response.data.group
-      groups.value.unshift(newGroup)
-      showNewGroupModal.value = false
-      newGroupName.value = ''
-      newGroupType.value = ''
-      selectedUserIds.value = []
-      userSearch.value = ''
-      await selectGroup(newGroup)
-    }
-  } catch (err) {
-    console.error('Failed to create group:', err)
-  }
-}
-
-async function openAddMemberModal() {
-  if (!selectedGroup.value) return
-  showAddMemberModal.value = true
-  addMemberSearch.value = ''
-  selectedAddMemberIds.value = []
-  await Promise.all([fetchUsersForAdding(), fetchGroupDetails()])
-}
-
-async function fetchGroupDetails() {
-  if (!selectedGroup.value) return
-  loadingGroupDetails.value = true
-  try {
-    const response = await axios.get(`/api/chat/groups/${selectedGroup.value.id}/details`)
-    if (response.data.success) {
-      groupDetails.value = response.data.group
-    }
-  } catch (err) {
-    console.error('Failed to fetch group details:', err)
-  } finally {
-    loadingGroupDetails.value = false
-  }
-}
-
-async function addMembersToGroup() {
-  if (!selectedGroup.value || selectedAddMemberIds.value.length === 0 || addingMembers.value) return
-  addingMembers.value = true
-  try {
-    const response = await axios.post(`/api/chat/groups/${selectedGroup.value.id}/add-members`, {
-      member_ids: selectedAddMemberIds.value
-    })
-    if (response.data.success) {
-      await fetchGroupDetails()
-      const groupIndex = groups.value.findIndex(g => g.id === selectedGroup.value.id)
-      if (groupIndex !== -1) {
-        groups.value[groupIndex].member_count = (groups.value[groupIndex].member_count || 0) + selectedAddMemberIds.value.length
-        selectedGroup.value.member_count = groups.value[groupIndex].member_count
+    async selectChat(chat) {
+      this.selectedChat = chat;
+      await this.fetchMessages(false);
+      if (chat.unread_count > 0) {
+        await this.markAsRead(chat.id);
+        chat.unread_count = 0;
       }
-      selectedAddMemberIds.value = []
-      showAddMemberModal.value = false
-      alert('Members added successfully!')
-    }
-  } catch (err) {
-    console.error('Failed to add members:', err)
-  } finally {
-    addingMembers.value = false
+    },
+    
+    async fetchMessages(silent = true) {
+      if (!this.selectedChat) return;
+      if (!silent) this.loadingMessages = true;
+      try {
+        const res = await axios.get(`/api/chat/groups/${this.selectedChat.id}/messages`);
+        if (res.data.success) {
+          this.messages = res.data.messages || [];
+          this.$nextTick(() => this.scrollToBottom());
+        }
+      } catch (err) {
+        console.error('Failed to fetch messages:', err);
+      } finally {
+        if (!silent) this.loadingMessages = false;
+      }
+    },
+    
+    async sendMessage() {
+      if (!this.canSendMessage || !this.selectedChat) return;
+      const formData = new FormData();
+      if (this.newMessage.trim()) formData.append('message', this.newMessage.trim());
+      if (this.selectedFile) formData.append('attachment', this.selectedFile);
+      try {
+        const res = await axios.post(`/api/chat/groups/${this.selectedChat.id}/messages`, formData);
+        if (res.data.success) {
+          this.messages.push(res.data.message);
+          this.newMessage = '';
+          this.selectedFile = null;
+          this.$nextTick(() => this.scrollToBottom());
+        }
+      } catch (err) {
+        console.error('Failed to send message:', err);
+      }
+    },
+    
+    async toggleFavorite() {
+      if (!this.selectedChat) return;
+      try {
+        const res = await axios.post(`/api/chat/groups/${this.selectedChat.id}/toggle-favorite`);
+        if (res.data.success) {
+          this.selectedChat.is_favorite = res.data.is_favorite;
+          await this.fetchChats();
+        }
+      } catch (err) {
+        console.error('Failed to toggle favorite:', err);
+      }
+    },
+    
+    async markAsRead(chatId) {
+      try {
+        await axios.post(`/api/chat/groups/${chatId}/read`);
+      } catch (err) {
+        console.error('Failed to mark as read:', err);
+      }
+    },
+    
+    async fetchBrowsableChannels() {
+      try {
+        const res = await axios.get('/api/chat/channels/browse');
+        if (res.data.success) this.browsableChannels = res.data.channels || [];
+      } catch (err) {
+        console.error('Failed to fetch browsable channels:', err);
+      }
+    },
+    
+    async joinChannel(channel) {
+      try {
+        const res = await axios.post(`/api/chat/channels/${channel.id}/join`);
+        if (res.data.success) {
+          this.showChannelBrowser = false;
+          await this.fetchChats();
+        }
+      } catch (err) {
+        console.error('Failed to join channel:', err);
+      }
+    },
+    
+    scrollToBottom() {
+      const container = this.$refs.messagesContainer;
+      if (container) container.scrollTop = container.scrollHeight;
+    },
+    
+    startAutoRefresh() {
+      this.refreshInterval = setInterval(async () => {
+        if (this.selectedChat) await this.fetchMessages(true);
+        await this.fetchChats();
+      }, 5000);
+    },
+    
+    async fetchAvailableUsers() {
+      try {
+        const res = await axios.get('/api/chat/available-users');
+        this.availableUsers = (res.data.users || res.data.data || []).map(user => ({
+          ...user,
+          name: this.getUserDisplayName(user)
+        }));
+        this.buildUserIdToNameMap();
+        this.enhanceDirectMessageNames();
+      } catch (err) {
+        console.error('Failed to fetch users:', err);
+        this.availableUsers = [];
+      }
+    },
+    
+    async startDM(user) {
+      try {
+        const res = await axios.post('/api/chat/direct-message', { user_id: user.id });
+        if (res.data.success) {
+          this.showNewDM = false;
+          await this.fetchChats();
+          const newDM = res.data.group || this.directMessages.find(dm => 
+            dm.members?.some(m => m.id === user.id)
+          );
+          if (newDM) {
+            if (!newDM.display_name || newDM.display_name === 'Direct message') {
+              newDM.display_name = this.getUserDisplayName(user);
+            }
+            this.selectChat(newDM);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to start DM:', err);
+      }
+    },
   }
-}
-
-// Lifecycle
-onMounted(async () => {
-  await fetchGroups(false)
-  await fetchAvailableUsers()
-  
-  refreshInterval.value = setInterval(async () => {
-    if (selectedGroup.value) {
-      await fetchMessages(true)
-    }
-    await fetchGroups(true)
-  }, 5000)
-})
-
-onUnmounted(() => {
-  if (refreshInterval.value) {
-    clearInterval(refreshInterval.value)
-  }
-})
-
-watch(showNewGroupModal, (newVal) => {
-  if (newVal) fetchAvailableUsers()
-})
-
-watch(showGroupDetails, (newVal) => {
-  if (newVal && selectedGroup.value) fetchGroupDetails()
-})
+};
 </script>
 
-<style scoped>
-/* Main Layout - Fixed Height for Mobile/Desktop */
-.chat-interface {
-  height: calc(100vh - 60px); /* Adjust 60px if your top navbar is different */
-  background: #f5f7fb;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+<style>
+/* CSS Reset & Variables */
+:root {
+  --slack-aubergine: #3F0E40;
+  --slack-aubergine-dark: #350d36;
+  --slack-blue: #1164A3;
+  --slack-green: #2BAC76;
+  --slack-text-light: #bcb9be;
+  --text-main: #1d1c1d;
+  --text-secondary: #616061;
+  --border-light: #e6e6e6;
+  --border-dark: #d1d5db;
+  --bg-hover: #f8f8f8;
+  --message-highlight: #f2c74466;
+  --focus-ring: 0 0 0 4px rgba(29, 155, 209, 0.3);
 }
-
-.chat-container {
-  display: flex;
-  flex: 1;
-  width: 100%;
-  height: 100%; /* Force full height */
-  margin: 0;
-  background: white;
-  box-shadow: 0 0 15px rgba(0,0,0,0.05);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Sidebar */
-.chat-sidebar {
-  width: 350px;
-  border-right: 1px solid #e1e4e8;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  z-index: 2;
-  transition: transform 0.3s ease;
-  height: 100%; /* Ensure full height */
-}
-
-.sidebar-header {
-  padding: 1.25rem 1rem;
-  border-bottom: 1px solid #e1e4e8;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #f8f9fa;
-  flex-shrink: 0;
-}
-
-.sidebar-header h2 {
-  margin: 0;
-  font-size: 1.2rem;
-  color: #333;
-}
-
-.btn-new-chat {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 0.5rem 0.8rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 500;
-  transition: background 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.btn-new-chat:hover {
-  background: #2563eb;
-}
-
-.search-box {
-  padding: 1rem;
-  border-bottom: 1px solid #f0f0f0;
-  flex-shrink: 0;
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.6rem 0.8rem;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px;
-  background: #f8f9fa;
-  font-size: 0.9rem;
+* {
   box-sizing: border-box;
 }
-
-.search-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  background: #fff;
+body {
+  margin: 0;
+  font-family: 'Lato', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
-
-.groups-list {
-  flex: 1;
-  overflow-y: auto;
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
 }
-
-.loading-state, .empty-state {
-  padding: 2rem;
-  text-align: center;
-  color: #6b7280;
-  font-size: 0.9rem;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
-
-.group-item {
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.1);
+  border-radius: 4px;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.3);
+}
+.slack-chat {
   display: flex;
-  padding: 1rem;
-  cursor: pointer;
-  border-bottom: 1px solid #f5f7fb;
-  transition: all 0.2s;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: white;
 }
-
-.group-item:hover {
-  background: #f8f9fa;
-}
-
-.group-item.active {
-  background: #eff6ff;
-  border-left: 4px solid #3b82f6;
-}
-
-.group-avatar {
-  width: 45px;
-  height: 45px;
-  margin-right: 1rem;
-  flex-shrink: 0;
-}
-
-.group-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.avatar-placeholder {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, #60a5fa, #3b82f6);
-  color: white;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 1.2rem;
-}
-
-.group-info {
-  flex: 1;
-  min-width: 0;
+/* ========================================= */
+/* SIDEBAR STYLES */
+/* ========================================= */
+.sidebar {
+  width: 260px;
+  background: var(--slack-aubergine);
+  color: #cfc3cf;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  flex-shrink: 0;
+  border-right: 1px solid rgba(255,255,255,0.1);
+  transition: width 0.2s;
 }
-
-.group-name-row {
+.workspace-header {
+  height: 49px;
+  padding: 0 16px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
-
-.group-name {
-  font-weight: 600;
-  color: #1f2937;
-  font-size: 0.95rem;
-}
-
-.unread-badge {
-  background: #ef4444;
+.workspace-name {
+  font-size: 18px;
+  font-weight: 900;
   color: white;
-  padding: 0.1rem 0.4rem;
-  border-radius: 99px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  min-width: 18px;
-  text-align: center;
-}
-
-.last-message {
   margin: 0;
-  font-size: 0.85rem;
-  color: #6b7280;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* Chat Area Logic */
-.chat-area {
+.workspace-info {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+}
+.settings-btn {
+  background: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--slack-aubergine);
+  border: none;
+  cursor: pointer;
+  opacity: 0.8;
+}
+.sidebar-actions {
+  padding: 8px 16px;
+}
+.browse-channels-btn {
+  background: rgba(0,0,0,0.2);
+  border: none;
+  color: #cfc3cf;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.browse-channels-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: white;
+}
+.channels-container {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 20px;
+}
+/* Chat Section Component Styles */
+.chat-section {
+  margin-top: 16px;
+}
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 16px;
+  color: #cfc3cf;
+  cursor: pointer;
+}
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+}
+.section-title:hover {
+  opacity: 1;
+}
+.dropdown-arrow {
+  font-size: 8px;
+}
+.add-btn {
+  background: none;
+  border: none;
+  color: #cfc3cf;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.add-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
+}
+.chat-list-item {
+  padding: 4px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  margin: 1px 0;
+}
+.chat-list-item:hover {
+  background: var(--slack-aubergine-dark);
+}
+.chat-list-item.active {
+  background: var(--slack-blue);
+  color: white;
+}
+.chat-list-item.active .item-icon {
+  opacity: 1;
+}
+.chat-list-item.unread .item-name {
+  font-weight: 700;
+  color: white;
+}
+.item-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+.item-icon {
+  opacity: 0.6;
+  font-size: 14px;
+  min-width: 14px;
+}
+.item-icon.dot {
+  font-size: 10px;
+  color: var(--slack-green);
+  opacity: 1;
+}
+.item-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+}
+.unread-badge {
+  background: #cd2553;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+/* User Profile */
+.user-profile {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(0,0,0,0.15);
+  cursor: pointer;
+}
+.user-profile:hover {
+  background: rgba(0,0,0,0.25);
+}
+.user-avatar-small {
+  width: 36px;
+  height: 36px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #333;
+  font-weight: bold;
+  margin-right: 10px;
+}
+.user-details {
+  overflow: hidden;
+}
+.user-name {
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+}
+.user-status {
+  font-size: 12px;
+  color: #cfc3cf;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--slack-green);
+  border-radius: 50%;
+  display: inline-block;
+}
+/* ========================================= */
+/* MAIN CHAT AREA */
+/* ========================================= */
+.chat-main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  position: relative;
-  overflow: hidden;
+  min-width: 0;
   background: white;
-  height: 100%;
 }
-
+/* Header */
+.chat-header {
+  height: 49px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 0 20px;
+  flex-shrink: 0;
+}
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chat-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+}
+.chat-title .hash-icon {
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin-right: 2px;
+}
+.favorite-toggle {
+  background: none;
+  border: none;
+  color: #d1d5db;
+  cursor: pointer;
+  padding: 4px;
+}
+.favorite-toggle.is-active {
+  color: #F2C744;
+}
+.favorite-toggle:hover {
+  color: #F2C744;
+}
+.chat-header-right {
+  display: flex;
+  align-items: center;
+}
+.members-pill {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.members-pill:hover {
+  background: var(--bg-hover);
+}
+.avatars-stack {
+  display: flex;
+  margin-right: 6px;
+}
+.stack-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  background: #ddd;
+  border: 2px solid white;
+  margin-left: -6px;
+}
+.stack-avatar:first-child {
+  margin-left: 0;
+}
+.members-pill .count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.header-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-light);
+  margin: 0 12px;
+}
+.header-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.header-icon-btn:hover {
+  background: var(--bg-hover);
+}
+/* Messages Area */
+.messages-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+.loading-messages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  color: var(--text-secondary);
+}
+.empty-messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 20px 20px 20px;
+}
+.empty-channel-intro {
+  margin-bottom: 20px;
+}
+.intro-icon {
+  width: 70px;
+  height: 70px;
+  background: #f8f8f8;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  color: var(--text-main);
+  margin-bottom: 12px;
+}
+.empty-channel-intro h1 {
+  margin: 0 0 8px 0;
+  font-size: 28px;
+}
+.empty-channel-intro p {
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+.highlight {
+  background: rgba(29, 155, 209, 0.1);
+  color: var(--slack-blue);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+/* Individual Message Row */
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.message-row {
+  display: flex;
+  padding: 8px 20px;
+  position: relative;
+  gap: 12px;
+}
+.message-row:hover {
+  background: var(--bg-hover);
+}
+.message-row:hover .message-actions-hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-avatar {
+  width: 36px;
+  height: 36px;
+  background-color: var(--slack-blue); /* Default user color */
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 14px;
+}
+.message-content {
+  flex: 1;
+  min-width: 0;
+}
+.message-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.message-user {
+  font-weight: 900;
+  color: var(--text-main);
+  cursor: pointer;
+}
+.message-user:hover {
+  text-decoration: underline;
+}
+.message-time {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.message-text {
+  color: var(--text-main);
+  font-size: 15px;
+  line-height: 1.46668;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* Reply Quote */
+.message-reply-quote {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 13px;
+  gap: 6px;
+}
+.quote-bar {
+  width: 3px;
+  height: 14px;
+  background: #ddd;
+  border-radius: 2px;
+}
+.quote-user {
+  font-weight: bold;
+  color: var(--text-secondary);
+}
+.quote-text {
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+/* Reactions */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.reaction-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(29, 28, 29, 0.04);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.reaction-pill:hover {
+  background: white;
+  border-color: #bab8b9;
+}
+.reaction-pill.reacted {
+  background: rgba(29, 155, 209, 0.1);
+  border-color: rgba(29, 155, 209, 0.3);
+}
+.reaction-pill .count {
+  font-weight: 600;
+  color: var(--slack-blue);
+}
+/* Hover Actions Menu */
+.message-actions-hover {
+  position: absolute;
+  top: -12px;
+  right: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s;
+}
+.actions-group {
+  background: white;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  display: flex;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  padding: 2px;
+}
+.action-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.action-icon:hover {
+  background: #f0f0f0;
+}
+/* Input Area */
+.message-input-container {
+  padding: 0 20px 20px 20px;
+  flex-shrink: 0;
+}
+.input-box-wrapper {
+  border: 1px solid #868686;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s;
+  background: white;
+}
+.input-box-wrapper:focus-within {
+  box-shadow: var(--focus-ring);
+  border-color: transparent;
+}
+/* Replying Banner */
+.replying-banner {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8f8f8;
+  border-top-left-radius: 7px;
+  border-top-right-radius: 7px;
+  border-bottom: 1px solid var(--border-light);
+  gap: 8px;
+}
+.reply-line {
+  width: 2px;
+  height: 20px;
+  background: var(--text-secondary);
+}
+.replying-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+}
+.replying-label {
+  color: var(--text-secondary);
+}
+.replying-text {
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px;
+}
+.close-reply {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #666;
+}
+/* File Preview */
+.file-preview-banner {
+  padding: 8px;
+  border-bottom: 1px solid var(--border-light);
+}
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 4px;
+  gap: 8px;
+  max-width: 300px;
+}
+.file-icon {
+  width: 32px;
+  height: 32px;
+  background: #eee;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+}
+.file-details {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.file-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.file-size {
+  font-size: 11px;
+  color: #888;
+}
+.remove-file-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+}
+/* Main Text Input */
+.input-editor {
+  padding: 8px 10px;
+  min-height: 44px;
+}
+.bare-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  font-size: 15px;
+  resize: none;
+  font-family: inherit;
+}
+/* Toolbar */
+.input-toolbar {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px 8px 8px;
+  align-items: center;
+}
+.toolbar-left {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+.tool-btn {
+  background: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  color: #616061;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tool-btn:hover {
+  background: #f2f2f2;
+}
+.divider {
+  width: 1px;
+  height: 20px;
+  background: #ddd;
+  margin: 0 4px;
+}
+.send-btn-primary {
+  background: white;
+  color: #ddd;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: default;
+}
+.send-btn-primary.ready {
+  background: #007a5a;
+  color: white;
+  cursor: pointer;
+}
+.send-btn-primary.ready:hover {
+  background: #148567;
+}
+.typing-hint {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+  text-align: right;
+  padding-right: 4px;
+}
+/* Empty/No Chat Selected */
 .no-chat-selected {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f8f9fa;
-  color: #6b7280;
-}
-
-.empty-chat-placeholder {
-  text-align: center;
-  padding: 1rem;
-}
-
-/* 
-  VITAL FIX: Ensure chat-content is a column flex 
-  and explicitly consumes 100% height to force children layout 
-*/
-.chat-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.chat-header {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e1e4e8;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   background: white;
-  z-index: 10;
-  flex-shrink: 0; /* Never shrink header */
+  color: var(--text-main);
 }
-
-.chat-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.btn-back {
-  display: none;
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  color: #3b82f6;
-  cursor: pointer;
-  padding: 0 0.5rem 0 0;
-}
-
-.chat-header-info h3 {
-  margin: 0 0 0.2rem 0;
-  font-size: 1.1rem;
-  color: #1f2937;
-}
-
-.chat-header-info p {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #6b7280;
-}
-
-.btn-icon {
-  background: transparent;
-  border: none;
-  font-size: 1.2rem;
-  cursor: pointer;
-  padding: 0.5rem;
-  border-radius: 50%;
-  margin-left: 0.5rem;
-}
-
-.btn-icon:hover {
-  background: #f3f4f6;
-}
-
-/* 
-  VITAL FIX: Messages Area 
-  Must use min-height: 0 to allow scrolling inside flex container
-*/
-.messages-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  background: #fff;
-  scroll-behavior: smooth;
-  min-height: 0; 
-}
-
-.loading {
+.empty-state-content {
   text-align: center;
-  color: #6b7280;
-  padding: 1rem;
+  max-width: 400px;
 }
-
-.empty-messages {
-  text-align: center;
-  margin-top: 2rem;
-  color: #9ca3af;
-  font-style: italic;
-}
-
-.message {
-  display: flex;
-  gap: 0.75rem;
-  max-width: 80%;
-}
-
-.message-own {
-  align-self: flex-end;
-  flex-direction: row-reverse;
-}
-
-.message-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: #e5e7eb;
-  color: #4b5563;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.message-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.message-sender {
-  font-size: 0.75rem;
-  color: #6b7280;
-  margin-bottom: 0.2rem;
-  margin-left: 0.5rem;
-}
-
-.message-bubble {
-  background: #f3f4f6;
-  padding: 0.75rem 1rem;
-  border-radius: 12px;
-  border-top-left-radius: 2px;
-  color: #1f2937;
-  position: relative;
-  line-height: 1.4;
-  word-wrap: break-word;
-}
-
-.message-own .message-bubble {
-  background: #3b82f6;
-  color: white;
-  border-top-left-radius: 12px;
-  border-top-right-radius: 2px;
-}
-
-.message-bubble p {
-  margin: 0;
-}
-
-.attachment-image {
-  max-width: 100%;
-  border-radius: 8px;
-  margin-bottom: 0.5rem;
-}
-
-.message-attachment {
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: rgba(255,255,255,0.2);
-  border-radius: 4px;
-}
-
-.message-attachment a {
-  color: inherit;
-  text-decoration: none;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.message-time {
-  display: block;
-  font-size: 0.65rem;
-  margin-top: 0.4rem;
-  opacity: 0.7;
-  text-align: right;
-}
-
-/* 
-  VITAL FIX: Input Area 
-  Remove sticky positioning. Let it sit naturally at the bottom 
-  of the flex column.
-*/
-.message-input-area {
-  padding: 1rem 1.5rem;
-  background: white;
-  border-top: 1px solid #e1e4e8;
-  z-index: 20;
-  flex-shrink: 0; /* Prevent collapsing */
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.selected-file-preview {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #f0f9ff;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  margin-bottom: 0.75rem;
-  border: 1px solid #bae6fd;
-}
-
-.btn-remove-file {
-  background: none;
-  border: none;
-  color: #ef4444;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-.message-form {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.btn-attach {
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  color: #6b7280;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 1.2rem;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.btn-attach:hover {
-  background: #e5e7eb;
-}
-
-.message-input {
-  flex: 1;
-  height: 40px;
-  padding: 0 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 20px;
-  font-size: 0.95rem;
-  transition: border-color 0.2s;
-}
-
-.message-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.btn-send {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  width: 40px;
-  height: 40px;
+.empty-icon {
+  background: #f8f8f8;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  font-size: 1rem;
-  box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
-  transition: all 0.2s;
-  flex-shrink: 0;
+  margin: 0 auto 20px;
+  color: var(--text-secondary);
 }
-
-.btn-send:hover:not(:disabled) {
-  background: #2563eb;
-  transform: translateY(-1px);
-}
-
-.btn-send:disabled {
-  background: #e5e7eb;
-  color: #9ca3af;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
 /* Modal Styles */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(2px);
 }
-
 .modal {
   background: white;
-  border-radius: 12px;
-  width: 90%;
-  max-width: 500px;
+  border-radius: 8px;
+  width: 600px;
+  max-width: 90%;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  box-shadow: 0 0 0 1px rgba(29, 28, 29, 0.13), 0 18px 48px 0 rgba(0, 0, 0, 0.35);
 }
-
 .modal-header {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
-.btn-close {
+.modal-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+}
+.close-btn {
   background: none;
   border: none;
-  font-size: 1.2rem;
   cursor: pointer;
-  color: #9ca3af;
+  padding: 8px;
+  border-radius: 4px;
 }
-
+.close-btn:hover {
+  background: #f2f2f2;
+}
 .modal-body {
-  padding: 1.5rem;
-  overflow-y: auto;
+  padding: 0 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
 }
-
-.form-group {
-  margin-bottom: 1.25rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  font-size: 0.9rem;
-  color: #374151;
-}
-
-.required {
-  color: #ef4444;
-}
-
-.form-group input, .form-group select {
+.search-container {
+  position: relative;
   width: 100%;
-  padding: 0.6rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  box-sizing: border-box;
 }
-
-.detail-value {
-  padding: 0.6rem;
-  background: #f9fafb;
-  border-radius: 6px;
-  margin: 0;
-  font-size: 0.95rem;
-  color: #374151;
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
 }
-
-.user-list {
-  margin-top: 0.5rem;
-  max-height: 180px;
+.search-input {
+  width: 100%;
+  padding: 10px 10px 10px 36px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 15px;
+}
+.search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(29, 155, 209, 0.3);
+  border-color: var(--slack-blue);
+}
+.browsable-channels {
   overflow-y: auto;
-  border: 1px solid #e5e7eb;
+  max-height: 400px;
+  border: 1px solid #eee;
   border-radius: 6px;
 }
-
-.user-item {
-  padding: 0.75rem;
+.channel-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  cursor: pointer;
-  border-bottom: 1px solid #f9fafb;
+  padding: 16px;
+  border-bottom: 1px solid #f2f2f2;
 }
-
-.user-item:hover:not(.disabled) {
-  background: #f9fafb;
+.channel-row:hover {
+  background: #f8f8f8;
 }
-
-.user-item.selected {
-  background: #eff6ff;
+.channel-row-name {
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 4px;
 }
-
-.user-item.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-  background: #f9fafb;
+.channel-row-meta {
+  font-size: 13px;
+  color: #616061;
 }
-
-.user-item-info {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.user-name {
-  font-weight: 500;
-  font-size: 0.9rem;
-}
-
-.user-email {
-  font-size: 0.8rem;
-  color: #6b7280;
-}
-
-.existing-member-badge {
-  font-size: 0.7rem;
-  color: #059669;
-  background: #d1fae5;
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  margin-top: 0.2rem;
-  display: inline-block;
-}
-
-.selection-summary {
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  background: #f0f9ff;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  color: #0369a1;
-  text-align: center;
-}
-
-.members-list {
-  margin-top: 0.5rem;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-}
-
-.member-item {
-  padding: 0.75rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  border-bottom: 1px solid #f9fafb;
-}
-
-.member-item:last-child {
-  border-bottom: none;
-}
-
-.member-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: #e5e7eb;
-  color: #4b5563;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.9rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
-.member-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.member-name {
-  font-weight: 500;
-  font-size: 0.9rem;
-}
-
-.member-email {
-  font-size: 0.8rem;
-  color: #6b7280;
-}
-
-.modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #f0f0f0;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-}
-
-.btn-cancel, .btn-primary {
-  padding: 0.6rem 1.2rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.btn-cancel {
-  border: 1px solid #d1d5db;
+.join-btn {
+  padding: 6px 16px;
+  border: 1px solid #ddd;
   background: white;
-  color: #374151;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-
-.btn-primary {
-  background: #3b82f6;
-  color: white;
-  border: none;
-}
-
-.btn-primary:disabled {
-  background: #93c5fd;
-  cursor: not-allowed;
-}
-
-/* ========================================= */
-/* MOBILE RESPONSIVE STYLES                  */
-/* ========================================= */
-@media (max-width: 768px) {
-  .chat-container {
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .chat-sidebar, .chat-area {
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    top: 0;
-    left: 0;
-    background: white;
-  }
-
-  .chat-sidebar {
-    z-index: 10;
-    display: flex;
-    transform: translateX(0);
-  }
-  
-  .chat-sidebar.mobile-hidden {
-    transform: translateX(-100%);
-    pointer-events: none;
-  }
-
-  .chat-area {
-    z-index: 20;
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
-  }
-  
-  .chat-area.mobile-visible {
-    transform: translateX(0);
-  }
-  
-  .btn-back.mobile-only {
-    display: block;
-  }
-
-  .no-chat-selected {
-    display: none;
-  }
-
-  .chat-header {
-    padding: 0.75rem 1rem;
-  }
-
-  .sidebar-header {
-    padding: 1rem;
-  }
-
-  .desktop-only {
-    display: none;
-  }
-  
-  .message-input-area {
-    padding: 0.75rem;
-  }
-
-  .modal {
-    width: 95%;
-    max-height: 90vh;
-  }
-  
-  .message {
-    max-width: 90%;
-  }
+.join-btn:hover {
+  background: #f8f8f8;
+  border-color: #999;
 }
 </style>

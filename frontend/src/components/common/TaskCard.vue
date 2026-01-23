@@ -75,7 +75,12 @@
     <div class="card-footer">
       <div class="assigned-to">
         <span class="avatar">{{ getInitials(task.assigned_to.name) }}</span>
-        <span class="name">{{ task.assigned_to.name }}</span>
+        <div class="assigned-info">
+          <span class="name">{{ task.assigned_to.name }}</span>
+          <span v-if="task.created_by" class="created-by">
+            Created by: {{ getCreatedByName() }}
+          </span>
+        </div>
       </div>
      
       <div class="footer-right">
@@ -484,13 +489,25 @@ const tabs = computed(() => [
   { id: 'linked', label: 'Linked Work', count: props.task.linked_items?.length || 0 }
 ]);
 
+// Authorization logic updated for universal access
 const canEdit = computed(() => {
-  return props.userRole === 'manager' || props.userRole === 'admin' || 
-         props.task.created_by?.id === authStore.user?.id;
+  const isCreator = props.task.created_by?.id === authStore.user?.id;
+  const isAssigned = props.task.assigned_to?.id === authStore.user?.id;
+  const isAdmin = props.userRole === 'admin';
+  const isManager = props.userRole === 'manager';
+  
+  // Creator can always edit
+  // Assigned user can edit if they are the assignee
+  // Admin/Manager can edit if they are in the same business
+  return isCreator || isAssigned || isAdmin || isManager;
 });
 
 const canDelete = computed(() => {
-  return props.userRole === 'manager' || props.userRole === 'admin';
+  // Only creator or admin can delete tasks
+  const isCreator = props.task.created_by?.id === authStore.user?.id;
+  const isAdmin = props.userRole === 'admin';
+  
+  return isCreator || isAdmin;
 });
 
 const priorityClass = computed(() => `priority-border-${props.task.priority}`);
@@ -514,13 +531,23 @@ const totalTimeLogged = computed(() => {
 const getAriaLabel = computed(() => {
   const base = `Task: ${props.task.title}. Priority: ${props.task.priority}.`;
   const assigned = `Assigned to: ${props.task.assigned_to.name}.`;
+  const creator = props.task.created_by ? `Created by: ${getCreatedByName()}.` : '';
   const deadline = props.task.deadline
     ? `Due: ${formatDate(props.task.deadline)}.`
     : 'No deadline.';
   const overdue = isOverdue.value ? 'This task is overdue.' : '';
   
-  return `${base} ${assigned} ${deadline} ${overdue}`;
+  return `${base} ${assigned} ${creator} ${deadline} ${overdue}`;
 });
+
+const getCreatedByName = () => {
+  if (props.task.created_by?.name) {
+    return props.task.created_by.name;
+  } else if (props.task.created_by?.first_name && props.task.created_by?.last_name) {
+    return `${props.task.created_by.first_name} ${props.task.created_by.last_name}`;
+  }
+  return 'Unknown';
+};
 
 const handleDragStart = (event) => {
   if (props.loading || expanded.value) {
@@ -919,6 +946,30 @@ const formatLinkType = (type) => {
   flex-shrink: 0;
 }
 
+.assigned-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.name {
+  font-size: 13px;
+  color: #4a5568;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.created-by {
+  font-size: 11px;
+  color: #718096;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .avatar-sm {
   width: 24px;
   height: 24px;
@@ -931,14 +982,6 @@ const formatLinkType = (type) => {
   font-size: 10px;
   font-weight: 600;
   flex-shrink: 0;
-}
-
-.name {
-  font-size: 13px;
-  color: #4a5568;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .footer-right {
@@ -1505,364 +1548,9 @@ const formatLinkType = (type) => {
   .tab-btn {
     padding: 6px 8px;
   }
-}
-
-.task-card {
-  background-color: white;
-  border-radius: 8px;
-  padding: 16px;
-  cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  border-left: 4px solid;
-  position: relative;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  min-height: 120px; /* Base min-height */
-}
-.task-card.expanded {
-  min-height: 300px; /* Increased height when expanded */
-}
-.task-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-.task-card:focus {
-  outline: 2px solid #4299e1;
-  outline-offset: 2px;
-}
-.task-card.loading {
-  opacity: 0.7;
-  pointer-events: none;
-  cursor: not-allowed;
-}
-.loading-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  z-index: 10;
-}
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #e2e8f0;
-  border-top: 2px solid #4299e1;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-/* Priority Border Colors */
-.priority-border-critical {
-  border-left-color: #e53e3e;
-}
-.priority-border-high {
-  border-left-color: #ed8936;
-}
-.priority-border-moderate {
-  border-left-color: #ecc94b;
-}
-.priority-border-low {
-  border-left-color: #48bb78;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 12px;
-  gap: 8px;
-}
-.status-indicators {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.priority-badge {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 4px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.priority-critical {
-  background-color: #fed7d7;
-  color: #c53030;
-}
-.priority-high {
-  background-color: #feebc8;
-  color: #c05621;
-}
-.priority-moderate {
-  background-color: #fefcbf;
-  color: #975a16;
-}
-.priority-low {
-  background-color: #c6f6d5;
-  color: #276749;
-}
-.overdue-badge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background-color: #fed7d7;
-  color: #c53030;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.card-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.action-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-  padding: 4px;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-  border-radius: 4px;
-}
-.action-btn:hover:not(:disabled) {
-  opacity: 1;
-  background-color: #f7fafc;
-}
-.action-btn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-.task-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #2d3748;
-  margin: 0 0 8px 0;
-  line-height: 1.4;
-  word-wrap: break-word;
-}
-.task-description {
-  font-size: 13px;
-  color: #718096;
-  margin: 0 0 12px 0;
-  line-height: 1.5;
-  word-wrap: break-word;
-}
-.task-tags {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.tag {
-  font-size: 11px;
-  padding: 2px 6px;
-  background-color: #e2e8f0;
-  color: #4a5568;
-  border-radius: 4px;
-  white-space: nowrap;
-}
-.tag-more {
-  font-size: 11px;
-  color: #718096;
-  padding: 2px 4px;
-}
-.card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
-  gap: 8px;
-}
-.assigned-to {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-.avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-color: #4299e1;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-.name {
-  font-size: 13px;
-  color: #4a5568;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.footer-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.deadline {
-  font-size: 12px;
-  color: #718096;
-  white-space: nowrap;
-}
-.deadline.overdue {
-  color: #e53e3e;
-  font-weight: 600;
-}
-.comment-btn {
-  background: none;
-  border: none;
-  color: #718096;
-  cursor: pointer;
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: background-color 0.2s, color 0.2s;
-}
-.comment-btn:hover:not(:disabled) {
-  color: #4299e1;
-  background-color: #f0f7ff;
-}
-.comment-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.comment-count {
-  font-weight: 500;
-  color: #4299e1;
-}
-.comments-section {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
-}
-.add-comment-form {
-  margin-bottom: 12px;
-  padding: 12px;
-  background-color: #f7fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-}
-.comment-textarea {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  font-size: 13px;
-  resize: vertical;
-  margin-bottom: 8px;
-}
-.comment-textarea:focus {
-  outline: none;
-  border-color: #4299e1;
-  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.1);
-}
-.add-comment-btn {
-  width: 100%;
-  padding: 8px 12px;
-  background-color: #4299e1;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-.add-comment-btn:hover:not(:disabled) {
-  background-color: #3182ce;
-}
-.add-comment-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-.comments-list {
-  max-height: 200px;
-  overflow-y: auto;
-}
-.comment-item {
-  padding: 8px;
-  border: 1px solid #e2e8f0;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  background-color: #fafbfc;
-}
-.no-comments {
-  text-align: center;
-  padding: 16px;
-  color: #a0aec0;
-  border: 1px dashed #e2e8f0;
-  border-radius: 6px;
-}
-.comment-indicator {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  font-size: 12px;
-  color: #718096;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-/* Responsive Design */
-@media (max-width: 480px) {
-  .task-card {
-    padding: 12px;
-    min-height: 100px;
-  }
-  .task-card.expanded {
-    min-height: 250px;
-  }
   
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .card-actions {
-    align-self: flex-end;
-  }
-  
-  .card-footer {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  
-  .assigned-to {
-    width: 100%;
-  }
-  
-  .footer-right {
-    align-items: flex-start;
-    width: 100%;
-  }
-  
-  .comments-section {
-    margin-top: 8px;
-    padding-top: 8px;
+  .assigned-info {
+    min-width: 120px;
   }
 }
 </style>

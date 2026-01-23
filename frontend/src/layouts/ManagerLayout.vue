@@ -35,6 +35,12 @@
           <span class="link-text">Approvals</span>
         </router-link>
 
+        <router-link to="/manager/tickets" class="nav-link" active-class="active">
+          <span class="link-icon">🎫</span>
+          <span class="link-text">Tickets</span>
+          <span v-if="pendingTicketsCount > 0" class="nav-badge">{{ pendingTicketsCount }}</span>
+        </router-link>
+
         <router-link to="/manager/reports" class="nav-link" active-class="active">
           <span class="link-icon">📈</span>
           <span class="link-text">Reports</span>
@@ -61,11 +67,11 @@
         </router-link>
         
         <!-- Chat Navigation Link -->
-        <a href="#" class="nav-link" @click.prevent="openChatModal" :class="{ 'active': showChatModal }">
+        <button @click="openChatModal" class="nav-link nav-button" :class="{ 'active': showChatModal }">
           <span class="link-icon">💬</span>
           <span class="link-text">Chat</span>
           <span v-if="unreadCount > 0 && !showChatModal" class="nav-badge">{{ unreadCount }}</span>
-        </a>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
@@ -79,6 +85,16 @@
         
         <!-- Quick Action Buttons -->
         <div class="quick-actions">
+          <!-- Ticket Notification Badge -->
+          <button 
+            v-if="pendingTicketsCount > 0" 
+            @click="goToTickets" 
+            class="ticket-notification-badge quick-action-button"
+          >
+            <span class="quick-action-icon">🎫</span>
+            <span class="quick-action-text">Tickets ({{ pendingTicketsCount }})</span>
+          </button>
+          
           <button 
             @click="openChatModal" 
             class="quick-action-button"
@@ -114,6 +130,16 @@
               </router-link>
               
               <router-link 
+                to="/manager/tickets" 
+                class="dropdown-item"
+                @click="closeProfileDropdown"
+              >
+                <span class="dropdown-icon">🎫</span>
+                Ticket Management
+                <span v-if="pendingTicketsCount > 0" class="dropdown-badge">{{ pendingTicketsCount }}</span>
+              </router-link>
+              
+              <router-link 
                 to="/manager/settings" 
                 class="dropdown-item"
                 @click="closeProfileDropdown"
@@ -139,7 +165,7 @@
       <main class="main">
         <router-view />
         
-        <!-- Chat Modal -->
+        <!-- Chat Modal - FIXED VERSION -->
         <transition name="modal">
           <div v-if="showChatModal" class="modal-overlay" @click.self="closeChatModal">
             <div class="modal-container chat-modal-container">
@@ -148,7 +174,8 @@
                 <button @click="closeChatModal" class="modal-close-btn" title="Close Chat">×</button>
               </div>
               <div class="modal-content">
-                <ChatInterface 
+                <!-- Use the Slack-style ChatInterface component -->
+                <SlackChat 
                   ref="chatInterface"
                   @unread-count="updateUnreadCount"
                 />
@@ -165,7 +192,7 @@
 import { defineComponent, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AttendanceToggle from '../components/common/Toggle.vue'
-import ChatInterface from '@/components/ChatInterface.vue'
+import SlackChat from '@/components/ChatInterface.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -173,7 +200,7 @@ export default defineComponent({
   name: 'ManagerLayout',
   components: {
     AttendanceToggle,
-    ChatInterface,
+    SlackChat,
     NotificationBell
   },
   setup() {
@@ -183,7 +210,9 @@ export default defineComponent({
     const showProfileDropdown = ref(false)
     const showChatModal = ref(false)
     const unreadCount = ref(0)
+    const pendingTicketsCount = ref(0)
     const chatInterface = ref(null)
+    let ticketRefreshInterval = null
     
     const toggleProfileDropdown = () => {
       showProfileDropdown.value = !showProfileDropdown.value
@@ -231,6 +260,31 @@ export default defineComponent({
         .slice(0, 2)
     }
     
+    // Fetch pending tickets count for manager
+    const fetchPendingTicketsCount = async () => {
+      try {
+        // This endpoint should return tickets assigned to the manager or their team
+        const response = await fetch('/api/tickets/count?status=pending&manager_id=' + authStore.user?.id, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }).catch(() => ({ ok: false }))
+        
+        if (response.ok) {
+          const data = await response.json()
+          pendingTicketsCount.value = data.count || 0
+        }
+      } catch (error) {
+        console.error('Failed to fetch pending tickets count:', error)
+      }
+    }
+    
+    const goToTickets = () => {
+      router.push('/manager/tickets')
+      closeProfileDropdown()
+    }
+    
     const handleClickOutside = (event) => {
       const dropdown = document.querySelector('.profile-dropdown')
       if (dropdown && !dropdown.contains(event.target)) {
@@ -252,17 +306,37 @@ export default defineComponent({
     onMounted(() => {
       document.addEventListener('click', handleClickOutside)
       document.addEventListener('keydown', handleEscapeKey)
+      
+      // Fetch initial pending tickets count
+      fetchPendingTicketsCount()
+      
+      // Set up interval to refresh ticket count every 5 minutes
+      ticketRefreshInterval = setInterval(fetchPendingTicketsCount, 300000)
+      
+      // Listen for ticket updates
+      window.addEventListener('ticket-created', fetchPendingTicketsCount)
+      window.addEventListener('ticket-updated', fetchPendingTicketsCount)
     })
     
     onUnmounted(() => {
       document.removeEventListener('click', handleClickOutside)
       document.removeEventListener('keydown', handleEscapeKey)
+      
+      // Clear interval
+      if (ticketRefreshInterval) {
+        clearInterval(ticketRefreshInterval)
+      }
+      
+      // Remove event listeners
+      window.removeEventListener('ticket-created', fetchPendingTicketsCount)
+      window.removeEventListener('ticket-updated', fetchPendingTicketsCount)
     })
     
     return {
       showProfileDropdown,
       showChatModal,
       unreadCount,
+      pendingTicketsCount,
       chatInterface,
       toggleProfileDropdown,
       closeProfileDropdown,
@@ -271,6 +345,8 @@ export default defineComponent({
       closeChatModal,
       updateUnreadCount,
       getInitials,
+      fetchPendingTicketsCount,
+      goToTickets,
       authStore
     }
   }
@@ -288,6 +364,7 @@ export default defineComponent({
   --text-light: #6c757d;
   --border-color: #e9ecef;
   --logout-color: #dc3545;
+  --ticket-color: #ff6b6b;
   --dropdown-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   --chat-bg: #ffffff;
   --chat-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
@@ -362,7 +439,8 @@ export default defineComponent({
   border-radius: 4px;
 }
 
-.nav-link {
+.nav-link,
+.nav-button {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -376,18 +454,37 @@ export default defineComponent({
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   flex-shrink: 0;
   position: relative;
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
 }
 
-.nav-link:hover { background-color: rgba(255, 255, 255, 0.1); }
+.nav-link:hover,
+.nav-button:hover { 
+  background-color: rgba(255, 255, 255, 0.1); 
+}
 
-.nav-link.active {
+.nav-link.active,
+.nav-button.active {
   background-color: var(--primary-color);
   color: rgb(68, 31, 142) !important;
   box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
   font-weight: 600;
 }
 
-.nav-link.active .link-icon { color: white; }
+.nav-link.active .link-icon,
+.nav-button.active .link-icon { 
+  color: white; 
+}
+
+/* Special styling for tickets nav item */
+.nav-link[href*="tickets"].active {
+  background-color: var(--ticket-color);
+}
+
 .link-icon {
   font-size: 1.1rem;
   color: var(--sidebar-text-color);
@@ -400,7 +497,7 @@ export default defineComponent({
   right: 10px;
   top: 50%;
   transform: translateY(-50%);
-  background-color: var(--danger-color);
+  background-color: var(--ticket-color);
   color: white;
   border-radius: 50%;
   width: 20px;
@@ -448,7 +545,12 @@ export default defineComponent({
   flex: 1;
 }
 
-.quick-actions { display: flex; gap: 10px; align-items: center; }
+.quick-actions { 
+  display: flex; 
+  gap: 10px; 
+  align-items: center; 
+  flex-wrap: wrap;
+}
 
 .quick-action-button {
   display: flex;
@@ -470,6 +572,20 @@ export default defineComponent({
   background-color: #f8f9fa;
   border-color: var(--primary-color);
   color: var(--primary-color);
+}
+
+/* Special styling for ticket notification badge */
+.ticket-notification-badge {
+  background-color: #fff5f5;
+  border-color: var(--ticket-color);
+  color: var(--ticket-color);
+  animation: ticketPulse 2s infinite;
+}
+
+.ticket-notification-badge:hover {
+  background-color: #ffe3e3;
+  border-color: #ff5252;
+  color: #ff5252;
 }
 
 .quick-action-icon { font-size: 1rem; }
@@ -546,11 +662,43 @@ export default defineComponent({
   border: none;
   transition: background-color 0.2s;
   font-size: 0.95rem;
+  position: relative;
 }
 
 .dropdown-item:hover { background-color: rgba(0, 123, 255, 0.1); }
-.dropdown-divider { height: 1px; background-color: var(--border-color); margin: 0.25rem 0; }
-.logout-dropdown-item:hover { background-color: rgba(220, 53, 69, 0.1); color: var(--danger-color); }
+
+/* Special styling for tickets dropdown item */
+.dropdown-item[href*="tickets"]:hover {
+  background-color: rgba(255, 107, 107, 0.1);
+}
+
+.dropdown-divider { 
+  height: 1px; 
+  background-color: var(--border-color); 
+  margin: 0.25rem 0; 
+}
+
+.logout-dropdown-item:hover { 
+  background-color: rgba(220, 53, 69, 0.1); 
+  color: var(--danger-color); 
+}
+
+/* Dropdown badge */
+.dropdown-badge {
+  position: absolute;
+  right: 10px;
+  background: var(--ticket-color);
+  color: white;
+  border-radius: 10px;
+  min-width: 20px;
+  height: 20px;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-weight: 600;
+}
 
 .user-avatar {
   width: 35px;
@@ -640,11 +788,10 @@ export default defineComponent({
   position: relative;
 }
 
-.modal-content :deep(.chat-interface) {
+/* Ensure SlackChat fills the modal content area */
+.modal-content > * {
   height: 100%;
   width: 100%;
-  display: flex;
-  flex-direction: column;
 }
 
 /* Modal Transitions */
@@ -659,6 +806,11 @@ export default defineComponent({
   100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
 }
 
+@keyframes ticketPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 /* RESPONSIVE DESIGN */
 @media (max-width: 1024px) {
   .modal-container { width: 95%; max-width: 95%; }
@@ -668,17 +820,18 @@ export default defineComponent({
   .sidebar { width: 70px; padding: 1rem 0.5rem; }
   .title, .user-name, .link-text, .quick-action-text { display: none; }
   .logo-section { justify-content: center; }
-  .nav-link { justify-content: center; padding: 0.75rem; }
-  .nav-link .link-text { display: none; }
+  .nav-link, .nav-button { justify-content: center; padding: 0.75rem; }
+  .nav-link .link-text, .nav-button .link-text { display: none; }
   .nav-badge { position: absolute; top: 5px; right: 5px; transform: none; }
   .main { padding: 1.5rem; }
   .top-bar { padding: 1rem 1.5rem; flex-wrap: wrap; gap: 10px; }
   .page-title { font-size: 1.5rem; order: 1; flex: 100%; margin-bottom: 10px; }
-  .quick-actions { order: 2; }
+  .quick-actions { order: 2; flex-wrap: nowrap; }
   .profile-dropdown { order: 3; }
   .modal-container { width: 100%; height: 100%; max-height: 100%; border-radius: 0; margin: 0; }
   .modal-header { border-radius: 0; }
   .notification-badge { min-width: 18px; height: 18px; font-size: 0.65rem; }
+  .dropdown-badge { min-width: 18px; height: 18px; font-size: 0.65rem; }
 }
 
 @media (max-width: 480px) {
@@ -686,5 +839,12 @@ export default defineComponent({
   .main { padding: 1rem; }
   .quick-action-button { padding: 6px 12px; }
   .modal-container { width: 100%; height: 100%; }
+  .ticket-notification-badge .quick-action-text {
+    display: none;
+  }
+  .ticket-notification-badge::after {
+    content: '🎫';
+    font-size: 1.2rem;
+  }
 }
 </style>

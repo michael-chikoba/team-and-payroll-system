@@ -6,11 +6,30 @@
         <div class="user-greeting">
           <div class="avatar-section">
             <div class="avatar">
-              <span>{{ getUserInitials() }}</span>
+              <img 
+                v-if="profilePicUrl && profilePicLoaded" 
+                :src="profilePicUrl" 
+                alt="Profile" 
+                class="profile-avatar-img"
+                @load="handleImageLoad"
+                @error="handleImageError"
+              />
+              <span v-else>{{ getUserInitials() }}</span>
             </div>
             <div class="user-info">
-              <h1 class="greeting">Welcome back, {{ authStore.user?.name || 'Employee' }}!</h1>
-              <p class="subtitle">Track your attendance, leaves, and payroll in real-time</p>
+              <h1 class="greeting">Welcome back, {{ getUserName() }}!</h1>
+              <p class="subtitle">
+                <span v-if="employeeInfo" class="employee-details">
+                  {{ getEmployeePosition() }} • {{ getEmployeeDepartment() }}
+                </span>
+                <span v-else>Track your attendance, leaves, and payroll in real-time</span>
+              </p>
+              <div v-if="employeeInfo" class="employee-id">
+                <span class="id-badge">ID: {{ getEmployeeId() }}</span>
+                <span v-if="employeeInfo.employment_type" class="employment-type">
+                  {{ formatEmploymentType(employeeInfo.employment_type) }}
+                </span>
+              </div>
             </div>
           </div>
           <div class="date-badge">
@@ -29,7 +48,7 @@
     <!-- Main Content -->
     <div class="dashboard-main">
       <!-- Stats Cards Grid -->
-      <div class="stats-grid" v-if="!loading">
+      <div class="stats-grid" v-if="!loading && statsLoaded">
         <div class="stat-card" style="--accent: #10b981;">
           <div class="card-header">
             <div class="icon-wrapper" style="background: rgba(16, 185, 129, 0.1);">
@@ -43,7 +62,7 @@
             <span class="trend-indicator positive">+2 this week</span>
           </div>
           <h3>Present Days</h3>
-          <div class="stat-value">{{ stats.attendance_summary?.present_days || 0 }}</div>
+          <div class="stat-value">{{ getPresentDays() }}</div>
           <div class="card-footer">
             <span>This month</span>
             <span class="compare">vs 18 last month</span>
@@ -61,7 +80,7 @@
             <span class="trend-indicator positive">+5.2hrs</span>
           </div>
           <h3>Total Hours</h3>
-          <div class="stat-value">{{ formatHours(stats.attendance_summary?.total_hours) || '0.00' }}</div>
+          <div class="stat-value">{{ formatHours(getTotalHours()) }}</div>
           <div class="card-footer">
             <span>Worked hours</span>
             <span class="compare">Avg 8.2hrs/day</span>
@@ -95,7 +114,7 @@
             </div>
           </div>
           <h3>Overtime Hours</h3>
-          <div class="stat-value">{{ formatHours(stats.attendance_summary?.overtime_hours) || '0.00' }}</div>
+          <div class="stat-value">{{ formatHours(getOvertimeHours()) }}</div>
           <div class="card-footer">
             <span>Extra hours</span>
             <span class="compare">This month</span>
@@ -104,7 +123,7 @@
       </div>
 
       <!-- Main Content Grid -->
-      <div class="content-grid" v-if="!loading">
+      <div class="content-grid" v-if="!loading && statsLoaded">
         <!-- Left Column -->
         <div class="content-column">
           <!-- Attendance Chart -->
@@ -124,7 +143,7 @@
                   <span class="label">Present</span>
                 </div>
                 <div class="values">
-                  <span class="value">{{ stats.attendance_summary.present_days || 0 }} days</span>
+                  <span class="value">{{ getPresentDays() }} days</span>
                   <span class="percentage">{{ calculateAttendancePercentage('present') }}%</span>
                 </div>
               </div>
@@ -134,7 +153,7 @@
                   <span class="label">Absent</span>
                 </div>
                 <div class="values">
-                  <span class="value">{{ stats.attendance_summary.absent_days || 0 }} days</span>
+                  <span class="value">{{ getAbsentDays() }} days</span>
                   <span class="percentage">{{ calculateAttendancePercentage('absent') }}%</span>
                 </div>
               </div>
@@ -144,7 +163,7 @@
                   <span class="label">Late Arrivals</span>
                 </div>
                 <div class="values">
-                  <span class="value">{{ stats.attendance_summary.late_days || 0 }} days</span>
+                  <span class="value">{{ getLateDays() }} days</span>
                   <span class="percentage">{{ calculateAttendancePercentage('late') }}%</span>
                 </div>
               </div>
@@ -154,7 +173,7 @@
                   <span class="label">Total Hours</span>
                 </div>
                 <div class="values">
-                  <span class="value">{{ formatHours(stats.attendance_summary.total_hours) || '0.00' }} hrs</span>
+                  <span class="value">{{ formatHours(getTotalHours()) }} hrs</span>
                   <span class="percentage">100%</span>
                 </div>
               </div>
@@ -174,11 +193,11 @@
               <h2>Leave Balances</h2>
               <span class="year-badge">{{ new Date().getFullYear() }}</span>
             </div>
-            <div class="leave-balances-grid" v-if="stats.leave_balances && Object.keys(stats.leave_balances).length > 0">
+            <div class="leave-balances-grid" v-if="hasLeaveBalances()">
               <div v-for="(balanceData, type) in stats.leave_balances" :key="type" class="leave-balance-item">
                 <div class="leave-info">
                   <span class="leave-type">{{ formatLeaveType(type) }}</span>
-                  <span class="leave-stats">{{ balanceData.available }} of {{ balanceData.total }} days</span>
+                  <span class="leave-stats">{{ getAvailableDays(balanceData) }} of {{ getTotalDays(balanceData) }} days</span>
                 </div>
                 <div class="progress-container">
                   <div class="progress-track">
@@ -217,7 +236,7 @@
                 </svg>
               </router-link>
             </div>
-            <div class="table-container" v-if="stats.recent_leaves && stats.recent_leaves.length > 0">
+            <div class="table-container" v-if="hasRecentLeaves()">
               <table class="data-table">
                 <thead>
                   <tr>
@@ -228,7 +247,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="leave in stats.recent_leaves.slice(0, 5)" :key="leave.id">
+                  <tr v-for="leave in getRecentLeaves()" :key="leave.id">
                     <td>
                       <span class="type-badge" :style="{ background: getLeaveColor(leave.type) + '20', color: getLeaveColor(leave.type) }">
                         {{ formatLeaveType(leave.type) }}
@@ -241,9 +260,9 @@
                         <span>{{ formatDate(leave.end_date) }}</span>
                       </div>
                     </td>
-                    <td class="days-cell">{{ leave.number_of_days || leave.total_days || 0 }}</td>
+                    <td class="days-cell">{{ getLeaveDays(leave) }}</td>
                     <td>
-                      <span :class="['status-badge', leave.status.toLowerCase()]">
+                      <span :class="['status-badge', getLeaveStatusClass(leave.status)]">
                         {{ leave.status }}
                       </span>
                     </td>
@@ -262,8 +281,53 @@
             </div>
           </div>
 
+          <!-- Quick Profile Card -->
+          <div class="content-card profile-summary-card">
+            <div class="card-title-bar">
+              <h2>My Profile</h2>
+              <router-link to="/employee/profile" class="action-link">
+                View Profile
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5l7 7-7 7"></path>
+                </svg>
+              </router-link>
+            </div>
+            <div class="profile-summary-content" v-if="employeeInfo">
+              <div class="profile-detail">
+                <span class="detail-label">Full Name:</span>
+                <span class="detail-value">{{ getFullName() }}</span>
+              </div>
+              <div class="profile-detail">
+                <span class="detail-label">Employee ID:</span>
+                <span class="detail-value badge">{{ getEmployeeId() }}</span>
+              </div>
+              <div class="profile-detail">
+                <span class="detail-label">Department:</span>
+                <span class="detail-value">{{ getEmployeeDepartment() }}</span>
+              </div>
+              <div class="profile-detail">
+                <span class="detail-label">Position:</span>
+                <span class="detail-value highlight">{{ getEmployeePosition() }}</span>
+              </div>
+              <div class="profile-detail" v-if="employeeInfo.hire_date">
+                <span class="detail-label">Since:</span>
+                <span class="detail-value">{{ formatDate(employeeInfo.hire_date) }}</span>
+              </div>
+            </div>
+            <div class="profile-actions">
+              <router-link to="/employee/profile" class="btn-outline">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                Edit Profile
+              </router-link>
+            </div>
+          </div>
+
           <!-- Payslip Card -->
-          <div class="content-card payslip-card" v-if="stats.upcoming_payslip">
+          <div class="content-card payslip-card" v-if="hasUpcomingPayslip()">
             <div class="card-title-bar">
               <h2>Next Payslip</h2>
               <span class="status-badge upcoming">Upcoming</span>
@@ -347,14 +411,23 @@ export default {
     const now = new Date()
     return {
       pageName: 'Employee Dashboard',
-      stats: {},
+      stats: {
+        attendance_summary: null,
+        leave_balances: null,
+        recent_leaves: null,
+        upcoming_payslip: null
+      },
+      employeeInfo: null,
+      profilePicUrl: null,
+      profilePicLoaded: false,
       loading: false,
       error: null,
       retryCount: 0,
       selectedPeriod: 'month',
       currentDay: now.toLocaleDateString('en-US', { weekday: 'long' }),
       currentDateNum: now.getDate(),
-      currentMonthYear: now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+      currentMonthYear: now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+      statsLoaded: false
     }
   },
   mounted() {
@@ -369,6 +442,7 @@ export default {
       }
      
       this.fetchDashboardData()
+      this.fetchEmployeeProfile()
      
       // Refresh data every 5 minutes
       this.refreshInterval = setInterval(() => {
@@ -378,6 +452,7 @@ export default {
     async fetchDashboardData(silent = false) {
       if (!silent) {
         this.loading = true
+        this.statsLoaded = false
       }
       this.error = null
      
@@ -385,7 +460,14 @@ export default {
         const response = await axios.get('/api/dashboard')
        
         if (response.data.role === 'employee' && response.data.stats) {
-          this.stats = response.data.stats
+          // Initialize stats with default values
+          this.stats = {
+            attendance_summary: response.data.stats.attendance_summary || {},
+            leave_balances: response.data.stats.leave_balances || {},
+            recent_leaves: response.data.stats.recent_leaves || [],
+            upcoming_payslip: response.data.stats.upcoming_payslip || null
+          }
+          this.statsLoaded = true
         } else if (response.data.role !== 'employee') {
           this.error = 'This dashboard is for employees only.'
         }
@@ -400,12 +482,65 @@ export default {
         }
       }
     },
+    async fetchEmployeeProfile() {
+      try {
+        const response = await axios.get('/api/profile')
+        const user = response.data.user || response.data
+        const employee = response.data.employee?.data || response.data.employee
+        
+        if (employee) {
+          this.employeeInfo = {
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            employee_id: employee.employee_id || '',
+            position: employee.position || '',
+            department: employee.department || '',
+            employment_type: employee.employment_type || '',
+            hire_date: employee.hire_date || '',
+            phone: employee.phone || '',
+            email: user.email || ''
+          }
+          
+          if (employee.profile_pic) {
+            this.profilePicUrl = `/storage/${employee.profile_pic}`
+          }
+        }
+      } catch (err) {
+        console.error('Profile fetch error:', err)
+      }
+    },
     handleApiError(err) {
       this.error = err.response?.data?.message || 'Failed to load dashboard data.'
     },
-    retryFetch() {
-        this.fetchDashboardData()
+    handleImageLoad() {
+      this.profilePicLoaded = true
     },
+    handleImageError() {
+      this.profilePicLoaded = false
+      this.profilePicUrl = null
+    },
+    retryFetch() {
+      this.fetchDashboardData()
+      this.fetchEmployeeProfile()
+    },
+    
+    // Safe getter methods for stats
+    getPresentDays() {
+      return this.stats.attendance_summary?.present_days || 0
+    },
+    getAbsentDays() {
+      return this.stats.attendance_summary?.absent_days || 0
+    },
+    getLateDays() {
+      return this.stats.attendance_summary?.late_days || 0
+    },
+    getTotalHours() {
+      return this.stats.attendance_summary?.total_hours || 0
+    },
+    getOvertimeHours() {
+      return this.stats.attendance_summary?.overtime_hours || 0
+    },
+    
     getTotalLeaveBalance() {
       if (!this.stats.leave_balances) return 0
       
@@ -414,9 +549,63 @@ export default {
         return sum + (Number(val) || 0);
       }, 0)
     },
+    
+    // Safe getter methods for employee info
+    getUserName() {
+      return this.authStore.user?.name || this.employeeInfo?.first_name || 'Employee'
+    },
+    getFullName() {
+      if (!this.employeeInfo) return 'N/A'
+      return `${this.employeeInfo.first_name || ''} ${this.employeeInfo.last_name || ''}`.trim() || 'N/A'
+    },
+    getEmployeeId() {
+      return this.employeeInfo?.employee_id || 'N/A'
+    },
+    getEmployeePosition() {
+      return this.employeeInfo?.position || 'N/A'
+    },
+    getEmployeeDepartment() {
+      return this.employeeInfo?.department || 'N/A'
+    },
+    
+    // Safe getter methods for leave balances
+    getAvailableDays(balanceData) {
+      if (!balanceData) return 0
+      return typeof balanceData === 'object' ? balanceData.available || 0 : Number(balanceData) || 0
+    },
+    getTotalDays(balanceData) {
+      if (!balanceData) return 1
+      return typeof balanceData === 'object' ? balanceData.total || 1 : Number(balanceData) || 1
+    },
+    
+    // Check methods
+    hasLeaveBalances() {
+      return this.stats.leave_balances && Object.keys(this.stats.leave_balances).length > 0
+    },
+    hasRecentLeaves() {
+      return this.stats.recent_leaves && this.stats.recent_leaves.length > 0
+    },
+    hasUpcomingPayslip() {
+      return this.stats.upcoming_payslip !== null
+    },
+    
+    // Getter methods with limits
+    getRecentLeaves() {
+      if (!this.stats.recent_leaves) return []
+      return this.stats.recent_leaves.slice(0, 5)
+    },
+    getLeaveDays(leave) {
+      return leave.number_of_days || leave.total_days || 0
+    },
+    getLeaveStatusClass(status) {
+      if (!status) return ''
+      return status.toLowerCase()
+    },
+    
     formatHours(hours) {
       if (!hours) return '0.00'
-      return parseFloat(hours).toFixed(2)
+      const num = parseFloat(hours)
+      return isNaN(num) ? '0.00' : num.toFixed(2)
     },
     formatLeaveType(type) {
       if (!type) return 'N/A'
@@ -432,27 +621,34 @@ export default {
     },
     formatDate(date) {
       if (!date) return 'N/A'
-      return new Date(date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric'
-      })
+      try {
+        return new Date(date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+      } catch (e) {
+        return 'Invalid Date'
+      }
+    },
+    formatEmploymentType(type) {
+      if (!type) return 'N/A'
+      return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
     },
     calculateProgress(balanceData) {
-      if (typeof balanceData !== 'object') {
-        return 50
-      }
+      if (!balanceData) return 0
       
-      const total = balanceData.total || 1
-      const available = balanceData.available || 0
+      const total = this.getTotalDays(balanceData)
+      const available = this.getAvailableDays(balanceData)
       const percentage = (available / total) * 100
-      return Math.min(percentage, 100)
+      return Math.min(Math.max(percentage, 0), 100)
     },
     calculateAttendancePercentage(type) {
       if (!this.stats.attendance_summary) return 0
       
-      const present = this.stats.attendance_summary.present_days || 0
-      const absent = this.stats.attendance_summary.absent_days || 0
-      const late = this.stats.attendance_summary.late_days || 0
+      const present = this.getPresentDays()
+      const absent = this.getAbsentDays()
+      const late = this.getLateDays()
       const total = present + absent + late
       
       if (total === 0) return 0
@@ -465,6 +661,7 @@ export default {
       }
     },
     getLeaveColor(type) {
+      if (!type) return '#6366f1'
       const colors = {
         'annual': '#10b981',
         'sick': '#3b82f6',
@@ -476,8 +673,14 @@ export default {
       return colors[type.toLowerCase()] || '#6366f1'
     },
     getUserInitials() {
+      if (this.employeeInfo) {
+        const first = this.employeeInfo.first_name?.[0] || ''
+        const last = this.employeeInfo.last_name?.[0] || ''
+        return `${first}${last}`.toUpperCase() || 'E'
+      }
       const name = this.authStore.user?.name || 'Employee'
-      return name.split(' ').map(n => n[0]).join('').toUpperCase()
+      const initials = name.split(' ').map(n => n[0]).join('')
+      return initials.toUpperCase() || 'E'
     }
   },
   beforeUnmount() {
@@ -487,8 +690,146 @@ export default {
   }
 }
 </script>
-
 <style scoped>
+/* Add these new styles to the existing CSS */
+
+/* Profile image in avatar */
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* Employee details in subtitle */
+.employee-details {
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+.employee-id {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.id-badge {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 0.125rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.employment-type {
+  font-size: 0.7rem;
+  color: #cbd5e1;
+  font-weight: 500;
+}
+
+/* Profile Summary Card */
+.profile-summary-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.profile-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.profile-detail .detail-label {
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.profile-detail .detail-value {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.875rem;
+}
+
+.profile-detail .detail-value.badge {
+  background: #f1f5f9;
+  padding: 0.125rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  color: #475569;
+}
+
+.profile-detail .detail-value.highlight {
+  color: #6366f1;
+  font-weight: 700;
+}
+
+.profile-actions {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+/* Update existing styles for better spacing */
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.greeting {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #fff 0%, #e2e8f0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.875rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .employee-id {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  
+  .profile-detail {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .employee-details {
+    font-size: 0.75rem;
+  }
+  
+  .profile-detail .detail-label,
+  .profile-detail .detail-value {
+    font-size: 0.75rem;
+  }
+}
+
 .dashboard-container {
   min-height: 100vh;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);

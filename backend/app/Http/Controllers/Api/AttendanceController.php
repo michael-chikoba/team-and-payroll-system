@@ -11,6 +11,7 @@ use App\Models\Country; // Add this import
 use App\Models\Business; // Add this import
 use App\Models\User; // Add this import
 use App\Services\AttendanceService;
+use App\Services\ActivityTrackingService;
 use Carbon\Carbon;
 use App\Models\ShiftAssignment;
 use Illuminate\Http\JsonResponse;
@@ -25,16 +26,116 @@ class AttendanceController extends Controller
 {
     use AuthorizesRequests;
 
-    public function __construct(private AttendanceService $attendanceService)
-    {
-    }
+   public function __construct(
+        private AttendanceService $attendanceService,
+        private ActivityTrackingService $activityTrackingService
+    ) {}
 
 
     /**
-     * Get business-scoped employees query (FIXED - matches EmployeeController logic EXACTLY)
-     * 
-     * CRITICAL CHANGE: Managers now ONLY see employees with manager_id = their user_id
-     * This prevents managers from seeing all employees in their business/department
+ * Calculate total hours worked
+ * Handles break minutes as string or number
+ */
+public function calculateTotalHours(): float
+{
+    if (!$this->clock_in || !$this->clock_out) {
+        return 0;
+    }
+
+    try {
+        $clockIn = Carbon::parse($this->date . ' ' . $this->clock_in);
+        $clockOut = Carbon::parse($this->date . ' ' . $this->clock_out);
+
+        // Calculate total minutes worked
+        $totalMinutes = $clockOut->diffInMinutes($clockIn);
+
+        // CRITICAL FIX: Ensure break_minutes is an integer
+        $breakMinutes = (int) ($this->break_minutes ?? 0);
+
+        // Subtract break time
+        $workMinutes = max(0, $totalMinutes - $breakMinutes);
+
+        // Convert to hours
+        return round($workMinutes / 60, 2);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to calculate total hours', [
+            'attendance_id' => $this->id,
+            'clock_in' => $this->clock_in,
+            'clock_out' => $this->clock_out,
+            'break_minutes' => $this->break_minutes,
+            'break_minutes_type' => gettype($this->break_minutes),
+            'error' => $e->getMessage()
+        ]);
+        return 0;
+    }
+}
+
+/**
+ * Calculate regular and overtime hours based on shift
+ */
+public function calculateRegularAndOvertimeHours(): void
+{
+    if (!$this->clock_in || !$this->clock_out) {
+        $this->regular_hours = 0;
+        $this->overtime_hours = 0;
+        return;
+    }
+
+    try {
+        $totalHours = $this->calculateTotalHours();
+        
+        // If this is an overtime session, all hours are overtime
+        if ($this->is_overtime_session) {
+            $this->regular_hours = 0;
+            $this->overtime_hours = $totalHours;
+            return;
+        }
+
+        // Get expected hours from shift or use default (8 hours)
+        $expectedHours = 8.0;
+        
+        if ($this->shiftAssignment) {
+            try {
+                $shiftStart = Carbon::parse($this->date . ' ' . $this->shiftAssignment->start_time);
+                $shiftEnd = Carbon::parse($this->date . ' ' . $this->shiftAssignment->end_time);
+                
+                // CRITICAL FIX: Ensure break_minutes is an integer
+                $breakMinutes = (int) ($this->shiftAssignment->break_minutes ?? $this->break_minutes ?? 0);
+                
+                $shiftMinutes = $shiftEnd->diffInMinutes($shiftStart);
+                $workMinutes = max(0, $shiftMinutes - $breakMinutes);
+                $expectedHours = round($workMinutes / 60, 2);
+            } catch (\Exception $e) {
+                Log::error('Failed to calculate shift hours', [
+                    'attendance_id' => $this->id,
+                    'shift_id' => $this->shiftAssignment->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        // Split into regular and overtime
+        if ($totalHours <= $expectedHours) {
+            $this->regular_hours = $totalHours;
+            $this->overtime_hours = 0;
+        } else {
+            $this->regular_hours = $expectedHours;
+            $this->overtime_hours = $totalHours - $expectedHours;
+        }
+
+    } catch (\Exception $e) {
+        Log::error('Failed to calculate regular/overtime hours', [
+            'attendance_id' => $this->id,
+            'error' => $e->getMessage()
+        ]);
+        $this->regular_hours = 0;
+        $this->overtime_hours = 0;
+    }
+}
+
+   /**
+     * Get business-scoped employees query
      */
     private function getBusinessScopedEmployees(Request $request)
     {
@@ -49,7 +150,7 @@ class AttendanceController extends Controller
             'requested_business_id' => $requestedBusinessId,
         ]);
         
-        // ADMIN LOGIC (unchanged)
+        // ADMIN LOGIC
         if ($user->role === 'admin') {
             if ($requestedBusinessId) {
                 $businessId = (int)$requestedBusinessId;
@@ -96,12 +197,11 @@ class AttendanceController extends Controller
                 ]);
             }
         }
-        // MANAGER LOGIC - CRITICAL FIX: Match EmployeeController exactly
+        // MANAGER LOGIC
         elseif ($user->role === 'manager') {
             $managerEmployee = Employee::where('user_id', $user->id)->first();
             
             if ($managerEmployee && $managerEmployee->business_id) {
-                // FIXED: Only employees where manager_id = this user's ID
                 $query->where('employees.business_id', $managerEmployee->business_id)
                       ->where('employees.manager_id', $user->id);
                 
@@ -111,7 +211,6 @@ class AttendanceController extends Controller
                     'filter_method' => 'direct_manager_id_only'
                 ]);
             } elseif ($managerEmployee) {
-                // FIXED: Only directly assigned employees (no business)
                 $query->whereNull('employees.business_id')
                       ->where('employees.manager_id', $user->id);
                 
@@ -120,7 +219,6 @@ class AttendanceController extends Controller
                     'filter_method' => 'direct_manager_id_no_business'
                 ]);
             } else {
-                // No employee record - show nothing
                 $query->where('employees.id', 0);
                 
                 Log::info('ATTENDANCE_CONTROLLER: Manager has no employee record', [
@@ -128,7 +226,7 @@ class AttendanceController extends Controller
                 ]);
             }
         }
-        // EMPLOYEE LOGIC (unchanged)
+        // EMPLOYEE LOGIC
         elseif ($user->role === 'employee') {
             $query->where('employees.user_id', $user->id);
             
@@ -470,23 +568,15 @@ class AttendanceController extends Controller
         }
     }
 
+    
     /**
      * Get employees that belong to this manager's team
-     * 
-     * CRITICAL: Only returns employees where manager_id = this user's ID
-     * This matches the EmployeeController logic EXACTLY
-     * 
-     * @param User $user The manager user
-     * @param Employee $managerEmployee The manager's employee record
-     * @return \Illuminate\Database\Eloquent\Collection
      */
     private function getManagerTeamEmployees($user, $managerEmployee)
     {
         $query = Employee::with(['user']);
         
-        // EXACT SAME LOGIC as EmployeeController
         if ($managerEmployee->business_id) {
-            // Manager has business - ONLY employees with manager_id = this user
             $query->where('employees.business_id', $managerEmployee->business_id)
                   ->where('employees.manager_id', $user->id);
             
@@ -497,7 +587,6 @@ class AttendanceController extends Controller
                 'filter' => 'business_id + manager_id (DIRECT ASSIGNMENT ONLY)',
             ]);
         } else {
-            // Manager without business - ONLY directly assigned employees
             $query->whereNull('employees.business_id')
                   ->where('employees.manager_id', $user->id);
             
@@ -527,7 +616,6 @@ class AttendanceController extends Controller
      */
     private function processEmployeeAttendance($employee, $attendance, $targetDate, &$summary)
     {
-        // Default values
         $status = 'absent';
         $clockIn = null;
         $clockOut = null;
@@ -556,6 +644,8 @@ class AttendanceController extends Controller
                 if ($clockIn) {
                     $shiftStart = Carbon::parse($targetDate->toDateString() . ' ' . $shift->start_time);
                     $actualClockIn = Carbon::parse($targetDate->toDateString() . ' ' . $clockIn);
+                    
+                    // CRITICAL FIX: Ensure grace period is an integer
                     $gracePeriod = (int) config('attendance.grace_period_minutes', 15);
                     $lateThreshold = $shiftStart->copy()->addMinutes($gracePeriod);
 
@@ -604,7 +694,7 @@ class AttendanceController extends Controller
         ];
     }
 
-    /**
+   /**
      * Update summary counts based on attendance status
      */
     private function updateSummaryStatus($status, &$summary)
@@ -962,8 +1052,8 @@ public function managerClockOut(Request $request, Employee $employee): JsonRespo
         ], 500);
     }
 }
-    /**
- * Clock in for overtime
+   /**
+ * Clock in for overtime with activity tracking
  * POST /api/attendance/clock-in-overtime
  */
 public function clockInOvertime(Request $request): JsonResponse
@@ -979,11 +1069,20 @@ public function clockInOvertime(Request $request): JsonResponse
         }
 
         $attendance = $this->attendanceService->clockInOvertime($employee);
+        
+        // Initialize activity tracking
+        $attendance->last_activity_at = now();
+        $attendance->recordActivity('overtime_start');
 
         return response()->json([
             'success' => true,
             'attendance' => $attendance,
-            'message' => 'Clocked in for overtime successfully at ' . $attendance->clock_in
+            'message' => 'Clocked in for overtime successfully at ' . $attendance->clock_in,
+            'activity_tracking' => [
+                'enabled' => true,
+                'idle_threshold_minutes' => config('attendance.idle_threshold_minutes', 15),
+                'heartbeat_interval_seconds' => 60
+            ]
         ]);
     } catch (\Exception $e) {
         Log::error('Overtime clock-in failed', [
@@ -997,7 +1096,6 @@ public function clockInOvertime(Request $request): JsonResponse
         ], 422);
     }
 }
-
 /**
  * Get enhanced today's status with shift and overtime info
  * GET /api/attendance/today-status
@@ -2554,22 +2652,24 @@ public function recalculateHours(Request $request): JsonResponse
     }
 }
 
-/**
- * Helper: Get working days in month (excluding weekends)
- */
-private function getWorkingDaysInMonth(int $month, int $year): int
-{
-    $days = 0;
-    $date = Carbon::create($year, $month, 1);
-    $daysInMonth = $date->daysInMonth;
 
-    for ($day = 1; $day <= $daysInMonth; $day++) {
-        $currentDate = Carbon::create($year, $month, $day);
-        if (!$currentDate->isWeekend()) {
-            $days++;
+
+    /**
+     * Helper: Get working days in month (excluding weekends)
+     */
+    private function getWorkingDaysInMonth(int $month, int $year): int
+    {
+        $days = 0;
+        $date = Carbon::create($year, $month, 1);
+        $daysInMonth = $date->daysInMonth;
+
+        for ($day = 1; $day <= $daysInMonth; $day++) {
+            $currentDate = Carbon::create($year, $month, $day);
+            if (!$currentDate->isWeekend()) {
+                $days++;
+            }
         }
-    }
 
-    return $days;
-}
+        return $days;
+    }
 }

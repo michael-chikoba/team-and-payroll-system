@@ -82,26 +82,80 @@ const loading = ref(false)
 
 const handleLogin = async () => {
   loading.value = true
+  
+  
+  
   try {
-    await authStore.login(form.value)
+  //  console.log('📤 Calling authStore.login()...')
+    
+    const response = await authStore.login(form.value)
+    
+  
+    
+    // Log user details
+    if (response.data?.user) {
+    
+    }
+    
+   
    
     // Redirect based on user role
     const role = authStore.user?.role || 'employee'
+   
+    
     switch (role) {
       case 'admin':
+       // console.log('🔀 Navigating to /admin/dashboard')
         await router.push('/admin/dashboard')
         break
       case 'manager':
+       // console.log('🔀 Navigating to /manager/dashboard')
         await router.push('/manager/dashboard')
         break
       default:
+        //console.log('🔀 Navigating to /employee/dashboard')
         await router.push('/employee/dashboard')
     }
+    
+  
+    
   } catch (error) {
-    console.error('Login failed:', error)
-    alert('Login failed. Please check your credentials and try again.')
+    console.log('=== LOGIN ERROR ===')
+    console.error('❌ Error Type:', error.constructor.name)
+    console.error('❌ Error Message:', error.message)
+    console.error('❌ Full Error:', error)
+    
+    // Log error response if available
+    if (error.response) {
+     
+    }
+    
+    // Log request details if available
+    if (error.config) {
+     
+    }
+    
+    // Show user-friendly error message
+    let errorMessage = 'Login failed. Please check your credentials and try again.'
+    
+    if (error.response?.status === 401) {
+      errorMessage = 'Invalid email or password. Please try again.'
+    } else if (error.response?.status === 500) {
+      errorMessage = 'Server error. Please try again later or contact support.'
+    } else if (error.response?.status === 422) {
+      errorMessage = error.response.data?.message || 'Validation error. Please check your input.'
+    } else if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    } else if (!navigator.onLine) {
+      errorMessage = 'No internet connection. Please check your network.'
+    }
+    
+    console.error('🚨 Showing error to user:', errorMessage)
+    alert(errorMessage)
+    
   } finally {
     loading.value = false
+    
   }
 }
 </script>

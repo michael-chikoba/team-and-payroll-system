@@ -25,13 +25,28 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\SubtaskController;
 use App\Http\Controllers\Api\TaskWorkLogController;
 use App\Http\Controllers\Api\TaskLinkController;
+use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\Api\ChatReactionController;
+use App\Http\Controllers\Api\ChatThreadController;
+use App\Http\Controllers\Api\ChatIntegrationController;
+use App\Http\Controllers\Api\ChatWebhookController;
+use App\Http\Controllers\Api\TaskReportController;
+use App\Http\Controllers\Api\ActivityTrackingController;
+
+
 
 /*
 |--------------------------------------------------------------------------
 | Public Routes (No Authentication Required)
 |--------------------------------------------------------------------------
 */
-Route::post('/login', [AuthController::class, 'login']);
+// ADD THIS ROUTE - It must be public (no auth middleware)
+// Simple version
+Route::get('/sanctum/csrf-cookie', function () {
+    return response()->noContent();
+});
+
+Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
@@ -46,6 +61,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Auth routes
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user', [AuthController::class, 'user']);
+    Route::get('/auth/login-history', [AuthController::class, 'loginHistory']);
    
     // Dashboard (Available to all authenticated users)
     Route::get('/dashboard', [DashboardController::class, 'index']);
@@ -61,6 +77,65 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/{id}/read', [NotificationController::class, 'markAsRead']);
         Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
         Route::delete('/{id}', [NotificationController::class, 'destroy']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ticket Management Routes (Available to all authenticated users)
+    |--------------------------------------------------------------------------
+    */
+    
+    Route::prefix('tickets')->group(function () {
+        // Ticket types and metadata
+        Route::get('/types', [TicketController::class, 'getTicketTypes']);
+        Route::get('/types/{type}/categories', [TicketController::class, 'getCategories']);
+        
+        // Departments for ticket assignment
+        Route::get('/departments', [TicketController::class, 'getDepartments']);
+        
+        // Assignable users and approvers
+        Route::get('/assignable-users', [TicketController::class, 'getAssignableUsers']);
+        Route::get('/approvers', [TicketController::class, 'getApprovers']);
+        
+        // Statistics and counts
+        Route::get('/statistics', [TicketController::class, 'statistics']);
+        Route::get('/count', [TicketController::class, 'count']);
+        
+        // User-specific tickets
+        Route::get('/my-tickets', [TicketController::class, 'myTickets']);
+        Route::get('/assigned-to-me', [TicketController::class, 'assignedToMe']);
+        
+        // CRUD operations
+        Route::get('/', [TicketController::class, 'index']);
+        Route::post('/', [TicketController::class, 'store']);
+        Route::get('/{ticket}', [TicketController::class, 'show']);
+        Route::put('/{ticket}', [TicketController::class, 'update']);
+        Route::delete('/{ticket}', [TicketController::class, 'destroy']);
+        
+        // Ticket actions
+        Route::post('/{ticket}/update-status', [TicketController::class, 'updateStatus']);
+        Route::post('/{ticket}/update-priority', [TicketController::class, 'updatePriority']);
+        Route::post('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
+        Route::post('/{ticket}/assign', [TicketController::class, 'assignTicket']);
+        
+        // Comments and attachments
+        Route::get('/{ticket}/comments', [TicketController::class, 'getComments']);
+        Route::post('/{ticket}/comments', [TicketController::class, 'addComment']);
+        Route::put('/{ticket}/comments/{comment}', [TicketController::class, 'updateComment']);
+        Route::delete('/{ticket}/comments/{comment}', [TicketController::class, 'deleteComment']);
+        
+        Route::get('/{ticket}/attachments', [TicketController::class, 'getAttachments']);
+        Route::post('/{ticket}/attachments', [TicketController::class, 'uploadAttachment']);
+        Route::delete('/{ticket}/attachments/{attachment}', [TicketController::class, 'deleteAttachment']);
+        Route::get('/attachments/{attachment}/download', [TicketController::class, 'downloadAttachment'])->name('tickets.attachments.download');
+        
+        // Activity history
+        Route::get('/{ticket}/activities', [TicketController::class, 'getActivityHistory']);
+        
+        // Convenience routes (optional)
+        Route::post('/{ticket}/resolve', [TicketController::class, 'resolve']);
+        Route::post('/{ticket}/close', [TicketController::class, 'close']);
+        Route::post('/{ticket}/reopen', [TicketController::class, 'reopen']);
     });
 
     /*
@@ -186,6 +261,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::middleware(['role:admin'])->prefix('admin')->group(function () {
+        // Admin Audit Routes
+        Route::prefix('audit')->group(function () {
+            Route::get('logins', [AuditController::class, 'loginAudits']);
+            Route::get('login-stats', [AuditController::class, 'loginStats']);
+            Route::get('user/{userId}/logins', [AuditController::class, 'userLoginHistory']);
+        });
+        
         // Leave Management
         Route::get('/leaves/current-month', [LeaveController::class, 'currentMonthLeaves']);
         
@@ -296,6 +378,27 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/business-settings/initialize', [AdminController::class, 'initializeBusinessSettings']);
         Route::delete('/business-settings/{businessId}', [AdminController::class, 'deleteBusinessSettings']);
         Route::get('/stats', [AdminController::class, 'systemStats']);
+
+        // Country Management
+        Route::prefix('countries')->group(function () {
+            Route::get('/', [CountryController::class, 'index']);
+            Route::post('/', [CountryController::class, 'store']);
+            Route::get('/{country}', [CountryController::class, 'show']);
+            Route::put('/{country}', [CountryController::class, 'update']);
+            Route::delete('/{country}', [CountryController::class, 'destroy']);
+            Route::post('/{country}/toggle-status', [CountryController::class, 'toggleStatus']);
+            Route::get('/{country}/statistics', [CountryController::class, 'statistics']);
+        });
+        
+        // Business Management
+        Route::prefix('businesses')->group(function () {
+            Route::get('/', [BusinessController::class, 'index']);
+            Route::post('/', [BusinessController::class, 'store']);
+            Route::get('/{business}', [BusinessController::class, 'show']);
+            Route::put('/{business}', [BusinessController::class, 'update']);
+            Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
+            Route::delete('/{business}', [BusinessController::class, 'destroy']);
+        });
     });
 });
 
@@ -306,8 +409,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 */
 Route::middleware(['auth:sanctum'])->group(function () {
     // Employee list endpoints - accessible by managers and admins
-    Route::get('/employees', [TaskController::class, 'getEmployees'])->middleware('role:manager,admin');
-    Route::get('/tasks/employees/simple', [TaskController::class, 'getSimpleEmployees'])->middleware('role:manager,admin');
+    Route::get('/employees', [TaskController::class, 'getEmployees'])->middleware('role:manager,admin,employee');
+    Route::get('/tasks/employees/simple', [TaskController::class, 'getSimpleEmployees'])->middleware('role:manager,admin,employee');
     
     // Task CRUD - ALL authenticated users can access
     Route::get('/tasks', [TaskController::class, 'index']); // All can view their tasks
@@ -350,28 +453,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 });
 
-// Country Management Routes
-Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
-    Route::prefix('countries')->group(function () {
-        Route::get('/', [CountryController::class, 'index']);
-        Route::post('/', [CountryController::class, 'store']);
-        Route::get('/{country}', [CountryController::class, 'show']);
-        Route::put('/{country}', [CountryController::class, 'update']);
-        Route::delete('/{country}', [CountryController::class, 'destroy']);
-        Route::post('/{country}/toggle-status', [CountryController::class, 'toggleStatus']);
-        Route::get('/{country}/statistics', [CountryController::class, 'statistics']);
-    });
-    
-    Route::prefix('businesses')->group(function () {
-        Route::get('/', [BusinessController::class, 'index']);
-        Route::post('/', [BusinessController::class, 'store']);
-        Route::get('/{business}', [BusinessController::class, 'show']);
-        Route::put('/{business}', [BusinessController::class, 'update']);
-        Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
-        Route::delete('/{business}', [BusinessController::class, 'destroy']);
-    });
-});
-
+// Settings Routes
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::prefix('settings')->group(function () {
         Route::get('departments', [SettingsController::class, 'getValidDepartments']);
@@ -448,24 +530,237 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 });
 
-// Ticket Routes
-Route::middleware(['auth:sanctum'])->prefix('tickets')->group(function () {
-    Route::get('/count', [TicketController::class, 'count'])->name('tickets.count');
-    Route::get('/stats', [TicketController::class, 'stats'])->name('tickets.stats');
-    Route::get('/my-tickets', [TicketController::class, 'myTickets'])->name('tickets.my');
-    Route::get('/approvers', [TicketController::class, 'getApprovers']);
-    Route::get('/statistics', [TicketController::class, 'statistics']);
-    Route::get('/assigned-tickets', [TicketController::class, 'assignedToMe']);
-    Route::patch('/{ticket}/update-status', [TicketController::class, 'updateStatus'])->name('tickets.update-status');
-    Route::get('/', [TicketController::class, 'index'])->name('tickets.index');
-    Route::post('/', [TicketController::class, 'store'])->name('tickets.store');
-    Route::get('/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
-    Route::put('/{ticket}', [TicketController::class, 'update'])->name('tickets.update');
-    Route::delete('/{ticket}', [TicketController::class, 'destroy'])->name('tickets.destroy');
-    Route::post('/{ticket}/assign', [TicketController::class, 'assign'])->name('tickets.assign');
-    Route::post('/{ticket}/resolve', [TicketController::class, 'resolve'])->name('tickets.resolve');
-    Route::post('/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
-    Route::post('/{ticket}/reopen', [TicketController::class, 'reopen'])->name('tickets.reopen');
-    Route::patch('/{ticket}/priority', [TicketController::class, 'updatePriority']);
-    Route::patch('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
+// Advanced Chat Routes (keep separate for organization)
+Route::middleware('auth:sanctum')->group(function () {
+    
+    // ==========================================
+    // CHAT GROUPS & CHANNELS
+    // ==========================================
+    
+    // List all groups/channels/DMs
+    Route::get('/chat/groups', [ChatController::class, 'index']);
+    
+    // Create new group/channel
+    Route::post('/chat/groups', [ChatController::class, 'store']);
+    
+    // Get group details
+    Route::get('/chat/groups/{id}/details', [ChatController::class, 'show']);
+    
+    // Update group/channel
+    Route::put('/chat/groups/{id}', [ChatController::class, 'update']);
+    
+    // Archive/Unarchive
+    Route::post('/chat/groups/{id}/toggle-archive', [ChatController::class, 'toggleArchive']);
+    
+    // Toggle favorite
+    Route::post('/chat/groups/{id}/toggle-favorite', [ChatController::class, 'toggleFavorite']);
+    
+    // Mark as read
+    Route::post('/chat/groups/{id}/read', [ChatController::class, 'markAsRead']);
+    
+    // Toggle mute
+    Route::post('/chat/groups/{id}/toggle-mute', [ChatController::class, 'toggleMute']);
+    
+    
+    // ==========================================
+    // CHANNEL SPECIFIC
+    // ==========================================
+    
+    // Browse public channels
+    Route::get('/chat/channels/browse', [ChatController::class, 'getBrowsableChannels']);
+    
+    // Join public channel
+    Route::post('/chat/channels/{id}/join', [ChatController::class, 'joinChannel']);
+    
+    // Leave channel/group
+    Route::post('/chat/groups/{id}/leave', [ChatController::class, 'leaveGroup']);
+    
+    
+    // ==========================================
+    // MEMBERS MANAGEMENT
+    // ==========================================
+    
+    // Add members
+    Route::post('/chat/groups/{id}/add-members', [ChatController::class, 'addMembers']);
+    
+    // Remove member
+    Route::delete('/chat/groups/{groupId}/members/{userId}', [ChatController::class, 'removeMember']);
+    
+    // Update member role
+    Route::put('/chat/groups/{groupId}/members/{userId}/role', [ChatController::class, 'updateMemberRole']);
+    
+    // Get available users
+    Route::get('/chat/available-users', [ChatController::class, 'getAvailableUsers']);
+    
+    
+    // ==========================================
+    // DIRECT MESSAGES
+    // ==========================================
+    
+    // Get or create direct message
+    Route::post('/chat/direct-messages', [ChatController::class, 'getOrCreateDirectMessage']);
+    
+    
+    // ==========================================
+    // MESSAGES
+    // ==========================================
+    
+    // Get messages in a group/channel
+    Route::get('/chat/groups/{groupId}/messages', [ChatMessageController::class, 'index']);
+    
+    // Send message
+    Route::post('/chat/groups/{groupId}/messages', [ChatMessageController::class, 'store']);
+    
+    // Edit message
+    Route::put('/chat/groups/{groupId}/messages/{messageId}', [ChatMessageController::class, 'update']);
+    
+    // Delete message
+    Route::delete('/chat/groups/{groupId}/messages/{messageId}', [ChatMessageController::class, 'destroy']);
+    
+    // Search messages
+    Route::get('/chat/groups/{groupId}/messages/search', [ChatMessageController::class, 'search']);
+    
+    // Pin/Unpin message
+    Route::post('/chat/groups/{groupId}/messages/{messageId}/toggle-pin', [ChatMessageController::class, 'togglePin']);
+    
+    // Get pinned messages
+    Route::get('/chat/groups/{groupId}/pinned-messages', [ChatMessageController::class, 'getPinnedMessages']);
+    
+    
+    // ==========================================
+    // REACTIONS
+    // ==========================================
+    
+    // Add/remove reaction
+    Route::post('/chat/messages/{messageId}/reactions', [ChatReactionController::class, 'toggle']);
+    
+    // Get reactions for a message
+    Route::get('/chat/messages/{messageId}/reactions', [ChatReactionController::class, 'index']);
+    
+    
+    // ==========================================
+    // THREADS
+    // ==========================================
+    
+    // Get thread replies
+    Route::get('/chat/threads/{threadId}/replies', [ChatThreadController::class, 'getReplies']);
+    
+    // Reply to thread
+    Route::post('/chat/threads/{threadId}/reply', [ChatThreadController::class, 'reply']);
+    
+    // Create thread from message
+    Route::post('/chat/messages/{messageId}/create-thread', [ChatThreadController::class, 'createFromMessage']);
+    
+    
+    // ==========================================
+    // BOOKMARKS
+    // ==========================================
+    
+    // Bookmark message
+    Route::post('/chat/messages/{messageId}/bookmark', [ChatMessageController::class, 'bookmark']);
+    
+    // Remove bookmark
+    Route::delete('/chat/messages/{messageId}/bookmark', [ChatMessageController::class, 'removeBookmark']);
+    
+    // Get user's bookmarks
+    Route::get('/chat/bookmarks', [ChatMessageController::class, 'getBookmarks']);
+    
+    
+    // ==========================================
+    // FILES
+    // ==========================================
+    
+    // Get files in a group/channel
+    Route::get('/chat/groups/{groupId}/files', [ChatMessageController::class, 'getFiles']);
+    
+    
+    // ==========================================
+    // MENTIONS
+    // ==========================================
+    
+    // Get user's mentions
+    Route::get('/chat/mentions', [ChatMessageController::class, 'getMentions']);
+    
+    // Mark mention as read
+    Route::post('/chat/mentions/{mentionId}/read', [ChatMessageController::class, 'markMentionAsRead']);
+    
+    
+    // ==========================================
+    // TYPING INDICATORS
+    // ==========================================
+    
+    // Update typing status
+    Route::post('/chat/groups/{groupId}/typing', [ChatController::class, 'updateTypingStatus']);
+    
+    // Get who's typing
+    Route::get('/chat/groups/{groupId}/typing', [ChatController::class, 'getTypingUsers']);
+    
+    
+    // ==========================================
+    // INVITATIONS
+  //  --------------------------------------------------------------------------
+    // Send invitation
+    Route::post('/chat/groups/{groupId}/invite', [ChatController::class, 'inviteUser']);
+    
+    // Accept invitation
+    Route::post('/chat/invitations/{invitationId}/accept', [ChatController::class, 'acceptInvitation']);
+    
+    // Decline invitation
+    Route::post('/chat/invitations/{invitationId}/decline', [ChatController::class, 'declineInvitation']);
+    
+    // Get pending invitations
+    Route::get('/chat/invitations', [ChatController::class, 'getPendingInvitations']);
 });
+
+Route::middleware('auth:sanctum')->prefix('chat/groups/{groupId}')->group(function () {
+    // List all integrations for a channel
+    Route::get('/integrations', [ChatIntegrationController::class, 'index']);
+    
+    // Create new integration
+    Route::post('/integrations', [ChatIntegrationController::class, 'store']);
+    
+    // Update integration
+    Route::patch('/integrations/{id}', [ChatIntegrationController::class, 'update']);
+    
+    // Delete integration
+    Route::delete('/integrations/{id}', [ChatIntegrationController::class, 'destroy']);
+    
+    // Regenerate API key
+    Route::post('/integrations/{id}/regenerate-key', [ChatIntegrationController::class, 'regenerateApiKey']);
+    
+    // Get integration logs
+    Route::get('/integrations/{id}/logs', [ChatIntegrationController::class, 'logs']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Webhook Routes (Public - No Authentication)
+|--------------------------------------------------------------------------
+| These routes are used by external applications
+*/
+
+Route::prefix('webhooks/chat')->group(function () {
+    // Send message to channel (requires API key in header)
+    Route::post('/message', [ChatWebhookController::class, 'sendMessage']);
+    
+    // Get integration info (verify API key)
+    Route::get('/info', [ChatWebhookController::class, 'getInfo']);
+});
+
+// Task Report Routes
+// Option 2: Apply middleware to entire prefix
+Route::prefix('tasks/reports')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/filters', [TaskReportController::class, 'getFilters']);
+    Route::post('/generate', [TaskReportController::class, 'generateReport']);
+});
+
+Route::middleware(['auth:sanctum'])->group(function () {
+    // Activity tracking endpoints
+    Route::post('/attendance/heartbeat', [ActivityTrackingController::class, 'heartbeat']);
+    Route::get('/attendance/activity-status', [ActivityTrackingController::class, 'getStatus']);
+    Route::post('/attendance/refresh-activity', [ActivityTrackingController::class, 'refreshActivity']);
+});
+
+// Admin/cron endpoint
+Route::post('/attendance/check-idle-sessions', [ActivityTrackingController::class, 'checkIdleSessions'])
+    ->middleware(['auth:sanctum', 'role:admin']);

@@ -11,43 +11,36 @@ export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('token'))
   const tokenExpiry = ref(localStorage.getItem('tokenExpiry'))
   const isLoading = ref(false)
+  const isLoggingOut = ref(false)
   const isAuthenticated = computed(() => !!token.value && !!user.value && !isTokenExpired())
   const userRole = computed(() => user.value?.role)
   const isAdmin = computed(() => userRole.value === 'admin')
   const isManager = computed(() => userRole.value === 'manager')
   const isEmployee = computed(() => userRole.value === 'employee')
 
-  // Configurable token lifetime (in milliseconds)
-  // Default: 24 hours
   const TOKEN_LIFETIME = 24 * 60 * 60 * 1000
-  
-  // Activity timeout (auto-logout after inactivity)
-  // Default: 2 hours
   const ACTIVITY_TIMEOUT = 2 * 60 * 60 * 1000
   
   let activityTimer = null
   let expiryCheckInterval = null
 
-  // Check if token has expired
   function isTokenExpired() {
     if (!tokenExpiry.value) return false
     return Date.now() > parseInt(tokenExpiry.value)
   }
 
-  // Update token expiry time
   function updateTokenExpiry() {
     const expiry = Date.now() + TOKEN_LIFETIME
     tokenExpiry.value = expiry.toString()
     localStorage.setItem('tokenExpiry', tokenExpiry.value)
   }
 
-  // Reset activity timer
   function resetActivityTimer() {
     if (activityTimer) {
       clearTimeout(activityTimer)
     }
 
-    if (isAuthenticated.value) {
+    if (isAuthenticated.value && !isLoggingOut.value) {
       activityTimer = setTimeout(() => {
         console.log('Auto-logout due to inactivity')
         logout()
@@ -55,12 +48,11 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Set up activity listeners
   function setupActivityListeners() {
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
     
     const handleActivity = () => {
-      if (isAuthenticated.value) {
+      if (isAuthenticated.value && !isLoggingOut.value) {
         resetActivityTimer()
       }
     }
@@ -69,11 +61,9 @@ export const useAuthStore = defineStore('auth', () => {
       window.addEventListener(event, handleActivity, { passive: true })
     })
 
-    // Start the timer
     resetActivityTimer()
   }
 
-  // Clean up activity listeners
   function cleanupActivityListeners() {
     if (activityTimer) {
       clearTimeout(activityTimer)
@@ -81,15 +71,13 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Periodically check token expiry
   function startExpiryCheck() {
     if (expiryCheckInterval) {
       clearInterval(expiryCheckInterval)
     }
 
-    // Check every minute
     expiryCheckInterval = setInterval(() => {
-      if (isTokenExpired()) {
+      if (isTokenExpired() && !isLoggingOut.value) {
         console.log('Token expired, logging out')
         logout()
       }
@@ -103,71 +91,73 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Function to set axios authorization header
   function setAxiosAuthHeader(authToken) {
+    console.log('🔧 Setting Axios auth header:', authToken ? 'Token present' : 'No token')
     if (authToken) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`
       axios.defaults.headers.common['Accept'] = 'application/json'
       axios.defaults.headers.common['Content-Type'] = 'application/json'
+     // console.log('✅ Axios headers set:', axios.defaults.headers.common)
     } else {
       delete axios.defaults.headers.common['Authorization']
+      console.log('🗑️ Axios auth header removed')
     }
   }
 
-  // Load auth state from localStorage
   async function loadFromStorage() {
+   // console.log('📂 Loading auth from storage...')
     const storedToken = localStorage.getItem('token')
     const storedUser = localStorage.getItem('user')
     const storedExpiry = localStorage.getItem('tokenExpiry')
 
+ 
+
     if (storedToken && storedUser && storedExpiry) {
-      // Check if token is expired
       if (Date.now() > parseInt(storedExpiry)) {
-        console.log('Stored token expired, clearing auth')
+       // console.log('⚠️ Stored token expired, clearing auth')
         clearAuth()
         return
       }
 
       try {
-        // Set values first
         token.value = storedToken
         tokenExpiry.value = storedExpiry
         user.value = JSON.parse(storedUser)
         setAxiosAuthHeader(token.value)
 
-        // Start activity monitoring and expiry checks BEFORE validation
-        // This prevents logout during the fetchUser call
         setupActivityListeners()
         startExpiryCheck()
 
-        // Validate by fetching fresh user data
-        // If this fails, catch block will clean everything up
         await fetchUser()
         
-        console.log('Auth state restored successfully')
+      //  console.log('✅ Auth state restored successfully')
       } catch (error) {
-        console.error('Failed to restore auth state:', error)
+        console.error('❌ Failed to restore auth state:', error)
         clearAuth()
       }
     }
   }
 
   function setAuth(userData, authToken) {
+ 
+    
     user.value = userData
     token.value = authToken
     
+   
     localStorage.setItem('token', authToken)
     localStorage.setItem('user', JSON.stringify(userData))
     
     updateTokenExpiry()
     setAxiosAuthHeader(authToken)
     
-    // Start monitoring
     setupActivityListeners()
     startExpiryCheck()
+    
   }
 
   function clearAuth() {
+   // console.log('🗑️ Clearing auth state...')
     user.value = null
     token.value = null
     tokenExpiry.value = null
@@ -178,9 +168,10 @@ export const useAuthStore = defineStore('auth', () => {
     
     setAxiosAuthHeader(null)
     
-    // Clean up monitoring
     cleanupActivityListeners()
     stopExpiryCheck()
+    
+   // console.log('✅ Auth state cleared')
   }
 
   function hasRole(roles) {
@@ -192,86 +183,179 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(credentials) {
+ 
+    
     try {
       isLoading.value = true
+    //  console.log('📤 Calling authAPI.login()...')
+      
       const response = await authAPI.login(credentials)
+      
+     
+      
+      // Check response structure
+      if (!response.data) {
+        console.error('❌ No data in response!')
+        throw new Error('Invalid response: no data')
+      }
+      
+      if (!response.data.user) {
+        console.error('❌ No user in response data!')
+        console.error('Response data keys:', Object.keys(response.data))
+        throw new Error('Invalid response: no user data')
+      }
+      
+      if (!response.data.token) {
+        console.error('❌ No token in response data!')
+        console.error('Response data keys:', Object.keys(response.data))
+        throw new Error('Invalid response: no token')
+      }
+      
+      
      
       setAuth(response.data.user, response.data.token)
+    
      
       return response
     } catch (error) {
+      console.log('=== LOGIN ERROR IN STORE ===')
+      console.error('Error:', error)
+      console.error('Error message:', error.message)
+      console.error('Error response:', error.response)
+      
+      if (error.response) {
+        console.error('Response status:', error.response.status)
+        console.error('Response data:', error.response.data)
+        console.error('Response headers:', error.response.headers)
+      }
+      
       clearAuth()
       throw error
     } finally {
       isLoading.value = false
+      console.log('=== AUTH STORE LOGIN END ===\n')
     }
   }
 
   async function register(userData) {
+   
+    
     try {
       isLoading.value = true
+     
+      
       const response = await authAPI.register(userData)
+      
+      
      
       setAuth(response.data.user, response.data.token)
+      
+    
      
       return response
     } catch (error) {
+      console.error('❌ Registration error:', error)
       clearAuth()
       throw error
     } finally {
       isLoading.value = false
+      
     }
   }
 
   async function logout() {
+    // Prevent multiple logout calls
+    if (isLoggingOut.value) {
+    
+      return
+    }
+
+    isLoggingOut.value = true
+    
+
     try {
-      await authAPI.logout()
+      // Step 1: Emit logout event BEFORE clearing anything
+      window.dispatchEvent(new CustomEvent('user-logging-out'))
+     
+      // Step 2: Wait a moment for components to clean up
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Step 3: Call logout API (don't fail if this errors)
+      try {
+        await authAPI.logout()
+        //console.log('✅ Logout API call successful')
+      } catch (apiError) {
+        console.warn('⚠️ Logout API failed (continuing anyway):', apiError.message)
+      }
+      
+      // Step 4: Clear all auth state
+      clearAuth()
+     
+      
+      // Step 5: Navigate to login
+      await router.push({ name: 'login' })
+      //console.log('✅ Redirected to login')
+      
     } catch (error) {
-      console.error('Logout error:', error)
-    } finally {
+      console.error('❌ Logout error:', error)
+      // Even if something fails, ensure we clear auth
       clearAuth()
       router.push({ name: 'login' })
+    } finally {
+      isLoggingOut.value = false
+    //  console.log('🔓 Logout process complete\n')
     }
   }
 
   async function fetchUser() {
-    if (!token.value) return
+    if (!token.value) {
+     // console.log('⚠️ No token, skipping fetchUser')
+      return
+    }
+    
+ 
     
     try {
       const response = await authAPI.getUser()
+     
+      
       user.value = response.data.user
       localStorage.setItem('user', JSON.stringify(user.value))
       
-      // Refresh token expiry on successful API call
       updateTokenExpiry()
     } catch (error) {
+      console.error('❌ Failed to fetch user:', error)
       clearAuth()
       throw error
     }
   }
 
   async function forgotPassword(email) {
+   
     return await authAPI.forgotPassword({ email })
   }
 
   async function resetPassword(data) {
+   
     return await authAPI.resetPassword(data)
   }
 
-  // Refresh token (extend session)
   async function refreshSession() {
     if (!isAuthenticated.value) return
     
+   
+    
     try {
       await fetchUser()
-      console.log('Session refreshed')
+      
     } catch (error) {
-      console.error('Failed to refresh session:', error)
+      console.error('❌ Failed to refresh session:', error)
     }
   }
 
-  // Initialize axios headers when store is created
+  // Initialize axios header if token exists
   if (token.value) {
+  //  console.log('🔧 Initializing axios with existing token')
     setAxiosAuthHeader(token.value)
   }
 
@@ -280,6 +364,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     tokenExpiry,
     isLoading,
+    isLoggingOut,
     isAuthenticated,
     userRole,
     isAdmin,

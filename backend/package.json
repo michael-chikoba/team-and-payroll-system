@@ -1,9 +1,12 @@
-
 {
   "name": "payroll-system-backend",
   "type": "project",
   "description": "Payroll Management System Backend",
-  "keywords": ["payroll", "laravel", "hr"],
+  "keywords": [
+    "payroll",
+    "laravel",
+    "hr"
+  ],
   "license": "MIT",
   "require": {
     "php": "^8.2",
@@ -67,5 +70,9 @@
     }
   },
   "minimum-stability": "stable",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "dependencies": {
+    "idle-js": "^1.2.0",
+    "pusher-js": "^8.4.0"
+  }
 }

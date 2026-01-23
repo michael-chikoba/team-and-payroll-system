@@ -26,8 +26,12 @@ class Attendance extends Model
         'notes',
         'country_id',
         'business_id',
-        'is_overtime_session', // NEW: Flag for overtime sessions
-        'parent_attendance_id', // NEW: Link to original attendance if this is overtime
+        'is_overtime_session',
+        'parent_attendance_id',
+        'last_activity_at',
+    'idle_minutes',
+    'auto_clocked_out',
+    'activity_log',
     ];
 
     protected $casts = [
@@ -35,11 +39,86 @@ class Attendance extends Model
         'total_hours' => 'float',
         'regular_hours' => 'float',
         'overtime_hours' => 'float',
-        'break_minutes' => 'integer',
+        'break_minutes' => 'integer', // CRITICAL: Cast to integer
         'is_overtime_session' => 'boolean',
+         'last_activity_at' => 'datetime',
+    'idle_minutes' => 'integer',
+    'auto_clocked_out' => 'boolean',
     ];
 
     protected $appends = ['full_date'];
+
+    /**
+ * Log activity and update last activity timestamp
+ */
+public function recordActivity(string $activityType = 'heartbeat'): void
+{
+    $this->last_activity_at = now();
+    $this->idle_minutes = 0;
+    
+    // Append to activity log
+    $log = json_decode($this->activity_log, true) ?? [];
+    $log[] = [
+        'type' => $activityType,
+        'timestamp' => now()->toIso8601String(),
+    ];
+    
+    // Keep only last 100 entries to prevent bloat
+    if (count($log) > 100) {
+        $log = array_slice($log, -100);
+    }
+    
+    $this->activity_log = json_encode($log);
+    $this->save();
+}
+
+/**
+ * Check if attendance is idle beyond threshold
+ */
+public function isIdle(int $idleThresholdMinutes = 15): bool
+{
+    if (!$this->last_activity_at) {
+        return false;
+    }
+    
+    $minutesSinceActivity = now()->diffInMinutes($this->last_activity_at);
+    return $minutesSinceActivity >= $idleThresholdMinutes;
+}
+
+/**
+ * Auto clock out due to inactivity
+ */
+public function autoClockOutDueToInactivity(): void
+{
+    if ($this->clock_out) {
+        return; // Already clocked out
+    }
+    
+    $this->clock_out = $this->last_activity_at->format('H:i:s');
+    $this->auto_clocked_out = true;
+    $this->status = 'completed';
+    
+    $hours = $this->calculateHours();
+    $this->total_hours = $hours['total'];
+    $this->regular_hours = $hours['regular'];
+    $this->overtime_hours = $hours['overtime'];
+    
+    $idleMinutes = now()->diffInMinutes($this->last_activity_at);
+    $this->idle_minutes = $idleMinutes;
+    
+    $this->notes = ($this->notes ? $this->notes . ' | ' : '') 
+        . "Auto-clocked out after {$idleMinutes} minutes of inactivity at " 
+        . $this->last_activity_at->toDateTimeString();
+    
+    $this->save();
+    
+    Log::info('Auto-clocked out due to inactivity', [
+        'attendance_id' => $this->id,
+        'employee_id' => $this->employee_id,
+        'idle_minutes' => $idleMinutes,
+        'clock_out' => $this->clock_out
+    ]);
+}
 
     /**
      * Boot method for the model
@@ -98,13 +177,11 @@ class Attendance extends Model
         return $this->belongsTo(Business::class);
     }
 
-    // NEW: Parent attendance relationship (for overtime sessions)
     public function parentAttendance(): BelongsTo
     {
         return $this->belongsTo(Attendance::class, 'parent_attendance_id');
     }
 
-    // NEW: Child overtime sessions
     public function overtimeSessions()
     {
         return $this->hasMany(Attendance::class, 'parent_attendance_id');
@@ -129,6 +206,7 @@ class Attendance extends Model
 
     /**
      * Calculate hours with shift-based overtime detection
+     * FIXED: Properly handles break_minutes as integer
      */
     public function calculateHours(): array
     {
@@ -155,7 +233,10 @@ class Attendance extends Model
 
             // Calculate total minutes
             $totalMinutes = abs($clockIn->diffInMinutes($clockOut, false));
-            $breakMinutes = $this->break_minutes ?? 0;
+            
+            // CRITICAL FIX: Ensure break_minutes is an integer
+            $breakMinutes = (int) ($this->break_minutes ?? 0);
+            
             $workMinutes = max(0, $totalMinutes - $breakMinutes);
             $totalHours = round($workMinutes / 60, 2);
 
@@ -197,8 +278,14 @@ class Attendance extends Model
                 $overtimeMinutes = $expectedEndTime->diffInMinutes($clockOut);
                 
                 // Subtract break proportionally
-                $regularWithBreak = max(0, $regularMinutes - ($breakMinutes * ($regularMinutes / $totalMinutes)));
-                $overtimeWithBreak = max(0, $overtimeMinutes - ($breakMinutes * ($overtimeMinutes / $totalMinutes)));
+                $totalWorkMinutes = $regularMinutes + $overtimeMinutes;
+                if ($totalWorkMinutes > 0) {
+                    $regularWithBreak = max(0, $regularMinutes - ($breakMinutes * ($regularMinutes / $totalWorkMinutes)));
+                    $overtimeWithBreak = max(0, $overtimeMinutes - ($breakMinutes * ($overtimeMinutes / $totalWorkMinutes)));
+                } else {
+                    $regularWithBreak = 0;
+                    $overtimeWithBreak = 0;
+                }
                 
                 $regularHours = round($regularWithBreak / 60, 2);
                 $overtimeHours = round($overtimeWithBreak / 60, 2);
@@ -213,7 +300,12 @@ class Attendance extends Model
         } catch (\Exception $e) {
             Log::error('Error calculating hours', [
                 'attendance_id' => $this->id,
-                'error' => $e->getMessage()
+                'clock_in' => $this->clock_in,
+                'clock_out' => $this->clock_out,
+                'break_minutes' => $this->break_minutes,
+                'break_minutes_type' => gettype($this->break_minutes),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
             return [
                 'total' => 0,
@@ -261,7 +353,9 @@ class Attendance extends Model
         }
         
         $actualClockIn = Carbon::parse($dateStr . ' ' . $this->clock_in);
-        $gracePeriod = config('attendance.grace_period_minutes', 15);
+        
+        // CRITICAL FIX: Ensure grace period is an integer
+        $gracePeriod = (int) config('attendance.grace_period_minutes', 15);
         $lateThreshold = $shiftStartTime->copy()->addMinutes($gracePeriod);
 
         return $actualClockIn->greaterThan($lateThreshold);
@@ -396,6 +490,27 @@ class Attendance extends Model
                 'error' => $e->getMessage()
             ]);
             return [];
+        }
+    }
+
+    /**
+     * Get monthly overtime hours (alias for backward compatibility)
+     */
+    public static function getMonthlyOvertimeHours(int $employeeId, int $month, int $year): float
+    {
+        try {
+            return self::where('employee_id', $employeeId)
+                ->whereYear('date', $year)
+                ->whereMonth('date', $month)
+                ->sum('overtime_hours');
+        } catch (\Exception $e) {
+            Log::error('Error getting monthly overtime', [
+                'employee_id' => $employeeId,
+                'month' => $month,
+                'year' => $year,
+                'error' => $e->getMessage()
+            ]);
+            return 0;
         }
     }
 

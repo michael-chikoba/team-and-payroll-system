@@ -12,6 +12,111 @@ use Illuminate\Support\Facades\Storage;
 
 class ChatMessageController extends Controller
 {
+
+    // Add these methods to ChatMessageController
+
+public function togglePin(Request $request, int $groupId, int $messageId): JsonResponse
+{
+    try {
+        $user = $request->user();
+        $group = ChatGroup::findOrFail($groupId);
+        $message = ChatMessage::where('chat_group_id', $groupId)
+            ->findOrFail($messageId);
+
+        if (!$group->isAdmin($user->id)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only admins can pin messages'
+            ], 403);
+        }
+
+        if ($message->is_pinned) {
+            $message->update([
+                'is_pinned' => false,
+                'pinned_at' => null,
+                'pinned_by' => null,
+            ]);
+            $action = 'unpinned';
+        } else {
+            $message->update([
+                'is_pinned' => true,
+                'pinned_at' => now(),
+                'pinned_by' => $user->id,
+            ]);
+            $action = 'pinned';
+        }
+
+        return response()->json([
+            'success' => true,
+            'action' => $action,
+            'is_pinned' => $message->is_pinned,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false], 500);
+    }
+}
+
+public function getPinnedMessages(int $groupId): JsonResponse
+{
+    try {
+        $messages = ChatMessage::where('chat_group_id', $groupId)
+            ->pinned()
+            ->with(['user', 'pinnedByUser'])
+            ->orderByDesc('pinned_at')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'messages' => $messages,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false], 500);
+    }
+}
+
+public function bookmark(Request $request, int $messageId): JsonResponse
+{
+    try {
+        ChatBookmark::create([
+            'user_id' => $request->user()->id,
+            'chat_message_id' => $messageId,
+        ]);
+
+        return response()->json(['success' => true]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false], 500);
+    }
+}
+
+public function removeBookmark(Request $request, int $messageId): JsonResponse
+{
+    try {
+        ChatBookmark::where('user_id', $request->user()->id)
+            ->where('chat_message_id', $messageId)
+            ->delete();
+
+        return response()->json(['success' => true]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false], 500);
+    }
+}
+
+public function getFiles(int $groupId): JsonResponse
+{
+    try {
+        $files = ChatFile::where('chat_group_id', $groupId)
+            ->with('uploader:id,name')
+            ->orderByDesc('created_at')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'files' => $files,
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['success' => false], 500);
+    }
+}
     /**
      * Get messages for a group
      */

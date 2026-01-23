@@ -10,16 +10,18 @@ return [
         Sanctum::currentApplicationUrlWithPort()
     ))),
 
-    // Add this section - it's missing from your config
-    'prefix' => 'api',
+    // You don't need 'prefix' here - that's for routes
+    // 'prefix' => 'api', // REMOVE THIS LINE
     
     'guard' => ['web'],
 
     'expiration' => null,
 
+    // CRITICAL FIX: Add the API middleware configuration
     'middleware' => [
-        'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
+        'authenticate_session' => Laravel\Sanctum\Http\Middleware\AuthenticateSession::class,
         'encrypt_cookies' => App\Http\Middleware\EncryptCookies::class,
+        'verify_csrf_token' => App\Http\Middleware\VerifyCsrfToken::class,
     ],
 
 ];

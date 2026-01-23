@@ -11,7 +11,7 @@ return [
     |
     */
 
-    'driver' => Stevebauman\Location\Drivers\IpApi::class,
+    'driver' => App\Location\Drivers\IpWhoDriver::class,
 
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +26,7 @@ return [
     */
 
     'fallbacks' => [
+        Stevebauman\Location\Drivers\IpApi::class,
         Stevebauman\Location\Drivers\Ip2locationio::class,
         Stevebauman\Location\Drivers\IpInfo::class,
         Stevebauman\Location\Drivers\GeoPlugin::class,
@@ -109,6 +110,41 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | ipwho.org Configuration
+    |--------------------------------------------------------------------------
+    |
+    | API key for ipwho.org service (optional but recommended)
+    | Free tier allows 10,000 requests/month
+    |
+    */
+
+    'ipwho_api_key' => env('IPWHO_API_KEY', 'sk.42bfeb20864cd4a69de7fce155b6555e3e8badb7ea9287d17ebac76e57c2ea59'), // ADD YOUR KEY HERE
+
+    /*
+    |--------------------------------------------------------------------------
+    | Location Service Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Custom configuration for enhanced features
+    |
+    */
+
+    'location' => [
+        'cache_duration' => env('LOCATION_CACHE_DURATION', 86400),
+        'timeout' => env('LOCATION_TIMEOUT', 5),
+        'retry_attempts' => env('LOCATION_RETRY_ATTEMPTS', 2),
+        'enable_all_features' => env('LOCATION_ENHANCED_FEATURES', true),
+        'trusted_proxies' => explode(',', env('TRUSTED_PROXIES', '')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | IP API Configuration
+    |--------------------------------------------------------------------------
+    */
+
     'ip_api' => [
         'token' => env('IP_API_TOKEN'),
     ],
@@ -135,9 +171,7 @@ return [
     */
 
     'kloudend' => [
-
         'token' => env('KLOUDEND_TOKEN'),
-
     ],
 
 ];

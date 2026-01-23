@@ -48,6 +48,26 @@
 
               <!-- Content -->
               <div class="px-6 py-6 space-y-6">
+                <!-- Admin Info Banner -->
+                <div v-if="showAdminBanner" class="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-4">
+                  <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                      <svg class="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                      </svg>
+                    </div>
+                    <div class="ml-3 flex-1">
+                      <p class="text-sm font-medium text-indigo-900">
+                        <span v-if="isAssignedApprover">You are the assigned approver for this ticket.</span>
+                        <span v-else>As a business admin, you can approve this ticket on behalf of your team.</span>
+                      </p>
+                      <p class="mt-1 text-sm text-indigo-700">
+                        Originally assigned to: <span class="font-semibold">{{ getApproverName }}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <!-- Ticket Summary -->
                 <div class="bg-gray-50 rounded-xl p-4">
                   <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -189,6 +209,7 @@
                 <div class="flex items-center justify-between">
                   <div class="text-sm text-gray-500">
                     You are approving as: <span class="font-medium text-gray-700">{{ currentUser?.name || currentUser?.email }}</span>
+                    <span v-if="!isAssignedApprover" class="ml-1 text-indigo-600 font-semibold">(Business Admin)</span>
                   </div>
                   <div class="flex items-center space-x-3">
                     <button
@@ -228,7 +249,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, nextTick } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
 import axios from 'axios'
 import PriorityBadge from '@/components/PriorityBadge.vue'
@@ -295,6 +316,24 @@ const decisionOptions = [
 ]
 
 // Computed properties
+const isAssignedApprover = computed(() => {
+  return props.ticket?.approver_id === currentUser.value?.id
+})
+
+const showAdminBanner = computed(() => {
+  return currentUser.value?.role === 'admin'
+})
+
+const getApproverName = computed(() => {
+  const approver = props.ticket?.approver
+  if (!approver) return 'Unassigned'
+  if (approver.name) return approver.name
+  if (approver.first_name || approver.last_name) {
+    return `${approver.first_name || ''} ${approver.last_name || ''}`.trim()
+  }
+  return approver.email || 'Unassigned'
+})
+
 const isDueDateSoon = computed(() => {
   if (!props.ticket?.due_date) return false
   const dueDate = new Date(props.ticket.due_date)
@@ -385,15 +424,19 @@ const submitApproval = async () => {
 
     console.log('📤 Submitting approval for ticket:', props.ticket?.id)
     console.log('📤 Payload:', payload)
+    console.log('📤 Current user:', currentUser.value)
+    console.log('📤 Is assigned approver:', isAssignedApprover.value)
     console.log('📤 API Endpoint:', `/api/tickets/${props.ticket?.id}/update-status`)
 
-    const response = await axios.patch(`/api/tickets/${props.ticket.id}/update-status`, payload)
+    const response = await axios.post(`/api/tickets/${props.ticket.id}/update-status`, payload)
     
     console.log('✅ Approval response:', response.data)
     
     // Show success message
     const messages = {
-      approved: 'Ticket approved successfully!',
+      approved: isAssignedApprover.value 
+        ? 'Ticket approved successfully!' 
+        : 'Ticket approved successfully (as business admin)!',
       rejected: 'Ticket rejected successfully.',
       in_progress: 'Ticket marked as In Progress.'
     }
@@ -428,7 +471,6 @@ const submitApproval = async () => {
     if (error.response?.status === 422) {
       errors.value = error.response.data.errors || {}
       
-      // Convert Laravel validation errors object to string if needed
       if (typeof errors.value === 'object' && !Array.isArray(errors.value)) {
         const errorMessages = []
         for (const key in errors.value) {
@@ -442,7 +484,7 @@ const submitApproval = async () => {
       }
     } else if (error.response?.status === 403) {
       errors.value = { 
-        general: 'You are not authorized to approve this ticket.' 
+        general: 'You are not authorized to approve this ticket. Please ensure you are an admin in the same business.' 
       }
       toast.error('Unauthorized to approve this ticket', {
         timeout: 3000,
@@ -481,31 +523,15 @@ const submitApproval = async () => {
   }
 }
 
-// Debug function to test API endpoint
-const testEndpoint = async () => {
-  try {
-    console.log('🧪 Testing API endpoint...')
-    const response = await axios.get(`/api/tickets/${props.ticket?.id}`)
-    console.log('✅ Ticket exists:', response.data)
-    return true
-  } catch (error) {
-    console.error('❌ Ticket fetch error:', error)
-    return false
-  }
-}
-
 // Watchers
-watch(() => props.show, async (newVal) => {
+watch(() => props.show, (newVal) => {
   if (newVal) {
     console.log('🎫 Approval modal opened for ticket:', props.ticket)
+    console.log('👤 Current user:', currentUser.value)
+    console.log('✅ Is assigned approver:', isAssignedApprover.value)
+    console.log('👮 Is admin:', currentUser.value?.role === 'admin')
     
-    // Reset form when modal opens
     resetForm()
-    
-    // Test if ticket exists and can be fetched
-    if (props.ticket?.id) {
-      await testEndpoint()
-    }
   } else {
     resetForm()
   }
@@ -517,16 +543,6 @@ watch(() => form.comments, (newComments) => {
     form.comments = newComments.substring(0, 1000)
   }
 })
-
-// Auto-select decision based on ticket status if it's not pending
-watch(() => props.ticket, (newTicket) => {
-  if (newTicket && newTicket.status !== 'pending') {
-    // If ticket is already approved/rejected/in_progress, pre-select that option
-    if (['approved', 'rejected', 'in_progress'].includes(newTicket.status)) {
-      form.status = newTicket.status
-    }
-  }
-}, { immediate: true })
 </script>
 
 <style scoped>

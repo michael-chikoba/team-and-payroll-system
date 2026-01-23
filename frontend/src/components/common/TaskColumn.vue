@@ -15,7 +15,7 @@
         :key="task.id"
         :task="task"
         :user-role="userRole"
-        @update-status="$emit('update-status', task.id, $event)"
+        @update-status="handleStatusUpdate"
         @edit="$emit('edit-task', task)"
         @delete="$emit('delete-task', task.id)"
         @view="$emit('view-task', task)"
@@ -40,6 +40,10 @@ const props = defineProps({
 
 const emit = defineEmits(['update-status', 'edit-task', 'delete-task', 'view-task']);
 
+const handleStatusUpdate = (taskId, newStatus) => {
+  emit('update-status', taskId, props.status);
+};
+
 const handleDrop = (event) => {
   event.preventDefault();
   const taskId = event.dataTransfer.getData('taskId');
@@ -51,17 +55,20 @@ const handleDrop = (event) => {
 
 <style scoped>
 .task-column {
-  background-color: #edf2f7;
+  background-color: #f7fafc;
   border-radius: 8px;
   padding: 16px;
   min-height: 500px;
+  border: 1px solid #e2e8f0;
 }
 
 .column-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .column-header h3 {
@@ -69,15 +76,19 @@ const handleDrop = (event) => {
   font-weight: 600;
   color: #2d3748;
   margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .task-count {
-  background-color: #cbd5e0;
-  color: #2d3748;
-  padding: 2px 8px;
+  background-color: #e2e8f0;
+  color: #4a5568;
+  padding: 4px 10px;
   border-radius: 12px;
   font-size: 12px;
   font-weight: 600;
+  min-width: 24px;
+  text-align: center;
 }
 
 .column-content {
@@ -88,9 +99,15 @@ const handleDrop = (event) => {
 }
 
 .empty-column {
-  text-align: center;
-  padding: 40px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
   color: #a0aec0;
   font-size: 14px;
+  font-style: italic;
+  border: 2px dashed #cbd5e0;
+  border-radius: 6px;
+  background-color: #f8fafc;
 }
 </style>

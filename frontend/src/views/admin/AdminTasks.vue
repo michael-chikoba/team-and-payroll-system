@@ -4,8 +4,8 @@
     <div class="absolute inset-0 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50"></div>
    
     <!-- Main Content -->
-    <div class="relative z-10 min-h-screen py-8 px-4 sm:px-6 lg:px-8">
-      <div class="max-w-7xl mx-auto">
+    <div class="relative z-10 min-h-screen py-8 px-4 sm:px-6 lg:px-8 flex flex-col">
+      <div class="max-w-7xl mx-auto w-full flex-1 flex flex-col">
         <!-- Header Section -->
         <div class="mb-8 text-center sm:text-left">
           <div class="flex items-center justify-center sm:justify-start mb-4">
@@ -23,10 +23,8 @@
           </div>
         </div>
 
-     
-
         <!-- Task Board Section -->
-        <div class="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
           <div class="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-purple-50">
             <h2 class="text-xl font-semibold text-gray-800 flex items-center">
               <svg class="w-5 h-5 mr-2 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -35,13 +33,13 @@
               Active Task Board
             </h2>
           </div>
-          <div class="p-6">
+          <div class="p-6 flex-1 min-h-0">
             <TaskBoard
               :key="refreshKey"
               :employees="employees"
               :loading="loadingEmployees"
               @task-updated="onTaskUpdated"
-              class="w-full"
+              class="w-full h-full"
             />
           </div>
         </div>
@@ -95,6 +93,9 @@ const onTaskUpdated = async () => {
 .admin-task-page {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   position: relative;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .admin-task-page::before {
@@ -109,6 +110,16 @@ const onTaskUpdated = async () => {
   z-index: 0;
 }
 
+/* Ensure the main content area takes full height */
+.min-h-screen {
+  min-height: 100vh;
+}
+
+/* Ensure TaskBoard container has proper height constraints */
+.min-h-0 {
+  min-height: 0;
+}
+
 @media (max-width: 640px) {
   .max-w-7xl {
     padding-left: 1rem;
@@ -117,6 +128,11 @@ const onTaskUpdated = async () => {
   
   .text-4xl {
     font-size: 2rem;
+  }
+  
+  .admin-task-page {
+    height: auto;
+    min-height: 100vh;
   }
 }
 </style>

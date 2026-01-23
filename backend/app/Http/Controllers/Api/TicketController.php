@@ -4,25 +4,39 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
+use App\Models\TicketComment;
+use App\Models\TicketAttachment;
+use App\Models\TicketActivity;
+use App\Models\TicketType;
 use App\Models\User;
+use App\Models\Department;
 use App\Models\Employee;
+use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\TicketApprovalRequest;
 use App\Mail\TicketStatusUpdate;
+use App\Mail\TicketAssigned;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class TicketController extends Controller
 {
     /**
-     * Get list of tickets with filtering
+     * Get list of tickets with filtering (BACKWARD COMPATIBLE)
      */
     public function index(Request $request)
     {
         $user = $request->user();
+        
+        // Use the new index method if we have new features enabled
+        if ($request->has('type') || $request->has('category') || $request->has('department_id')) {
+            return $this->indexEnhanced($request);
+        }
+        
         $query = Ticket::with(['user', 'approver']);
         
         // Role-based filtering
@@ -63,10 +77,200 @@ class TicketController extends Controller
     }
 
     /**
-     * Create a new ticket
+     * Enhanced index method with new features
+     */
+    public function indexEnhanced(Request $request)
+    {
+        $user = $request->user();
+        $query = Ticket::with(['user', 'approver', 'assignedUsers']);
+        
+        // Role-based filtering
+        if ($user->hasRole('admin')) {
+            $employee = $user->employee;
+            if ($employee) {
+                $query->whereHas('user.employee', function ($q) use ($employee) {
+                    $q->where('business_id', $employee->business_id);
+                });
+            }
+        } else {
+            // Regular users see their tickets and tickets assigned to them
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                  ->orWhereHas('assignedUsers', function ($assignQ) use ($user) {
+                      $assignQ->where('user_id', $user->id);
+                  });
+            });
+        }
+        
+        // Type filter
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
+        
+        // Category filter
+        if ($request->has('category')) {
+            $query->where('category', $request->category);
+        }
+        
+        // Assigned to filter
+        if ($request->has('assigned_to')) {
+            $query->whereHas('assignedUsers', function ($q) use ($request) {
+                $q->where('user_id', $request->assigned_to);
+            });
+        }
+        
+        // Status filter
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+        
+        // Priority filter
+        if ($request->has('priority')) {
+            $query->where('priority', $request->priority);
+        }
+        
+        // Search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('id', 'like', "%{$search}%")
+                  ->orWhere('category', 'like', "%{$search}%")
+                  ->orWhere('subcategory', 'like', "%{$search}%");
+            });
+        }
+
+        // Sort options
+        $sortBy = $request->get('sort_by', 'created_at');
+        $sortOrder = $request->get('sort_order', 'desc');
+        $query->orderBy($sortBy, $sortOrder);
+        
+        return response()->json($query->paginate($request->get('per_page', 15)));
+    }
+
+    /**
+     * Get ticket types with their configurations
+     */
+    public function getTicketTypes(Request $request)
+    {
+        try {
+            // First check if TicketType model exists
+            if (!class_exists(TicketType::class)) {
+                // Return default types if table doesn't exist yet
+                return response()->json([
+                    [
+                        'slug' => 'issue',
+                        'name' => 'Issue',
+                        'description' => 'Report problems, bugs, or system errors',
+                        'icon' => 'exclamation-circle',
+                        'color' => '#EF4444',
+                        'categories' => ['Technical', 'System', 'Access', 'Performance', 'Other'],
+                        'subcategories' => ['Login', 'Slow Performance', 'Error Message', 'Data Issue', 'Bug'],
+                        'sla_hours' => 24,
+                        'requires_approval' => false,
+                        'is_active' => true,
+                    ],
+                    [
+                        'slug' => 'request',
+                        'name' => 'Request',
+                        'description' => 'Request for new features, access, or information',
+                        'icon' => 'document-text',
+                        'color' => '#10B981',
+                        'categories' => ['Access', 'Hardware', 'Software', 'Data', 'Training'],
+                        'subcategories' => ['New Account', 'Permission', 'Report', 'Equipment', 'Consultation'],
+                        'sla_hours' => 48,
+                        'requires_approval' => true,
+                        'is_active' => true,
+                    ],
+                    [
+                        'slug' => 'change_request',
+                        'name' => 'Change Request',
+                        'description' => 'Request for system or process changes',
+                        'icon' => 'adjustments',
+                        'color' => '#8B5CF6',
+                        'categories' => ['Process', 'System', 'Policy', 'Configuration', 'Integration'],
+                        'subcategories' => ['Enhancement', 'Modification', 'Deployment', 'Integration', 'Customization'],
+                        'sla_hours' => 72,
+                        'requires_approval' => true,
+                        'is_active' => true,
+                    ]
+                ]);
+            }
+            
+            $types = TicketType::where('is_active', true)
+                ->orderBy('sort_order')
+                ->get();
+                
+            return response()->json($types);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch ticket types', ['error' => $e->getMessage()]);
+            return response()->json([]);
+        }
+    }
+
+    /**
+     * Get categories for a specific ticket type
+     */
+    public function getCategories(Request $request, $typeSlug)
+    {
+        try {
+            if (!class_exists(TicketType::class)) {
+                // Return default categories based on type
+                $defaultCategories = [
+                    'issue' => [
+                        'categories' => ['Technical', 'System', 'Access', 'Performance', 'Other'],
+                        'subcategories' => ['Login', 'Slow Performance', 'Error Message', 'Data Issue', 'Bug']
+                    ],
+                    'request' => [
+                        'categories' => ['Access', 'Hardware', 'Software', 'Data', 'Training'],
+                        'subcategories' => ['New Account', 'Permission', 'Report', 'Equipment', 'Consultation']
+                    ],
+                    'change_request' => [
+                        'categories' => ['Process', 'System', 'Policy', 'Configuration', 'Integration'],
+                        'subcategories' => ['Enhancement', 'Modification', 'Deployment', 'Integration', 'Customization']
+                    ]
+                ];
+                
+                return response()->json($defaultCategories[$typeSlug] ?? [
+                    'categories' => [],
+                    'subcategories' => []
+                ]);
+            }
+            
+            $ticketType = TicketType::where('slug', $typeSlug)->first();
+            
+            if (!$ticketType) {
+                return response()->json([
+                    'categories' => [],
+                    'subcategories' => []
+                ]);
+            }
+            
+            return response()->json([
+                'categories' => $ticketType->categories ?? [],
+                'subcategories' => $ticketType->subcategories ?? []
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch categories', ['type' => $typeSlug, 'error' => $e->getMessage()]);
+            return response()->json([
+                'categories' => [],
+                'subcategories' => []
+            ]);
+        }
+    }
+
+    /**
+     * Create a new ticket (BACKWARD COMPATIBLE + NEW FEATURES)
      */
     public function store(Request $request)
     {
+        // Determine if this is a new-style ticket with type
+        if ($request->has('type')) {
+            return $this->storeWithType($request);
+        }
+        
+        // Old-style ticket creation (backward compatible)
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -115,63 +319,27 @@ class TicketController extends Controller
                 'priority' => $request->priority,
                 'due_date' => $request->due_date,
                 'status' => 'pending',
+                'type' => 'request',
+                'category' => 'General',
             ]);
 
-            // Load relationships for email
+            // Load relationships
             $ticket->load(['user', 'approver']);
 
-            // Send email to approver - QUEUE IT for better reliability
-            try {
-                Log::info('Attempting to send approval email', [
-                    'ticket_id' => $ticket->id,
-                    'approver_email' => $approver->email,
-                    'approver_name' => $approver->first_name . ' ' . $approver->last_name,
-                    'config' => [
-                        'mailer' => config('mail.default'),
-                        'host' => config('mail.mailers.smtp.host'),
-                        'port' => config('mail.mailers.smtp.port'),
-                    ]
-                ]);
-
-                // Test mail configuration first
-                $this->testMailConfiguration();
-                
-                // Send email immediately
-                Mail::to($approver->email)
-                    ->send(new TicketApprovalRequest($ticket));
-
-                Log::info('Ticket approval email sent successfully', [
-                    'ticket_id' => $ticket->id,
-                    'approver_email' => $approver->email
-                ]);
-
-                $emailSent = true;
-                
-            } catch (\Exception $e) {
-                Log::error('Failed to send ticket approval email', [
-                    'ticket_id' => $ticket->id,
-                    'approver_email' => $approver->email,
-                    'error_message' => $e->getMessage(),
-                    'error_trace' => $e->getTraceAsString()
-                ]);
-                
-                $emailSent = false;
-                
-                // Try alternative: Queue the email
+            // Get all admins from the same business to notify
+            $businessAdmins = $this->getBusinessAdmins($employee->business_id);
+            
+            // Send email to all admins
+            $emailsSent = 0;
+            foreach ($businessAdmins as $admin) {
                 try {
-                    Mail::to($approver->email)
-                        ->queue(new TicketApprovalRequest($ticket));
-                    
-                    Log::info('Email queued for later delivery', [
+                    Mail::to($admin->email)->send(new TicketApprovalRequest($ticket));
+                    $emailsSent++;
+                } catch (\Exception $e) {
+                    Log::error('Failed to send approval email to admin', [
                         'ticket_id' => $ticket->id,
-                        'approver_email' => $approver->email
-                    ]);
-                    
-                    $emailSent = true;
-                } catch (\Exception $queueException) {
-                    Log::error('Failed to queue email', [
-                        'ticket_id' => $ticket->id,
-                        'error' => $queueException->getMessage()
+                        'admin_id' => $admin->id,
+                        'error' => $e->getMessage()
                     ]);
                 }
             }
@@ -181,7 +349,8 @@ class TicketController extends Controller
             return response()->json([
                 'message' => 'Ticket created successfully',
                 'ticket' => $ticket,
-                'email_sent' => $emailSent ?? false
+                'emails_sent' => $emailsSent,
+                'admins_notified' => count($businessAdmins)
             ], 201);
             
         } catch (\Exception $e) {
@@ -190,7 +359,6 @@ class TicketController extends Controller
             Log::error('Failed to create ticket', [
                 'user_id' => Auth::id(),
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
             ]);
            
             return response()->json([
@@ -201,62 +369,222 @@ class TicketController extends Controller
     }
 
     /**
-     * Test mail configuration
+     * Create a new ticket with type support
      */
-    private function testMailConfiguration()
+    public function storeWithType(Request $request)
     {
+        Log::info('Ticket creation request received', [
+            'user_id' => Auth::id(),
+            'data' => $request->all()
+        ]);
+
+        $validator = Validator::make($request->all(), [
+            'type' => 'required|in:issue,request,change_request',
+            'title' => 'required|string|max:255',
+            'description' => 'required|string',
+            'category' => 'required|string|max:100',
+            'subcategory' => 'nullable|string|max:100',
+            'approver_id' => 'nullable|exists:users,id',
+            'priority' => 'required|in:low,medium,high,critical',
+            'due_date' => 'nullable|date|after_or_equal:today',
+            'estimated_hours' => 'nullable|numeric|min:0|max:1000',
+            'assigned_to' => 'nullable|array',
+            'assigned_to.*' => 'exists:users,id',
+        ]);
+
+        // Manual validation for approver_id when required
+        if (in_array($request->type, ['request', 'change_request']) && !$request->approver_id) {
+            $validator->after(function ($validator) {
+                $validator->errors()->add('approver_id', 'Approver is required for this ticket type.');
+            });
+        }
+
+        if ($validator->fails()) {
+            Log::error('Ticket validation failed', [
+                'errors' => $validator->errors()->toArray(),
+                'request' => $request->all()
+            ]);
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
         try {
-            // Get mail configuration
-            $config = config('mail.mailers.smtp');
+            DB::beginTransaction();
             
-            if (!$config) {
-                throw new \Exception('SMTP configuration not found');
+            $user = Auth::user();
+            $employee = $user->employee;
+            
+            if (!$employee) {
+                return response()->json([
+                    'message' => 'Employee profile not found.'
+                ], 403);
             }
+
+            // Determine initial status based on type
+            $requiresApproval = in_array($request->type, ['request', 'change_request']);
+            $initialStatus = $requiresApproval ? 'pending' : 'in_progress';
+
+            // Validate approver for request types
+            if ($requiresApproval && $request->approver_id) {
+                $approver = User::with('employee')->find($request->approver_id);
+                
+                if (!$approver || !$approver->hasRole('admin')) {
+                    return response()->json([
+                        'message' => 'Selected approver must be an admin.'
+                    ], 422);
+                }
+                
+                $approverEmployee = $approver->employee;
+                if (!$approverEmployee || $approverEmployee->business_id !== $employee->business_id) {
+                    return response()->json([
+                        'message' => 'Selected approver must be from your business.'
+                    ], 422);
+                }
+            }
+
+            $ticketData = [
+                'type' => $request->type,
+                'title' => $request->title,
+                'description' => $request->description,
+                'user_id' => $user->id,
+                'category' => $request->category,
+                'subcategory' => $request->subcategory,
+                'approver_id' => $requiresApproval ? $request->approver_id : null,
+                'priority' => $request->priority,
+                'due_date' => $request->due_date ?: null,
+                'estimated_hours' => $request->estimated_hours,
+                'status' => $initialStatus,
+            ];
+
+            $ticket = Ticket::create($ticketData);
             
-            Log::info('Mail Configuration', [
-                'host' => $config['host'],
-                'port' => $config['port'],
-                'encryption' => $config['encryption'],
-                'username' => $config['username'],
-                'timeout' => $config['timeout'],
+            // Assign users to the ticket
+            if ($request->has('assigned_to')) {
+                $assignedTo = $request->input('assigned_to');
+                
+                if (is_array($assignedTo)) {
+                    foreach ($assignedTo as $assignedUserId) {
+                        if ($assignedUserId) {
+                            $ticket->assignedUsers()->attach($assignedUserId, [
+                                'role' => 'assignee',
+                                'assigned_at' => now()
+                            ]);
+                            
+                            // Send assignment notification
+                            try {
+                                $assignedUser = User::find($assignedUserId);
+                                if ($assignedUser) {
+                                    Mail::to($assignedUser->email)->send(new TicketAssigned($ticket, $assignedUser));
+                                }
+                            } catch (\Exception $e) {
+                                Log::error('Failed to send assignment email', [
+                                    'ticket_id' => $ticket->id,
+                                    'assigned_user' => $assignedUserId,
+                                    'error' => $e->getMessage()
+                                ]);
+                            }
+                        }
+                    }
+                } elseif (!empty($assignedTo)) {
+                    $ticket->assignedUsers()->attach($assignedTo, [
+                        'role' => 'assignee',
+                        'assigned_at' => now()
+                    ]);
+                }
+            }
+
+            // Load relationships
+            $ticket->load(['user', 'approver', 'assignedUsers']);
+
+            // Send notifications to ALL business admins if approval is required
+            $emailsSent = 0;
+            $adminsNotified = 0;
+            
+            if ($requiresApproval) {
+                $businessAdmins = $this->getBusinessAdmins($employee->business_id);
+                $adminsNotified = count($businessAdmins);
+                
+                foreach ($businessAdmins as $admin) {
+                    try {
+                        Mail::to($admin->email)->send(new TicketApprovalRequest($ticket));
+                        $emailsSent++;
+                    } catch (\Exception $e) {
+                        Log::error('Failed to send approval email to admin', [
+                            'ticket_id' => $ticket->id,
+                            'admin_id' => $admin->id,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+            }
+
+            DB::commit();
+            
+            Log::info('Ticket created successfully', [
+                'ticket_id' => $ticket->id,
+                'user_id' => $user->id,
+                'emails_sent' => $emailsSent,
+                'admins_notified' => $adminsNotified
             ]);
             
-            // Simple test - just log the configuration
-            return true;
+            return response()->json([
+                'message' => 'Ticket created successfully',
+                'ticket' => $ticket,
+                'emails_sent' => $emailsSent,
+                'admins_notified' => $adminsNotified
+            ], 201);
             
         } catch (\Exception $e) {
-            Log::error('Mail configuration test failed', [
+            DB::rollBack();
+            
+            Log::error('Failed to create ticket', [
+                'user_id' => Auth::id(),
                 'error' => $e->getMessage(),
-                'config' => config('mail')
+                'trace' => $e->getTraceAsString(),
             ]);
-            throw $e;
+            
+            return response()->json([
+                'message' => 'Failed to create ticket',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
-
+   
     /**
-     * Update ticket status (approve/reject/in-progress)
+     * Update ticket status with workflow validation
+     * UPDATED: Now allows any admin from the same business to approve
      */
     public function updateStatus(Request $request, Ticket $ticket)
     {
         $user = Auth::user();
-       
-        // Only admins can update status
-        if (!$user->hasRole('admin')) {
-            return response()->json(['message' => 'Only admins can update ticket status'], 403);
+        
+        // Check permissions - UPDATED LOGIC
+        $canUpdate = false;
+        
+        if ($user->hasRole('admin')) {
+            // Any admin from the same business can update tickets
+            $adminEmployee = $user->employee;
+            $ticketUserEmployee = $ticket->user->employee;
+            
+            if ($adminEmployee && $ticketUserEmployee && 
+                $adminEmployee->business_id === $ticketUserEmployee->business_id) {
+                $canUpdate = true;
+            }
+        } elseif ($ticket->assignedUsers()->where('user_id', $user->id)->exists()) {
+            // Assigned users can update tickets assigned to them
+            $canUpdate = true;
         }
         
-        // Verify admin is from the same business
-        $adminEmployee = $user->employee;
-        $ticketUserEmployee = $ticket->user->employee;
-       
-        if (!$adminEmployee || !$ticketUserEmployee ||
-            $adminEmployee->business_id !== $ticketUserEmployee->business_id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if (!$canUpdate) {
+            return response()->json(['message' => 'Unauthorized to update this ticket'], 403);
         }
 
+        // Get available statuses based on current status
+        $availableStatuses = $this->getAvailableStatuses($ticket->status);
+        
         $validator = Validator::make($request->all(), [
-            'status' => 'required|in:approved,rejected,in_progress',
-            'comments' => 'nullable|string',
+            'status' => 'required|in:' . implode(',', $availableStatuses),
+            'comments' => 'nullable|string|max:1000',
+            'send_email' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -264,78 +592,401 @@ class TicketController extends Controller
         }
 
         $oldStatus = $ticket->status;
-       
-        $ticket->update([
+        
+        $updates = [
             'status' => $request->status,
-            'comments' => $request->comments,
-            'approved_at' => $request->status === 'approved' ? now() : null,
+        ];
+
+        if ($request->filled('comments')) {
+            $updates['comments'] = $request->comments;
+        }
+
+        // Handle status-specific updates
+        if ($request->status === 'resolved') {
+            $updates['resolved_at'] = now();
+        } elseif ($request->status === 'closed') {
+            $updates['closed_at'] = now();
+        } elseif ($request->status === 'approved') {
+            $updates['approved_at'] = now();
+            $updates['approved_by'] = $user->id;
+            // Update the approver_id to the admin who actually approved it
+            $updates['approver_id'] = $user->id;
+        } elseif ($request->status === 'rejected') {
+            $updates['rejected_at'] = now();
+            $updates['rejected_by'] = $user->id;
+        } elseif ($request->status === 'in_progress') {
+            $updates['started_at'] = now();
+        }
+
+        Log::info('Updating ticket status', [
+            'ticket_id' => $ticket->id,
+            'old_status' => $oldStatus,
+            'new_status' => $request->status,
+            'updates' => $updates,
+            'user_id' => $user->id,
+            'is_original_approver' => $ticket->approver_id === $user->id,
         ]);
 
-        // Send email to ticket creator about status update
-        if ($oldStatus !== $request->status) {
-            try {
-                Log::info('Sending status update email', [
-                    'ticket_id' => $ticket->id,
-                    'old_status' => $oldStatus,
-                    'new_status' => $request->status,
-                    'user_email' => $ticket->user->email
-                ]);
+        try {
+            $ticket->update($updates);
+            $ticket->refresh();
+            
+            // Log activity
+            $actionDescription = "Status changed from {$oldStatus} to {$request->status}";
+            if ($request->status === 'approved' && $ticket->approver_id !== $user->id) {
+                $actionDescription .= " (approved by alternate admin)";
+            }
+            $this->logActivity($ticket, 'status_updated', $actionDescription, $user);
 
-                Mail::to($ticket->user->email)->send(new TicketStatusUpdate($ticket));
-                
-                Log::info('Status update email sent successfully');
-                
-                $statusEmailSent = true;
-                
-            } catch (\Exception $e) {
-                Log::error('Failed to send ticket status update email', [
-                    'ticket_id' => $ticket->id,
-                    'user_email' => $ticket->user->email,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ]);
-                
-                $statusEmailSent = false;
-                
-                // Try queuing instead
+            // Send notification if requested
+            if ($request->filled('send_email') && $request->send_email && $ticket->user_id !== $user->id) {
                 try {
                     Mail::to($ticket->user->email)
-                        ->queue(new TicketStatusUpdate($ticket));
-                    
-                    $statusEmailSent = true;
-                    Log::info('Status update email queued');
-                } catch (\Exception $queueEx) {
-                    Log::error('Failed to queue status update email', [
-                        'error' => $queueEx->getMessage()
+                        ->send(new TicketStatusUpdate($ticket, $oldStatus, $request->status));
+                } catch (\Exception $e) {
+                    Log::error('Failed to send status update email', [
+                        'ticket_id' => $ticket->id,
+                        'error' => $e->getMessage()
                     ]);
                 }
             }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Ticket status updated successfully',
+                'ticket' => $ticket->load(['user', 'approver', 'assignedUsers']),
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to update ticket status', [
+                'ticket_id' => $ticket->id,
+                'error' => $e->getMessage(),
+                'query' => $e->getPrevious() ? $e->getPrevious()->getMessage() : null,
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update ticket status: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get available statuses based on current status
+     */
+    private function getAvailableStatuses($currentStatus)
+    {
+        $statusTransitions = [
+            'pending' => ['approved', 'rejected', 'in_progress'],
+            'in_progress' => ['resolved', 'closed', 'reopened'],
+            'resolved' => ['closed', 'reopened'],
+            'closed' => ['reopened'],
+            'reopened' => ['in_progress', 'resolved', 'closed'],
+            'approved' => ['in_progress', 'rejected'],
+            'rejected' => ['reopened'],
+        ];
+        
+        return $statusTransitions[$currentStatus] ?? [];
+    }
+
+    /**
+     * Assign ticket to users
+     * UPDATED: Any admin from the same business can assign tickets
+     */
+    public function assignTicket(Request $request, Ticket $ticket)
+    {
+        $user = Auth::user();
+        
+        // Check if user can assign tickets - UPDATED LOGIC
+        $canAssign = false;
+        
+        if ($user->hasRole('admin')) {
+            $adminEmployee = $user->employee;
+            $ticketUserEmployee = $ticket->user->employee;
+            
+            if ($adminEmployee && $ticketUserEmployee && 
+                $adminEmployee->business_id === $ticketUserEmployee->business_id) {
+                $canAssign = true;
+            }
         }
         
-        // Format the response data
-        $ticketData = $ticket->load(['user', 'approver'])->toArray();
-       
-        // Ensure approver has name field
-        if (isset($ticketData['approver'])) {
-            $ticketData['approver']['name'] = trim(
-                ($ticketData['approver']['first_name'] ?? '') . ' ' .
-                ($ticketData['approver']['last_name'] ?? '')
-            );
+        if (!$canAssign) {
+            return response()->json(['message' => 'Unauthorized to assign this ticket'], 403);
         }
-       
-        // Ensure user has name field
-        if (isset($ticketData['user'])) {
-            $ticketData['user']['name'] = trim(
-                ($ticketData['user']['first_name'] ?? '') . ' ' .
-                ($ticketData['user']['last_name'] ?? '')
-            );
-        }
-        
-        return response()->json([
-            'message' => 'Ticket status updated successfully',
-            'ticket' => $ticketData,
-            'email_sent' => $statusEmailSent ?? false
+
+        $validator = Validator::make($request->all(), [
+            'assigned_to' => 'required|array',
+            'assigned_to.*' => 'exists:users,id',
+            'role' => 'required|in:assignee,reviewer,implementer',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        $ticket->assignedUsers()->sync(
+            collect($request->assigned_to)->mapWithKeys(function ($userId) use ($request) {
+                return [$userId => ['role' => $request->role, 'assigned_at' => now()]];
+            })
+        );
+
+        // Log activity
+        $this->logActivity($ticket, 'assigned', "Ticket assigned to " . count($request->assigned_to) . " user(s)", $user);
+
+        // Send notifications to assigned users
+        foreach ($request->assigned_to as $assignedUserId) {
+            try {
+                $assignedUser = User::find($assignedUserId);
+                Mail::to($assignedUser->email)->send(new TicketAssigned($ticket, $assignedUser, $request->role));
+            } catch (\Exception $e) {
+                Log::error('Failed to send assignment email', [
+                    'ticket_id' => $ticket->id,
+                    'assigned_user' => $assignedUserId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        return response()->json([
+            'message' => 'Ticket assigned successfully',
+            'ticket' => $ticket->load('assignedUsers'),
+        ]);
+    }
+
+    /**
+     * Get ticket statistics
+     */
+    public function statistics(Request $request)
+    {
+        $user = Auth::user();
+        $employee = $user->employee;
+        
+        if ($user->hasRole('admin') && $employee) {
+            $query = Ticket::whereHas('user.employee', function ($q) use ($employee) {
+                $q->where('business_id', $employee->business_id);
+            });
+        } else {
+            $query = Ticket::where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                  ->orWhereHas('assignedUsers', function ($assignQ) use ($user) {
+                      $assignQ->where('user_id', $user->id);
+                  });
+            });
+        }
+
+        // Get counts by type
+        $byType = $query->selectRaw('type, count(*) as count, status')
+            ->groupBy('type', 'status')
+            ->get()
+            ->groupBy('type');
+
+        // Get counts by status
+        $byStatus = $query->selectRaw('status, count(*) as count')
+            ->groupBy('status')
+            ->pluck('count', 'status');
+
+        // Get counts by priority
+        $byPriority = $query->selectRaw('priority, count(*) as count')
+            ->groupBy('priority')
+            ->pluck('count', 'priority');
+
+        // Get overdue tickets
+        $overdue = $query->where('due_date', '<', now())
+            ->whereNotIn('status', ['resolved', 'closed'])
+            ->count();
+
+        // Get total counts
+        $total = $query->count();
+        $pending = (clone $query)->where('status', 'pending')->count();
+        $approved = (clone $query)->where('status', 'approved')->count();
+        $rejected = (clone $query)->where('status', 'rejected')->count();
+        $inProgress = (clone $query)->where('status', 'in_progress')->count();
+
+        return response()->json([
+            'by_type' => $byType,
+            'by_status' => $byStatus,
+            'by_priority' => $byPriority,
+            'overdue' => $overdue,
+            'total' => $total,
+            'pending' => $pending,
+            'approved' => $approved,
+            'rejected' => $rejected,
+            'in_progress' => $inProgress,
+        ]);
+    }
+
+    /**
+     * Get departments for ticket assignment - DISABLED
+     */
+    public function getDepartments(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $employee = $user->employee;
+
+            if (!$employee) {
+                return response()->json([]);
+            }
+
+            return response()->json([]);
+            
+        } catch (\Exception $e) {
+            Log::error('TICKET_CONTROLLER: Failed to fetch departments', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id() ?? null,
+            ]);
+            
+            return response()->json([], 500);
+        }
+    }
+
+    /**
+     * Helper method to get all admins from a business
+     */
+    private function getBusinessAdmins($businessId)
+    {
+        return User::whereHas('employee', function ($q) use ($businessId) {
+            $q->where('business_id', $businessId);
+        })
+        ->where(function ($q) {
+            $q->where('role', 'admin')
+              ->orWhereHas('roles', function ($roleQuery) {
+                  $roleQuery->where('name', 'admin');
+              });
+        })
+        ->get();
+    }
+
+    /**
+     * Get users available for assignment AND approvers - COMBINED METHOD
+     */
+    public function getAssignableUsers(Request $request)
+    {
+        try {
+            $startTime = microtime(true);
+            $user = Auth::user();
+            $employee = $user->employee;
+
+            Log::info('TICKET_CONTROLLER: Getting assignable users and approvers', [
+                'user_id' => $user->id,
+                'user_role' => $user->role,
+                'has_employee' => $employee ? 'yes' : 'no',
+            ]);
+
+            if (!$employee) {
+                Log::warning('TICKET_CONTROLLER: No employee profile found for user', [
+                    'user_id' => $user->id,
+                ]);
+                return response()->json([
+                    'assignable_users' => [],
+                    'approvers' => []
+                ]);
+            }
+
+            $employees = Employee::where('business_id', $employee->business_id)
+                ->where('id', '!=', $employee->id)
+                ->with(['user'])
+                ->get();
+
+            $assignableUsers = $employees->map(function ($employeeItem) {
+                return [
+                    'id' => $employeeItem->user_id,
+                    'employee_id' => $employeeItem->id,
+                    'employee_number' => $employeeItem->employee_id,
+                    'first_name' => $employeeItem->user->first_name ?? $employeeItem->first_name,
+                    'last_name' => $employeeItem->user->last_name ?? $employeeItem->last_name,
+                    'name' => trim(($employeeItem->user->first_name ?? $employeeItem->first_name) . ' ' . ($employeeItem->user->last_name ?? $employeeItem->last_name)),
+                    'email' => $employeeItem->user->email ?? $employeeItem->email,
+                    'role' => $employeeItem->user->role ?? 'employee',
+                    'position' => $employeeItem->position,
+                    'department' => $employeeItem->department,
+                    'employment_type' => $employeeItem->employment_type,
+                    'hire_date' => $employeeItem->hire_date,
+                    'is_active' => true,
+                    'is_admin' => $employeeItem->user->hasRole('admin') ?? false,
+                ];
+            })->filter(function ($userData) {
+                return !empty($userData['id']) && !empty($userData['email']);
+            })->values();
+
+            $approvers = $assignableUsers->filter(function ($userData) {
+                return $userData['is_admin'] === true;
+            })->map(function ($approver) {
+                return [
+                    'id' => $approver['id'],
+                    'name' => $approver['name'],
+                    'email' => $approver['email'],
+                    'first_name' => $approver['first_name'],
+                    'last_name' => $approver['last_name'],
+                    'position' => $approver['position'],
+                    'department' => $approver['department'],
+                ];
+            })->values();
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+            
+            Log::info('TICKET_CONTROLLER: Users fetched successfully', [
+                'total_users' => $assignableUsers->count(),
+                'approvers_count' => $approvers->count(),
+                'execution_time_ms' => $executionTime,
+            ]);
+
+            return response()->json([
+                'assignable_users' => $assignableUsers,
+                'approvers' => $approvers
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('TICKET_CONTROLLER: Failed to fetch users', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id() ?? null,
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to fetch users',
+                'error' => $e->getMessage(),
+                'assignable_users' => [],
+                'approvers' => []
+            ], 500);
+        }
+    }
+
+    /**
+     * Get ONLY approvers (for backward compatibility)
+     */
+    public function getApprovers(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $employee = $user->employee;
+
+            if (!$employee) {
+                return response()->json([
+                    'message' => 'Employee profile not found',
+                    'approvers' => []
+                ], 404);
+            }
+
+            $response = $this->getAssignableUsers($request);
+            $data = json_decode($response->getContent(), true);
+
+            return response()->json([
+                'approvers' => $data['approvers'] ?? []
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('TICKET_CONTROLLER: Failed to fetch approvers', [
+                'user_id' => $user->id ?? 'unknown',
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to fetch approvers',
+                'error' => $e->getMessage(),
+                'approvers' => []
+            ], 500);
+        }
     }
 
     /**
@@ -345,9 +996,7 @@ class TicketController extends Controller
     {
         $user = Auth::user();
        
-        // Authorization check
         if ($user->hasRole('admin')) {
-            // Admins can only see tickets from their business
             $employee = $user->employee;
             if (!$employee) {
                 return response()->json(['message' => 'Unauthorized'], 403);
@@ -358,13 +1007,13 @@ class TicketController extends Controller
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
         } elseif ($ticket->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            if (!$ticket->assignedUsers()->where('user_id', $user->id)->exists()) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
         }
         
-        // Format approver data consistently
-        $ticketData = $ticket->load(['user', 'approver'])->toArray();
+        $ticketData = $ticket->load(['user', 'approver', 'assignedUsers'])->toArray();
        
-        // Ensure approver has name field
         if (isset($ticketData['approver'])) {
             $ticketData['approver']['name'] = trim(
                 ($ticketData['approver']['first_name'] ?? '') . ' ' .
@@ -372,7 +1021,6 @@ class TicketController extends Controller
             );
         }
        
-        // Ensure user has name field
         if (isset($ticketData['user'])) {
             $ticketData['user']['name'] = trim(
                 ($ticketData['user']['first_name'] ?? '') . ' ' .
@@ -383,20 +1031,17 @@ class TicketController extends Controller
         return response()->json($ticketData);
     }
 
-
     /**
-     * Update ticket (general update)
+     * Update ticket
      */
     public function update(Request $request, Ticket $ticket)
     {
         $user = Auth::user();
        
-        // Only ticket creator can update (before approval)
         if ($ticket->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
         
-        // Prevent updates to approved/rejected tickets
         if (in_array($ticket->status, ['approved', 'rejected'])) {
             return response()->json([
                 'message' => 'Cannot update ticket that has been approved or rejected'
@@ -408,36 +1053,19 @@ class TicketController extends Controller
             'description' => 'sometimes|required|string',
             'priority' => 'sometimes|required|in:low,medium,high,critical',
             'due_date' => 'nullable|date|after:now',
+            'category' => 'sometimes|string|max:100',
+            'subcategory' => 'nullable|string|max:100',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
-        $ticket->update($request->only(['title', 'description', 'priority', 'due_date']));
+        $ticket->update($request->only(['title', 'description', 'priority', 'due_date', 'category', 'subcategory']));
        
-        // Format the response data
-        $ticketData = $ticket->load(['user', 'approver'])->toArray();
-       
-        // Ensure approver has name field
-        if (isset($ticketData['approver'])) {
-            $ticketData['approver']['name'] = trim(
-                ($ticketData['approver']['first_name'] ?? '') . ' ' .
-                ($ticketData['approver']['last_name'] ?? '')
-            );
-        }
-       
-        // Ensure user has name field
-        if (isset($ticketData['user'])) {
-            $ticketData['user']['name'] = trim(
-                ($ticketData['user']['first_name'] ?? '') . ' ' .
-                ($ticketData['user']['last_name'] ?? '')
-            );
-        }
-        
         return response()->json([
             'message' => 'Ticket updated successfully',
-            'ticket' => $ticketData
+            'ticket' => $ticket->load(['user', 'approver', 'assignedUsers'])
         ]);
     }
 
@@ -448,7 +1076,6 @@ class TicketController extends Controller
     {
         $user = Auth::user();
        
-        // Only ticket creator can delete (and only if not approved)
         if ($ticket->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -465,116 +1092,6 @@ class TicketController extends Controller
     }
 
     /**
-     * Get ticket statistics (detailed breakdown)
-     */
-    public function statistics(Request $request)
-    {
-        $user = Auth::user();
-       
-        if ($user->hasRole('admin')) {
-            // Admin sees stats for their business
-            $employee = $user->employee;
-            if (!$employee) {
-                return response()->json([
-                    'total' => 0,
-                    'pending' => 0,
-                    'approved' => 0,
-                    'rejected' => 0,
-                    'in_progress' => 0,
-                ]);
-            }
-            
-            $query = Ticket::whereHas('user.employee', function ($q) use ($employee) {
-                $q->where('business_id', $employee->business_id);
-            });
-        } else {
-            // Regular user sees only their own tickets
-            $query = Ticket::where('user_id', $user->id);
-        }
-        
-        // Get counts by status
-        $total = $query->count();
-        $pending = (clone $query)->where('status', 'pending')->count();
-        $approved = (clone $query)->where('status', 'approved')->count();
-        $rejected = (clone $query)->where('status', 'rejected')->count();
-        $inProgress = (clone $query)->where('status', 'in_progress')->count();
-        
-        return response()->json([
-            'total' => $total,
-            'pending' => $pending,
-            'approved' => $approved,
-            'rejected' => $rejected,
-            'in_progress' => $inProgress,
-        ]);
-    }
-
-    /**
-     * Get list of approvers (Admins only from same business)
-     * UPDATED: Simplified query to fetch admins from same business via employee table
-     */
-    public function getApprovers(Request $request)
-    {
-        $user = Auth::user();
-        $employee = $user->employee;
-        
-        if (!$employee) {
-            return response()->json([
-                'message' => 'Employee profile not found',
-                'approvers' => []
-            ], 404);
-        }
-        
-        try {
-            // Fetch business ID from current user's employee record
-            $businessId = $employee->business_id;
-            
-            // Build query to get admins from the same business
-            $approvers = User::whereHas('roles', function ($query) {
-                // Filter users with 'admin' role
-                $query->where('name', 'admin');
-            })
-            ->whereHas('employee', function ($query) use ($businessId) {
-                // Filter employees in the same business
-                $query->where('business_id', $businessId);
-            })
-            ->where('users.id', '!=', $user->id) // Exclude current user
-            ->select('users.id', 'users.first_name', 'users.last_name', 'users.email')
-            ->with('employee') // Eager load employee relationship
-            ->get();
-            
-            // Map the results to match frontend expectations
-            $mappedApprovers = $approvers->map(function ($user) {
-                return [
-                    'id' => $user->id,
-                    'name' => trim($user->first_name . ' ' . $user->last_name),
-                    'email' => $user->email,
-                    'first_name' => $user->first_name,
-                    'last_name' => $user->last_name,
-                    'business_id' => $user->employee ? $user->employee->business_id : null,
-                    'position' => $user->employee ? $user->employee->position : null
-                ];
-            });
-            
-            // Return approvers directly without nesting
-            return response()->json($mappedApprovers);
-            
-        } catch (\Exception $e) {
-            Log::error('Failed to fetch approvers', [
-                'user_id' => $user->id,
-                'business_id' => $employee->business_id ?? 'unknown',
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            
-            return response()->json([
-                'message' => 'Failed to fetch approvers',
-                'error' => $e->getMessage(),
-                'approvers' => []
-            ], 500);
-        }
-    }
-
-    /**
      * Get user's own tickets
      */
     public function myTickets(Request $request)
@@ -582,9 +1099,8 @@ class TicketController extends Controller
         $user = Auth::user();
        
         $query = Ticket::where('user_id', $user->id)
-            ->with(['approver']);
+            ->with(['approver', 'assignedUsers']);
         
-        // Apply filters
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
@@ -593,24 +1109,18 @@ class TicketController extends Controller
             $query->where('priority', $request->priority);
         }
         
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
+        
         $tickets = $query->latest()->paginate(10);
        
-        // Format approver data in each ticket
-        $tickets->getCollection()->transform(function ($ticket) {
-            if ($ticket->approver) {
-                $ticket->approver->name = trim(
-                    ($ticket->approver->first_name ?? '') . ' ' .
-                    ($ticket->approver->last_name ?? '')
-                );
-            }
-            return $ticket;
-        });
-        
         return response()->json($tickets);
     }
 
     /**
-     * Get tickets assigned to admin for approval (same business only)
+     * Get tickets for admin approval
+     * UPDATED: Shows all pending tickets from the business, not just assigned to specific admin
      */
     public function assignedToMe(Request $request)
     {
@@ -632,8 +1142,8 @@ class TicketController extends Controller
             ]);
         }
         
-        $query = Ticket::with(['user'])
-            ->where('approver_id', $user->id)
+        // Show ALL tickets from the business that need admin action
+        $query = Ticket::with(['user', 'assignedUsers', 'approver'])
             ->whereHas('user.employee', function ($q) use ($employee) {
                 $q->where('business_id', $employee->business_id);
             });
@@ -647,19 +1157,12 @@ class TicketController extends Controller
             $query->where('priority', $request->priority);
         }
         
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
+        
         $tickets = $query->latest()->paginate(10);
        
-        // Format user data in each ticket
-        $tickets->getCollection()->transform(function ($ticket) {
-            if ($ticket->user) {
-                $ticket->user->name = trim(
-                    ($ticket->user->first_name ?? '') . ' ' .
-                    ($ticket->user->last_name ?? '')
-                );
-            }
-            return $ticket;
-        });
-        
         return response()->json($tickets);
     }
 
@@ -668,14 +1171,17 @@ class TicketController extends Controller
         $user = Auth::user();
         $query = Ticket::query();
         
-        // Apply role-based filtering
-        if ($user->hasRole('approver')) {
-            $query->where('approver_id', $user->id);
+        if ($user->hasRole('admin')) {
+            $employee = $user->employee;
+            if ($employee) {
+                $query->whereHas('user.employee', function ($q) use ($employee) {
+                    $q->where('business_id', $employee->business_id);
+                });
+            }
         } elseif (!$user->hasRole('admin')) {
             $query->where('user_id', $user->id);
         }
         
-        // Apply status filter if provided
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }
@@ -685,23 +1191,25 @@ class TicketController extends Controller
         ]);
     }
 
- 
-
     /**
-     * Update ticket priority (Admin/Approver only)
+     * Update ticket priority
+     * UPDATED: Any admin from the same business can update priority
      */
     public function updatePriority(Request $request, Ticket $ticket)
     {
         $user = Auth::user();
         
-        // Only admins who are assigned approvers can update priority
         if (!$user->hasRole('admin')) {
             return response()->json(['message' => 'Only admins can update ticket priority'], 403);
         }
         
-        // Verify admin is the assigned approver
-        if ($ticket->approver_id !== $user->id) {
-            return response()->json(['message' => 'You are not the assigned approver for this ticket'], 403);
+        // Verify admin is from the same business
+        $adminEmployee = $user->employee;
+        $ticketUserEmployee = $ticket->user->employee;
+        
+        if (!$adminEmployee || !$ticketUserEmployee || 
+            $adminEmployee->business_id !== $ticketUserEmployee->business_id) {
+            return response()->json(['message' => 'You can only update tickets from your business'], 403);
         }
         
         $validator = Validator::make($request->all(), [
@@ -719,7 +1227,6 @@ class TicketController extends Controller
             'priority' => $request->priority,
         ]);
         
-        // Log the priority change
         Log::info('Ticket priority updated', [
             'ticket_id' => $ticket->id,
             'old_priority' => $oldPriority,
@@ -729,27 +1236,31 @@ class TicketController extends Controller
         ]);
 
         return response()->json([
-            'success' => true,  // Added success flag
+            'success' => true,
             'message' => 'Ticket priority updated successfully',
             'ticket' => $ticket->load(['user', 'approver'])
         ]);
     }
 
     /**
-     * Reassign ticket to another approver (Admin/Approver only)
+     * Reassign ticket to another approver
+     * UPDATED: Any admin from the same business can reassign
      */
     public function reassignTicket(Request $request, Ticket $ticket)
     {
         $user = Auth::user();
         
-        // Only admins who are assigned approvers can reassign
         if (!$user->hasRole('admin')) {
             return response()->json(['message' => 'Only admins can reassign tickets'], 403);
         }
         
-        // Verify admin is the assigned approver
-        if ($ticket->approver_id !== $user->id) {
-            return response()->json(['message' => 'You are not the assigned approver for this ticket'], 403);
+        // Verify admin is from the same business
+        $adminEmployee = $user->employee;
+        $ticketUserEmployee = $ticket->user->employee;
+        
+        if (!$adminEmployee || !$ticketUserEmployee || 
+            $adminEmployee->business_id !== $ticketUserEmployee->business_id) {
+            return response()->json(['message' => 'You can only reassign tickets from your business'], 403);
         }
         
         $validator = Validator::make($request->all(), [
@@ -763,17 +1274,15 @@ class TicketController extends Controller
 
         $newApprover = User::with('employee')->find($request->new_approver_id);
         
-        // Verify new approver is an admin from the same business
         if (!$newApprover->hasRole('admin')) {
             return response()->json([
                 'message' => 'New approver must be an admin.'
             ], 422);
         }
         
-        $userEmployee = $user->employee;
         $newApproverEmployee = $newApprover->employee;
         
-        if (!$newApproverEmployee || $newApproverEmployee->business_id !== $userEmployee->business_id) {
+        if (!$newApproverEmployee || $newApproverEmployee->business_id !== $adminEmployee->business_id) {
             return response()->json([
                 'message' => 'New approver must be from the same business.'
             ], 422);
@@ -785,9 +1294,8 @@ class TicketController extends Controller
             'approver_id' => $request->new_approver_id,
         ]);
         
-        // Send email notification to new approver
         try {
-            Mail::to($newApprover->email)->send(new \App\Mail\TicketApprovalRequest($ticket));
+            Mail::to($newApprover->email)->send(new TicketApprovalRequest($ticket));
         } catch (\Exception $e) {
             Log::warning('Failed to send reassignment email', [
                 'ticket_id' => $ticket->id,
@@ -796,7 +1304,6 @@ class TicketController extends Controller
             ]);
         }
         
-        // Log the reassignment
         Log::info('Ticket reassigned', [
             'ticket_id' => $ticket->id,
             'old_approver_id' => $oldApproverId,
@@ -806,9 +1313,483 @@ class TicketController extends Controller
         ]);
 
         return response()->json([
-            'success' => true,  // Added success flag
+            'success' => true,
             'message' => 'Ticket reassigned successfully',
             'ticket' => $ticket->load(['user', 'approver'])
         ]);
     }
+
+    /**
+     * Helper method to log ticket activities
+     */
+    private function logActivity(Ticket $ticket, $action, $description, $user = null)
+    {
+        if (!class_exists(\App\Models\TicketActivity::class)) {
+            return;
+        }
+        
+        try {
+            $ticket->activities()->create([
+                'user_id' => $user ? $user->id : Auth::id(),
+                'action' => $action,
+                'description' => $description,
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to log ticket activity', [
+                'ticket_id' => $ticket->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+    /**
+     * Get ticket comments
+     */
+    public function getComments(Request $request, Ticket $ticket)
+    {
+        $user = Auth::user();
+        
+        // Check permissions
+        if (!$this->canViewTicket($ticket, $user)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $query = $ticket->comments()->with(['user', 'attachments']);
+        
+        // For non-admins, only show public comments
+        if (!$user->hasRole('admin')) {
+            $query->where('is_internal', false);
+        }
+        
+        $comments = $query->orderBy('created_at', 'asc')->get();
+        
+        return response()->json($comments);
+    }
+
+    /**
+ * Add comment to ticket
+ */
+public function addComment(Request $request, Ticket $ticket)
+{
+    $user = Auth::user();
+    
+    // Check permissions
+    if (!$this->canAddComment($ticket, $user)) {
+        return response()->json(['message' => 'Unauthorized to comment on this ticket'], 403);
+    }
+
+    $validator = Validator::make($request->all(), [
+        'content' => 'required|string|max:5000',
+        'is_internal' => 'nullable|in:0,1,true,false', // Changed to accept string values
+        'attachments' => 'nullable|array|max:5',  // Added nullable
+        'attachments.*' => 'file|max:10240', // 10MB max per file
+    ]);
+
+    if ($validator->fails()) {
+        Log::error('Comment validation failed', [
+            'errors' => $validator->errors()->toArray(),
+            'request_data' => $request->all(),
+        ]);
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    try {
+        DB::beginTransaction();
+        
+        // Create comment - convert is_internal to boolean
+        $comment = TicketComment::create([
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'content' => $request->input('content'),
+            'is_internal' => filter_var($request->input('is_internal', false), FILTER_VALIDATE_BOOLEAN),
+        ]);
+
+        // Handle attachments
+        $attachmentIds = [];
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $attachment = $this->storeAttachment($file, $ticket, $user, $comment);
+                $attachmentIds[] = $attachment->id;
+            }
+        }
+
+        // Log activity
+        $this->logActivity($ticket, 'commented', "Added a comment", $user);
+
+        // Update ticket's updated_at timestamp
+        $ticket->touch();
+
+        DB::commit();
+
+        // Load relationships
+        $comment->load(['user', 'attachments']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Comment added successfully',
+            'comment' => $comment,
+            'attachment_count' => count($attachmentIds),
+        ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        Log::error('Failed to add comment', [
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to add comment: ' . $e->getMessage(),
+        ], 500);
+    }
+}
+
+    /**
+     * Update comment
+     */
+    public function updateComment(Request $request, Ticket $ticket, TicketComment $comment)
+    {
+        $user = Auth::user();
+        
+        // Check permissions
+        if ($comment->user_id !== $user->id && !$user->hasRole('admin')) {
+            return response()->json(['message' => 'Unauthorized to update this comment'], 403);
+        }
+        
+        // Check if comment belongs to ticket
+        if ($comment->ticket_id !== $ticket->id) {
+            return response()->json(['message' => 'Comment does not belong to this ticket'], 404);
+        }
+        
+        // Check edit timeout for non-admins
+        if (!$user->hasRole('admin') && $comment->created_at->diffInMinutes(now()) > 15) {
+            return response()->json(['message' => 'Comments can only be edited within 15 minutes'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'content' => 'required|string|max:5000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        try {
+            $comment->update([
+                'content' => $request->input('content'),
+            ]);
+
+            // Log activity
+            $this->logActivity($ticket, 'comment_updated', "Updated a comment", $user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Comment updated successfully',
+                'comment' => $comment->fresh(['user', 'attachments']),
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to update comment', [
+                'comment_id' => $comment->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to update comment',
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete comment
+     */
+    public function deleteComment(Request $request, Ticket $ticket, TicketComment $comment)
+    {
+        $user = Auth::user();
+        
+        // Check permissions
+        if ($comment->user_id !== $user->id && !$user->hasRole('admin')) {
+            return response()->json(['message' => 'Unauthorized to delete this comment'], 403);
+        }
+        
+        // Check if comment belongs to ticket
+        if ($comment->ticket_id !== $ticket->id) {
+            return response()->json(['message' => 'Comment does not belong to this ticket'], 404);
+        }
+
+        try {
+            $comment->delete();
+
+            // Log activity
+            $this->logActivity($ticket, 'comment_deleted', "Deleted a comment", $user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Comment deleted successfully',
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to delete comment', [
+                'comment_id' => $comment->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete comment',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get ticket attachments
+     */
+    public function getAttachments(Request $request, Ticket $ticket)
+    {
+        $user = Auth::user();
+        
+        // Check permissions
+        if (!$this->canViewTicket($ticket, $user)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $attachments = $ticket->attachments()
+            ->with(['user'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        return response()->json($attachments);
+    }
+
+    /**
+ * Upload attachment to ticket
+ */
+public function uploadAttachment(Request $request, Ticket $ticket)
+{
+    // FIXED: Changed $ticketId to $ticket->id
+    Log::info('Upload attempt', [
+        'user_id' => auth()->id(),
+        'ticket_id' => $ticket->id,  // <-- This was the bug
+        'has_file' => $request->hasFile('file'),
+        'auth_check' => auth()->check()
+    ]);
+    
+    $user = Auth::user();
+    
+    // Check permissions
+    if (!$this->canAddAttachment($ticket, $user)) {
+        return response()->json(['message' => 'Unauthorized to add attachments'], 403);
+    }
+
+    $validator = Validator::make($request->all(), [
+        'file' => 'required|file|max:10240', // 10MB max
+        'comment_id' => 'nullable|exists:ticket_comments,id',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    try {
+        $file = $request->file('file');
+        $attachment = $this->storeAttachment($file, $ticket, $user, $request->comment_id);
+
+        // Log activity
+        $this->logActivity($ticket, 'attachment_added', "Added attachment: {$attachment->original_name}", $user);
+
+        // Update ticket's updated_at timestamp
+        $ticket->touch();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Attachment uploaded successfully',
+            'attachment' => $attachment->load('user'),
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Failed to upload attachment', [
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'error' => $e->getMessage(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to upload attachment: ' . $e->getMessage(),
+        ], 500);
+    }
+}
+
+    /**
+     * Delete attachment
+     */
+    public function deleteAttachment(Request $request, Ticket $ticket, TicketAttachment $attachment)
+    {
+        $user = Auth::user();
+        
+        // Check permissions
+        if ($attachment->user_id !== $user->id && !$user->hasRole('admin')) {
+            return response()->json(['message' => 'Unauthorized to delete this attachment'], 403);
+        }
+        
+        // Check if attachment belongs to ticket
+        if ($attachment->ticket_id !== $ticket->id) {
+            return response()->json(['message' => 'Attachment does not belong to this ticket'], 404);
+        }
+
+        try {
+            // Delete file from storage
+            Storage::disk($attachment->disk)->delete($attachment->path);
+            
+            // Delete database record
+            $attachmentName = $attachment->original_name;
+            $attachment->delete();
+
+            // Log activity
+            $this->logActivity($ticket, 'attachment_deleted', "Deleted attachment: {$attachmentName}", $user);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Attachment deleted successfully',
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to delete attachment', [
+                'attachment_id' => $attachment->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete attachment',
+            ], 500);
+        }
+    }
+
+    /**
+     * Download attachment
+     */
+    public function downloadAttachment(TicketAttachment $attachment)
+    {
+        $user = Auth::user();
+        $ticket = $attachment->ticket;
+        
+        // Check permissions
+        if (!$this->canViewTicket($ticket, $user)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if (!Storage::disk($attachment->disk)->exists($attachment->path)) {
+            return response()->json(['message' => 'File not found'], 404);
+        }
+
+        $filePath = Storage::disk($attachment->disk)->path($attachment->path);
+        
+        return response()->download($filePath, $attachment->original_name, [
+            'Content-Type' => $attachment->mime_type,
+        ]);
+    }
+
+    /**
+     * Get ticket activity history
+     */
+    public function getActivityHistory(Request $request, Ticket $ticket)
+    {
+        $user = Auth::user();
+        
+        // Check permissions
+        if (!$this->canViewTicket($ticket, $user)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $activities = $ticket->activities()
+            ->with(['user'])
+            ->orderBy('created_at', 'desc')
+            ->paginate($request->get('per_page', 20));
+        
+        return response()->json($activities);
+    }
+
+    /**
+     * Helper method to store attachment
+     */
+    private function storeAttachment($file, $ticket, $user, $comment = null)
+    {
+        $uuid = Str::uuid();
+        $originalName = $file->getClientOriginalName();
+        $fileName = $uuid . '.' . $file->getClientOriginalExtension();
+        $mimeType = $file->getMimeType();
+        $size = $file->getSize();
+        
+        // Create directory if not exists
+        $directory = 'tickets/' . $ticket->id;
+        $path = $file->storeAs($directory, $fileName, 'public');
+        
+        // Create attachment record
+        $attachment = TicketAttachment::create([
+            'uuid' => $uuid,
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'comment_id' => $comment instanceof TicketComment ? $comment->id : $comment,
+            'file_name' => $fileName,
+            'original_name' => $originalName,
+            'mime_type' => $mimeType,
+            'path' => $path,
+            'disk' => 'public',
+            'size' => $size,
+            'meta' => [
+                'extension' => $file->getClientOriginalExtension(),
+                'uploaded_via' => 'web',
+            ],
+        ]);
+        
+        return $attachment;
+    }
+
+    /**
+     * Helper method to check if user can view ticket
+     */
+    private function canViewTicket(Ticket $ticket, $user): bool
+    {
+        if ($user->hasRole('admin')) {
+            $employee = $user->employee;
+            $ticketUserEmployee = $ticket->user->employee;
+            
+            if ($employee && $ticketUserEmployee && 
+                $employee->business_id === $ticketUserEmployee->business_id) {
+                return true;
+            }
+            return false;
+        }
+        
+        return $ticket->user_id === $user->id || 
+               $ticket->assignedUsers()->where('user_id', $user->id)->exists();
+    }
+
+    /**
+     * Helper method to check if user can add comment
+     */
+    private function canAddComment(Ticket $ticket, $user): bool
+    {
+        return $this->canViewTicket($ticket, $user);
+    }
+
+    /**
+     * Helper method to check if user can add attachment
+     */
+    private function canAddAttachment(Ticket $ticket, $user): bool
+    {
+        return $this->canViewTicket($ticket, $user);
+    }
+
+   
 }

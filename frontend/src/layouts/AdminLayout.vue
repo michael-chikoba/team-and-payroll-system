@@ -191,7 +191,7 @@
             <div class="chat-popup-header">
               <h3>
                 <ChatBubbleLeftRightIcon class="inline-block w-6 h-6 mr-2" />
-                AI Chat Assistant
+               Chat Assistant
               </h3>
               <button @click="toggleChat" class="chat-close-btn">
                 <XMarkIcon class="w-6 h-6" />
