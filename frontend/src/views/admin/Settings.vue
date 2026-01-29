@@ -12,33 +12,49 @@
       <header class="page-header">
         <div class="header-content">
           <h1>⚙️ Business Settings</h1>
-          <p class="subtitle">Manage configuration for your business locations and branches.</p>
+          <p class="subtitle">Manage configuration for your assigned business locations.</p>
+          <div v-if="!isSuperAdmin" class="access-badge">
+            <span class="badge">Assigned Admin</span>
+            <span class="badge-count">{{ accessibleBusinesses.length }} business{{ accessibleBusinesses.length !== 1 ? 'es' : '' }}</span>
+          </div>
         </div>
         
         <div class="header-actions">
           <div class="business-selector-wrapper">
-            <label for="business-select">Active Business</label>
+            <label for="business-select">Select Business</label>
             <div class="select-container">
               <span class="select-icon">🏢</span>
               <select 
                 id="business-select" 
                 v-model="selectedBusinessId" 
                 @change="loadBusinessSettings"
+                :disabled="accessibleBusinesses.length === 0"
               >
-                <option :value="null">-- Select a business --</option>
+                <option :value="null">
+                  {{ accessibleBusinesses.length === 0 ? 'No businesses assigned' : '-- Select a business --' }}
+                </option>
                 <option 
-                  v-for="business in businesses" 
+                  v-for="business in accessibleBusinesses" 
                   :key="business.id" 
                   :value="business.id"
                 >
-                  {{ business.name }} ({{ business.country?.name || business.country_name || 'N/A' }})
+                  {{ business.name }} 
+                  <template v-if="business.country">
+                    ({{ business.country.name }})
+                  </template>
+                  <template v-if="business.is_primary">
+                    ★
+                  </template>
                 </option>
               </select>
             </div>
+            <small v-if="accessibleBusinesses.length === 0" class="access-hint">
+              You are not assigned to any businesses. Contact a super administrator.
+            </small>
           </div>
           
           <button 
-            v-if="!selectedBusinessId && isSuperAdmin"
+            v-if="isSuperAdmin"
             class="btn btn-primary" 
             @click="$router.push({ name: 'create-business' })"
           >
@@ -59,7 +75,6 @@
           <div class="alert-content">
             <span class="icon">⚠️</span> {{ error }}
           </div>
-          <!-- Initialize Button (Only if settings missing) -->
           <button 
             v-if="isSettingsMissing && selectedBusinessId" 
             @click="initializeSelectedBusiness"
@@ -70,31 +85,54 @@
         </div>
       </transition>
 
-      <!-- Empty State -->
-      <div v-if="!selectedBusinessId" class="empty-state">
+      <!-- Empty State - No Businesses -->
+      <div v-if="accessibleBusinesses.length === 0 && !loading" class="empty-state">
+        <div class="empty-icon">🔒</div>
+        <h3>No Business Access</h3>
+        <p>You are not assigned to manage any businesses.</p>
+        <div class="empty-actions">
+          <button class="btn btn-secondary" @click="loadBusinesses">
+            Refresh List
+          </button>
+          <button v-if="isSuperAdmin" class="btn btn-primary" @click="$router.push({ name: 'business-management' })">
+            Manage Business Assignments
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty State - Business Not Selected -->
+      <div v-if="accessibleBusinesses.length > 0 && !selectedBusinessId" class="empty-state">
         <div class="empty-icon">🏢</div>
-        <h3>No Business Selected</h3>
-        <p>Please select a business from the dropdown above to manage its settings.</p>
+        <h3>Select a Business</h3>
+        <p>Choose a business from the dropdown above to manage its settings.</p>
+        <p class="hint">You have access to {{ accessibleBusinesses.length }} business{{ accessibleBusinesses.length !== 1 ? 'es' : '' }}</p>
       </div>
 
       <!-- Settings Form -->
       <div v-else-if="selectedBusinessId && (!error || isSettingsMissing)" class="settings-wrapper">
         
-        <!-- Info Banner -->
+        <!-- Info Banner with Access Indicator -->
         <div v-if="currentBusiness" class="info-banner">
           <div class="banner-icon">{{ currentBusiness.flag_emoji || '🏢' }}</div>
           <div class="banner-details">
-            <h2>{{ currentBusiness.name }}</h2>
+            <div class="banner-header">
+              <h2>{{ currentBusiness.name }}</h2>
+              <span v-if="currentBusiness.is_primary" class="primary-badge" title="Your primary business">★ Primary</span>
+              <span class="access-type" v-if="!isSuperAdmin">Assigned Admin</span>
+            </div>
             <div class="meta-tags">
               <span class="tag">🌍 {{ currentBusiness.country?.name || currentBusiness.country_name || 'N/A' }}</span>
               <span v-if="currentBusiness.currency_code" class="tag">💱 {{ currentBusiness.currency_code }}</span>
               <span v-if="countryInfo" class="tag">🕐 {{ countryInfo.timezone }}</span>
+              <span class="tag" :class="{ 'super-admin': isSuperAdmin }">
+                {{ isSuperAdmin ? '👑 Super Admin' : '👨‍💼 Business Admin' }}
+              </span>
             </div>
           </div>
         </div>
 
         <div class="cards-grid">
-          <!-- 1. Company Information -->
+          <!-- Company Information Card -->
           <div class="card">
             <div class="card-header">
               <h3>🏢 Business Information</h3>
@@ -137,44 +175,6 @@
                       <option value="ZAR">ZAR - South African Rand</option>
                       <option value="NGN">NGN - Nigerian Naira</option>
                       <option value="KES">KES - Kenyan Shilling</option>
-                      <option value="GHS">GHS - Ghanaian Cedi</option>
-                      <option value="EGP">EGP - Egyptian Pound</option>
-                      <option value="DZD">DZD - Algerian Dinar</option>
-                      <option value="AOA">AOA - Angolan Kwanza</option>
-                      <option value="XOF">XOF - West African CFA Franc</option>
-                      <option value="BWP">BWP - Botswana Pula</option>
-                      <option value="BIF">BIF - Burundian Franc</option>
-                      <option value="XAF">XAF - Central African CFA Franc</option>
-                      <option value="CVE">CVE - Cape Verdean Escudo</option>
-                      <option value="KMF">KMF - Comorian Franc</option>
-                      <option value="CDF">CDF - Congolese Franc</option>
-                      <option value="DJF">DJF - Djiboutian Franc</option>
-                      <option value="ERN">ERN - Eritrean Nakfa</option>
-                      <option value="SZL">SZL - Eswatini Lilangeni</option>
-                      <option value="ETB">ETB - Ethiopian Birr</option>
-                      <option value="GMD">GMD - Gambian Dalasi</option>
-                      <option value="GNF">GNF - Guinean Franc</option>
-                      <option value="LSL">LSL - Lesotho Loti</option>
-                      <option value="LRD">LRD - Liberian Dollar</option>
-                      <option value="LYD">LYD - Libyan Dinar</option>
-                      <option value="MGA">MGA - Malagasy Ariary</option>
-                      <option value="MWK">MWK - Malawian Kwacha</option>
-                      <option value="MRU">MRU - Mauritanian Ouguiya</option>
-                      <option value="MUR">MUR - Mauritian Rupee</option>
-                      <option value="MAD">MAD - Moroccan Dirham</option>
-                      <option value="MZN">MZN - Mozambican Metical</option>
-                      <option value="NAD">NAD - Namibian Dollar</option>
-                      <option value="RWF">RWF - Rwandan Franc</option>
-                      <option value="STN">STN - São Tomé and Príncipe Dobra</option>
-                      <option value="SCR">SCR - Seychellois Rupee</option>
-                      <option value="SLL">SLL - Sierra Leonean Leone</option>
-                      <option value="SOS">SOS - Somali Shilling</option>
-                      <option value="SSP">SSP - South Sudanese Pound</option>
-                      <option value="SDG">SDG - Sudanese Pound</option>
-                      <option value="TZS">TZS - Tanzanian Shilling</option>
-                      <option value="TND">TND - Tunisian Dinar</option>
-                      <option value="UGX">UGX - Ugandan Shilling</option>
-                      <option value="ZWL">ZWL - Zimbabwean Dollar</option>
                     </optgroup>
                   </select>
                 </div>
@@ -182,10 +182,10 @@
                 <div class="form-group">
                   <label>Date Format</label>
                   <select v-model="settings.date_format" class="form-control" @change="onSettingChange">
-                    <option value="d/m/Y">DD/MM/YYYY </option>
-                    <option value="m/d/Y">MM/DD/YYYY </option>
-                    <option value="Y-m-d">YYYY-MM-DD </option>
-                    <option value="d M Y">DD MMM YYYY </option>
+                    <option value="d/m/Y">DD/MM/YYYY</option>
+                    <option value="m/d/Y">MM/DD/YYYY</option>
+                    <option value="Y-m-d">YYYY-MM-DD</option>
+                    <option value="d M Y">DD MMM YYYY</option>
                   </select>
                 </div>
 
@@ -203,7 +203,7 @@
             </div>
           </div>
 
-          <!-- 2. Departments -->
+          <!-- Departments Card -->
           <div class="card">
             <div class="card-header">
               <h3>🏛️ Departments</h3>
@@ -239,7 +239,7 @@
             </div>
           </div>
 
-          <!-- 3. Leave Policies -->
+          <!-- Leave Policies Card -->
           <div class="card">
             <div class="card-header">
               <h3>🏖️ Leave Policies</h3>
@@ -305,7 +305,7 @@
             </div>
           </div>
 
-          <!-- 4. Security -->
+          <!-- Security Card -->
           <div class="card">
             <div class="card-header">
               <h3>🔒 Security</h3>
@@ -409,7 +409,8 @@ export default {
   data() {
     return {
       selectedBusinessId: null,
-      businesses: [],
+      businesses: [], // All businesses from API
+      accessibleBusinesses: [], // Filtered businesses based on access
       currentBusiness: null,
       countryInfo: null,
       
@@ -435,7 +436,8 @@ export default {
       error: null,
       isSettingsMissing: false,
       submitting: false,
-      successMessage: null
+      successMessage: null,
+      userRole: null
     }
   },
 
@@ -445,13 +447,12 @@ export default {
       return JSON.stringify(this.settings) !== JSON.stringify(this.originalSettings)
     },
     
-    selectedBusinessName() {
-      const business = this.businesses.find(b => b.id == this.selectedBusinessId)
-      return business ? business.name : ''
+    isSuperAdmin() {
+      return this.authStore.user?.role === 'super_admin'
     },
     
-    isSuperAdmin() {
-      return this.authStore.user?.role === 'super_admin' || this.authStore.user?.role === 'admin'
+    isAdmin() {
+      return this.authStore.user?.role === 'admin' || this.isSuperAdmin
     }
   },
 
@@ -466,42 +467,71 @@ export default {
         return
       }
       
+      if (!this.isAdmin) {
+        this.error = 'Access denied. Administrator privileges required.'
+        return
+      }
+      
+      this.userRole = this.authStore.user?.role
       await this.loadBusinesses()
       
       // Auto-select business if stored in user profile
-      if (this.authStore.user?.current_business_id && !this.selectedBusinessId) {
+      if (this.authStore.user?.current_business_id && this.hasBusinessAccess(this.authStore.user.current_business_id)) {
         this.selectedBusinessId = this.authStore.user.current_business_id
         await this.loadBusinessSettings()
       }
     },
    
     async loadBusinesses() {
+      this.loading = true
       try {
-        const response = await axios.get('/api/admin/businesses-with-countries')
-        this.businesses = response.data.businesses || []
+        // Use the new endpoint that filters based on admin access
+        const response = await axios.get('/api/admin/accessible-businesses')
         
-        console.log('Businesses loaded:', this.businesses)
+        this.businesses = response.data.businesses || []
+        this.accessibleBusinesses = this.businesses // API already filtered
+        
+        console.log('Accessible businesses loaded:', {
+          total: response.data.total,
+          is_super_admin: response.data.is_super_admin,
+          businesses: this.accessibleBusinesses
+        })
+        
+        // If user has only one business, auto-select it
+        if (this.accessibleBusinesses.length === 1 && !this.selectedBusinessId) {
+          this.selectedBusinessId = this.accessibleBusinesses[0].id
+          await this.loadBusinessSettings()
+        }
       } catch (err) {
-        console.error('Failed to load businesses:', err)
-        this.error = 'Failed to load businesses list.'
+        console.error('Failed to load accessible businesses:', err)
+        this.error = err.response?.data?.message || 'Failed to load businesses list.'
+        this.accessibleBusinesses = []
+      } finally {
+        this.loading = false
       }
     },
    
+    hasBusinessAccess(businessId) {
+      return this.accessibleBusinesses.some(b => b.id == businessId)
+    },
+   
     async loadBusinessSettings() {
+      if (!this.selectedBusinessId || !this.hasBusinessAccess(this.selectedBusinessId)) {
+        this.error = 'You do not have access to this business.'
+        return
+      }
+
       this.error = null
       this.successMessage = null
       this.isSettingsMissing = false
       this.countryInfo = null
       
-      if (!this.selectedBusinessId) return
-
       this.loading = true
-      this.currentBusiness = this.businesses.find(b => b.id == this.selectedBusinessId)
+      this.currentBusiness = this.accessibleBusinesses.find(b => b.id == this.selectedBusinessId)
 
       try {
-        console.log('Loading settings for business:', this.selectedBusinessId)
+        console.log('Loading settings for accessible business:', this.selectedBusinessId)
         
-        // Get the country code from the business
         const countryCode = this.currentBusiness?.country?.code || this.currentBusiness?.country_code
         
         const response = await axios.get('/api/admin/settings', {
@@ -545,9 +575,12 @@ export default {
         
         // 404 or 422 could mean settings don't exist yet
         if (err.response?.status === 404 || err.response?.status === 422) {
-          this.error = `Settings not yet configured for ${this.selectedBusinessName}.`
+          this.error = `Settings not yet configured for ${this.currentBusiness?.name}.`
           this.isSettingsMissing = true
           this.prepareDefaultSettings()
+        } else if (err.response?.status === 403) {
+          this.error = 'You do not have permission to access settings for this business.'
+          this.selectedBusinessId = null
         } else {
           this.handleApiError(err)
         }
@@ -557,7 +590,7 @@ export default {
     },
     
     prepareDefaultSettings() {
-      const business = this.businesses.find(b => b.id == this.selectedBusinessId)
+      const business = this.accessibleBusinesses.find(b => b.id == this.selectedBusinessId)
       
       this.settings = {
         business_id: this.selectedBusinessId,
@@ -583,14 +616,19 @@ export default {
     },
     
     async initializeSelectedBusiness() {
+      if (!this.hasBusinessAccess(this.selectedBusinessId)) {
+        this.error = 'Access denied. You cannot initialize settings for this business.'
+        return
+      }
+      
       this.submitting = true
       this.error = null
       
       try {
-        console.log('Initializing settings:', this.settings)
+        console.log('Initializing settings for business:', this.selectedBusinessId)
         
         await axios.post('/api/admin/business-settings/initialize', this.settings)
-        this.successMessage = `Settings initialized successfully for ${this.selectedBusinessName}!`
+        this.successMessage = `Settings initialized successfully for ${this.currentBusiness?.name}!`
         this.isSettingsMissing = false
         
         // Clear success message after 5 seconds
@@ -608,12 +646,17 @@ export default {
     },
    
     async saveSettings() {
+      if (!this.hasBusinessAccess(this.selectedBusinessId)) {
+        this.error = 'Access denied. You cannot save settings for this business.'
+        return
+      }
+      
       this.submitting = true
       this.error = null
       this.successMessage = null
      
       try {
-        console.log('Saving settings:', this.settings)
+        console.log('Saving settings for business:', this.selectedBusinessId)
         
         const response = await axios.put('/api/admin/settings', {
           ...this.settings,
@@ -665,6 +708,10 @@ export default {
         errorMsg = 'Session expired. Please log in again.'
         this.authStore.clearAuth()
         this.$router.push({ name: 'login' })
+      } else if (err.response?.status === 403) {
+        errorMsg = 'Permission denied. You do not have access to this business.'
+        // Reset selection if access denied
+        this.selectedBusinessId = null
       } else if (err.response?.status === 422) {
         const errors = err.response.data.errors
         if (errors) {
@@ -672,8 +719,6 @@ export default {
         } else {
           errorMsg = err.response.data.message || 'Validation failed. Please check your inputs.'
         }
-      } else if (err.response?.status === 403) {
-        errorMsg = 'Permission denied. You do not have access to this resource.'
       } else {
         errorMsg = err.response?.data?.message || errorMsg
       }
@@ -717,6 +762,32 @@ export default {
 .subtitle {
   color: #64748b;
   margin-top: 0.5rem;
+}
+
+.access-badge {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  align-items: center;
+}
+
+.badge {
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid #c7d2fe;
+}
+
+.badge-count {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
 }
 
 .business-selector-wrapper {
@@ -765,6 +836,19 @@ select {
 
 select:focus {
   outline: none;
+}
+
+select:disabled {
+  background-color: #f8fafc;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.access-hint {
+  color: #ef4444;
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  display: block;
 }
 
 /* Cards & Layout */
@@ -833,6 +917,31 @@ select:focus {
   color: #1e40af;
 }
 
+.banner-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.primary-badge {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.access-type {
+  background: #dbeafe;
+  color: #1e40af;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 .meta-tags {
   display: flex;
   gap: 0.75rem;
@@ -847,6 +956,12 @@ select:focus {
   font-weight: 500;
   color: #1e40af;
   border: 1px solid #dbeafe;
+}
+
+.tag.super-admin {
+  background: linear-gradient(to right, #fef3c7, #fed7aa);
+  color: #92400e;
+  border-color: #fdba74;
 }
 
 /* Forms */
@@ -881,7 +996,7 @@ select:focus {
   transition: all 0.2s;
   background: #fff;
   color: #1e293b;
-  box-sizing: border-box; /* Crucial for padding */
+  box-sizing: border-box;
 }
 
 .form-control:focus {
@@ -1124,6 +1239,13 @@ textarea.form-control {
   font-size: 3rem;
   margin-bottom: 1rem;
   opacity: 0.5;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  justify-content: center;
 }
 
 @keyframes spin {

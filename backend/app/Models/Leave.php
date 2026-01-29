@@ -13,6 +13,7 @@ class Leave extends Model
     protected $fillable = [
         'employee_id',
         'manager_id',
+        'business_id', // Added for multi-tenancy
         'type',
         'start_date',
         'end_date',
@@ -29,7 +30,7 @@ class Leave extends Model
         'total_days' => 'integer',
     ];
 
-    // Valid leave types - single source of truth
+    // Valid leave types
     public const VALID_TYPES = [
         'annual',
         'sick',
@@ -44,9 +45,10 @@ class Leave extends Model
         'pending',
         'approved',
         'rejected',
+        'cancelled',
     ];
 
-    // Ensure type is always lowercase and valid
+    // Ensure type is always lowercase
     protected function type(): Attribute
     {
         return Attribute::make(
@@ -55,7 +57,7 @@ class Leave extends Model
         );
     }
 
-    // Ensure status is always lowercase and valid
+    // Ensure status is always lowercase
     protected function status(): Attribute
     {
         return Attribute::make(
@@ -72,6 +74,11 @@ class Leave extends Model
     public function manager()
     {
         return $this->belongsTo(User::class, 'manager_id');
+    }
+
+    public function business()
+    {
+        return $this->belongsTo(Business::class);
     }
 
     public function scopePending($query)
@@ -107,5 +114,10 @@ class Leave extends Model
     public function isRejected()
     {
         return $this->status === 'rejected';
+    }
+
+    public function isCancelled()
+    {
+        return $this->status === 'cancelled';
     }
 }

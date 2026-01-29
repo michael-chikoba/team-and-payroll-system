@@ -4,17 +4,128 @@
       <!-- Page Header -->
       <div class="text-center mb-8">
         <h1 class="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
-          Leave Management
+          Leave Management Dashboard
         </h1>
         <p class="text-gray-600 text-lg">
-          Showing all approved and pending leaves for {{ currentMonthYear }}
+          {{ userRole === 'admin' ? 'All business leaves' : 'Your team leaves' }} for {{ currentMonthYear }}
         </p>
       </div>
 
-      <!-- Controls Bar -->
-      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+      <!-- Statistics Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <!-- Total Leaves -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-indigo-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-500 text-sm font-medium">Total Leaves</p>
+              <p class="text-3xl font-bold text-gray-900 mt-1">{{ statistics.total_leaves }}</p>
+            </div>
+            <div class="bg-indigo-100 rounded-full p-3">
+              <svg class="h-8 w-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending Leaves -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-yellow-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-500 text-sm font-medium">Pending Approval</p>
+              <p class="text-3xl font-bold text-yellow-600 mt-1">{{ statistics.pending_count }}</p>
+            </div>
+            <div class="bg-yellow-100 rounded-full p-3">
+              <svg class="h-8 w-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Approved Leaves -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-green-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-500 text-sm font-medium">Approved</p>
+              <p class="text-3xl font-bold text-green-600 mt-1">{{ statistics.approved_count }}</p>
+            </div>
+            <div class="bg-green-100 rounded-full p-3">
+              <svg class="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- On Leave Today -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-gray-500 text-sm font-medium">On Leave Today</p>
+              <p class="text-3xl font-bold text-blue-600 mt-1">{{ statistics.on_leave_count }}</p>
+            </div>
+            <div class="bg-blue-100 rounded-full p-3">
+              <svg class="h-8 w-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Employees Currently On Leave -->
+      <div v-if="onLeaveEmployees.length > 0" class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+          </svg>
+          Employees Currently On Leave
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div
+            v-for="emp in onLeaveEmployees"
+            :key="emp.id"
+            class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+          >
+            <div class="flex items-start justify-between">
+              <div class="flex-1">
+                <h3 class="font-semibold text-gray-900">{{ emp.name }}</h3>
+                <p class="text-sm text-gray-500">{{ emp.department }}</p>
+                <div class="mt-2 space-y-1">
+                  <p class="text-xs text-gray-600">
+                    <span class="font-medium">Type:</span> {{ formatLeaveType(emp.leave_type) }}
+                  </p>
+                  <p class="text-xs text-gray-600">
+                    <span class="font-medium">Until:</span> {{ formatDate(emp.end_date) }}
+                  </p>
+                  <!-- Update this line in your template -->
+<p class="text-xs text-blue-600 font-medium">
+  {{ Math.round(emp.days_remaining) }} {{ Math.round(emp.days_remaining) === 1 ? 'day' : 'days' }} remaining
+</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Business Filter (Admin Only) -->
+      <div v-if="userRole === 'admin'" class="bg-white rounded-xl shadow-sm p-6 mb-6">
         <div class="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
           <div class="flex flex-col sm:flex-row gap-4 w-full lg:w-auto flex-1">
+            <!-- Business Filter -->
+            <select
+              v-model="selectedBusinessId"
+              @change="refreshData"
+              class="block w-full sm:w-48 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-white"
+            >
+              <option value="">All Businesses</option>
+              <option v-for="business in businesses" :key="business.id" :value="business.id">
+                {{ business.name }}
+              </option>
+            </select>
+
             <!-- Search Input -->
             <div class="relative flex-1">
               <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -36,15 +147,16 @@
               class="block w-full sm:w-48 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 bg-white"
             >
               <option value="all">All Status</option>
-              <option value="approved">Approved</option>
               <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
 
           <!-- Refresh Button -->
           <button
-            @click="fetchLeaves"
+            @click="refreshData"
             :disabled="loading"
             class="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium rounded-lg hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
           >
@@ -77,6 +189,9 @@
                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Employee
                 </th>
+                <th v-if="userRole === 'admin'" class="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
+                  Business
+                </th>
                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Department
                 </th>
@@ -98,7 +213,6 @@
                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Status
                 </th>
-              
                 <th class="px-6 py-4 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Actions
                 </th>
@@ -115,6 +229,11 @@
                     {{ getEmployeeName(leave) }}
                   </div>
                 </td>
+                <td v-if="userRole === 'admin'" class="px-6 py-4 whitespace-nowrap">
+                  <div class="text-sm text-gray-600">
+                    {{ leave.employee?.business?.name || 'N/A' }}
+                  </div>
+                </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="text-sm text-gray-600">
                     {{ leave.employee?.department || 'N/A' }}
@@ -122,7 +241,7 @@
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="text-sm text-gray-600">
-                    {{ formatLeaveType(leave.type) }}
+                    {{ formatLeaveType(leave.leave_type || leave.type) }}
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
@@ -137,7 +256,7 @@
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="text-sm font-medium text-gray-900">
-                    {{ leave.total_days }}
+                    {{ leave.total_days || calculateDays(leave.start_date, leave.end_date) }}
                   </div>
                 </td>
                 <td class="px-6 py-4">
@@ -150,7 +269,6 @@
                     {{ formatStatus(leave.status) }}
                   </span>
                 </td>
-                
                 <td class="px-6 py-4 whitespace-nowrap text-sm">
                   <div v-if="leave.status === 'pending'" class="flex gap-2">
                     <button
@@ -186,7 +304,7 @@
           <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p class="text-gray-600 text-lg">No leave records found for the current month.</p>
+          <p class="text-gray-600 text-lg">No leave records found for the current filters.</p>
         </div>
       </div>
     </div>
@@ -197,11 +315,30 @@
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
+// Props (if needed for role detection)
+const props = defineProps({
+  userRole: {
+    type: String,
+    default: 'admin' // Can be 'admin', 'manager', or 'employee'
+  }
+})
+
 const leaves = ref([])
+const onLeaveEmployees = ref([])
+const businesses = ref([])
 const loading = ref(false)
 const submitting = ref(false)
 const search = ref('')
 const statusFilter = ref('all')
+const selectedBusinessId = ref('')
+
+const statistics = ref({
+  total_leaves: 0,
+  pending_count: 0,
+  approved_count: 0,
+  rejected_count: 0,
+  on_leave_count: 0
+})
 
 const currentMonthYear = computed(() => {
   return new Date().toLocaleDateString('en-US', {
@@ -210,25 +347,118 @@ const currentMonthYear = computed(() => {
   })
 })
 
+// Fetch businesses for admin
+const fetchBusinesses = async () => {
+  if (props.userRole !== 'admin') return
+  
+  try {
+    const response = await axios.get('/api/admin/businesses')
+    businesses.value = response.data.data || response.data.businesses || []
+  } catch (error) {
+    console.error('❌ Error fetching businesses:', error)
+  }
+}
+
 const fetchLeaves = async () => {
   loading.value = true
   try {
-    const now = new Date()
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1)
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    // Based on role, use appropriate endpoint
+    let endpoint
+    const params = {}
+    
+    if (props.userRole === 'admin') {
+      endpoint = '/api/admin/leaves/current-month'
+      if (selectedBusinessId.value) {
+        params.business_id = selectedBusinessId.value
+      }
+    } else if (props.userRole === 'manager') {
+      endpoint = '/api/manager/leaves/current-month'
+    } else {
+      // For employees, you might want to use a different endpoint
+      endpoint = '/api/employee/leaves'
+    }
 
-    const response = await axios.get('/api/admin/leaves/current-month', {
-      params: {
-        start_date: firstDay.toISOString().split('T')[0],
-        end_date: lastDay.toISOString().split('T')[0],
-      },
-    })
+    console.log('Fetching leaves from:', endpoint, 'with params:', params)
+    
+    const response = await axios.get(endpoint, { params })
+    const data = response.data
 
-    leaves.value = Array.isArray(response.data)
-      ? response.data
-      : response.data.data || []
+    console.log('Leave data received:', data)
+
+    // Use all_leaves if available, otherwise fall back to pending_leaves
+    if (data.all_leaves && Array.isArray(data.all_leaves)) {
+      leaves.value = data.all_leaves
+    } else if (data.pending_leaves && Array.isArray(data.pending_leaves)) {
+      leaves.value = data.pending_leaves
+    } else if (Array.isArray(data)) {
+      leaves.value = data
+    } else if (data.data && Array.isArray(data.data)) {
+      leaves.value = data.data
+    } else {
+      leaves.value = []
+    }
+
+    console.log('Leaves loaded:', leaves.value.length, 'items')
+
+    // Extract on-leave employees from dashboard data structure
+    if (data.on_leave_employees && Array.isArray(data.on_leave_employees)) {
+      onLeaveEmployees.value = data.on_leave_employees
+    } else {
+      // Fallback: extract from leaves data
+      onLeaveEmployees.value = leaves.value
+        .filter(leave => 
+          leave.status === 'approved' && 
+          isOnLeaveToday(leave.start_date, leave.end_date)
+        )
+        .map(leave => ({
+          id: leave.employee?.id || leave.employee_id,
+          name: getEmployeeName(leave),
+          department: leave.employee?.department || 'N/A',
+          leave_type: leave.leave_type || leave.type,
+          end_date: leave.end_date,
+          days_remaining: calculateDaysRemaining(leave.end_date)
+        }))
+    }
+
+    // Update statistics based on dashboard structure
+    if (data.status_counts || data.pending_count !== undefined) {
+      // Use status_counts if available
+      if (data.status_counts) {
+        statistics.value = {
+          total_leaves: data.total_leaves_this_month || 
+                       (data.status_counts.pending + data.status_counts.approved + data.status_counts.rejected + data.status_counts.cancelled),
+          pending_count: data.status_counts.pending || data.pending_count || 0,
+          approved_count: data.status_counts.approved || data.approved_count || 0,
+          rejected_count: data.status_counts.rejected || data.rejected_count || 0,
+          on_leave_count: data.on_leave_count || 0
+        }
+      } else {
+        statistics.value = {
+          total_leaves: data.total_leaves_this_month || leaves.value.length,
+          pending_count: data.pending_count || leaves.value.filter(l => l.status === 'pending').length,
+          approved_count: data.approved_count || leaves.value.filter(l => l.status === 'approved').length,
+          rejected_count: data.rejected_count || leaves.value.filter(l => l.status === 'rejected').length,
+          on_leave_count: data.on_leave_count || onLeaveEmployees.value.length
+        }
+      }
+    } else {
+      // Calculate from leaves data
+      statistics.value = {
+        total_leaves: leaves.value.length,
+        pending_count: leaves.value.filter(l => l.status === 'pending').length,
+        approved_count: leaves.value.filter(l => l.status === 'approved').length,
+        rejected_count: leaves.value.filter(l => l.status === 'rejected').length,
+        on_leave_count: onLeaveEmployees.value.length
+      }
+    }
+
+    console.log('Statistics updated:', statistics.value)
+
   } catch (error) {
     console.error('❌ Error fetching leave records:', error)
+    if (error.response?.status === 404) {
+      console.error('Endpoint not found. Check your route configuration.')
+    }
     alert('Failed to fetch leaves. Please try again.')
   } finally {
     loading.value = false
@@ -240,26 +470,50 @@ const approveLeave = async (leaveId) => {
 
   submitting.value = true
   try {
-  //  console.log(`✅ Approving leave ID: ${leaveId}`)
-    await axios.post(`/api/manager/leaves/${leaveId}/approve`)
+    let endpoint
+    if (props.userRole === 'admin') {
+      endpoint = `/api/admin/leaves/${leaveId}/approve`
+    } else {
+      endpoint = `/api/manager/leaves/${leaveId}/approve`
+    }
+
+    console.log('Approving leave at:', endpoint)
+    
+    // Send the required data for approval
+    await axios.post(endpoint, {
+      status: 'approved',
+      manager_notes: 'Leave approved by admin'
+    })
+    
     alert('Leave approved successfully!')
-    await fetchLeaves()
+    await refreshData()
   } catch (error) {
     console.error('❌ Error approving leave:', error)
-    alert('Failed to approve leave. Please try again.')
+    if (error.response?.status === 422) {
+      alert('Validation error: ' + (error.response.data.message || 'Invalid data'))
+    } else {
+      alert('Failed to approve leave. Please try again.')
+    }
   } finally {
     submitting.value = false
   }
 }
-
 const rejectLeave = async (leaveId) => {
   if (!confirm('Are you sure you want to reject this leave request?')) return
 
   submitting.value = true
   try {
-    await axios.post(`/api/manager/leaves/${leaveId}/reject`)
+    let endpoint
+    if (props.userRole === 'admin') {
+      endpoint = `/api/admin/leaves/${leaveId}/reject`
+    } else {
+      endpoint = `/api/manager/leaves/${leaveId}/reject`
+    }
+
+    console.log('Rejecting leave at:', endpoint)
+    await axios.post(endpoint)
     alert('Leave rejected successfully!')
-    await fetchLeaves()
+    await refreshData()
   } catch (error) {
     console.error('❌ Error rejecting leave:', error)
     alert('Failed to reject leave. Please try again.')
@@ -268,6 +522,11 @@ const rejectLeave = async (leaveId) => {
   }
 }
 
+const refreshData = async () => {
+  await fetchLeaves()
+}
+
+// Helper functions
 const formatDate = (date) => {
   if (!date) return 'N/A'
   return new Date(date).toLocaleDateString('en-US', {
@@ -279,7 +538,7 @@ const formatDate = (date) => {
 
 const formatLeaveType = (type) => {
   if (!type) return 'N/A'
-  return type.charAt(0).toUpperCase() + type.slice(1)
+  return type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')
 }
 
 const formatStatus = (status) => {
@@ -288,40 +547,90 @@ const formatStatus = (status) => {
 }
 
 const getEmployeeName = (leave) => {
+  // Try multiple possible data structures
   if (leave.employee?.user?.name) {
     return leave.employee.user.name
+  } else if (leave.employee?.name) {
+    return leave.employee.name
   } else if (leave.employee?.full_name && leave.employee.full_name !== 'N/A') {
     return leave.employee.full_name
   } else if (leave.employee?.user?.first_name) {
     return `${leave.employee.user.first_name} ${leave.employee.user.last_name || ''}`.trim()
+  } else if (leave.employee?.first_name) {
+    return `${leave.employee.first_name} ${leave.employee.last_name || ''}`.trim()
+  } else if (leave.employee_name) {
+    return leave.employee_name
   }
-  return 'N/A'
+  return 'Unknown Employee'
 }
 
-const getApprovedBy = (leave) => {
-  if (leave.status !== 'approved') return 'N/A'
+const calculateDays = (startDate, endDate) => {
+  if (!startDate || !endDate) return 'N/A'
+  const start = new Date(startDate)
+  const end = new Date(endDate)
+  const diffTime = Math.abs(end - start)
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  return diffDays
+}
+
+const calculateDaysRemaining = (endDate) => {
+  if (!endDate) return 0
   
-  if (leave.approved_by?.name) {
-    return leave.approved_by.name
-  } else if (leave.approved_by?.first_name) {
-    return `${leave.approved_by.first_name} ${leave.approved_by.last_name || ''}`.trim()
-  } else if (leave.approver_name) {
-    return leave.approver_name
-  }
-  return 'N/A'
+  const today = new Date()
+  const end = new Date(endDate)
+  
+  // If end date is in the past, return 0
+  if (end < today) return 0
+  
+  // Calculate whole days remaining including today
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const endStart = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+  
+  // Add 1 to include today as a day
+  const diffDays = Math.floor((endStart - todayStart) / (1000 * 60 * 60 * 24)) + 1
+  
+  return Math.max(diffDays, 0)
+}
+
+const isOnLeaveToday = (startDate, endDate) => {
+  if (!startDate || !endDate) return false
+  
+  const today = new Date()
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  
+  const start = new Date(startDate)
+  const startStart = new Date(start.getFullYear(), start.getMonth(), start.getDate())
+  
+  const end = new Date(endDate)
+  const endStart = new Date(end.getFullYear(), end.getMonth(), end.getDate())
+  
+  return todayStart >= startStart && todayStart <= endStart
 }
 
 const filteredLeaves = computed(() => {
+  console.log('Filtering leaves:', {
+    total: leaves.value.length,
+    statusFilter: statusFilter.value,
+    search: search.value
+  })
+
   const results = leaves.value.filter((leave) => {
     const employeeName = getEmployeeName(leave).toLowerCase()
     const matchesSearch = employeeName.includes(search.value.toLowerCase())
-    const matchesStatus =
-      statusFilter.value === 'all' ||
-      leave.status?.toLowerCase() === statusFilter.value
+    const matchesStatus = statusFilter.value === 'all' || 
+                         leave.status?.toLowerCase() === statusFilter.value
+    
+    console.log('Leave check:', {
+      name: getEmployeeName(leave),
+      status: leave.status,
+      matchesSearch,
+      matchesStatus
+    })
+    
     return matchesSearch && matchesStatus
   })
 
-  //console.log('🔍 Filtered leaves count:', results.length)
+  console.log('Filtered results:', results.length, 'items')
   return results
 })
 
@@ -333,15 +642,21 @@ const statusClass = (status) => {
       return 'bg-red-100 text-red-800'
     case 'pending':
       return 'bg-yellow-100 text-yellow-800'
+    case 'cancelled':
+      return 'bg-gray-100 text-gray-800'
     default:
       return 'bg-gray-100 text-gray-800'
   }
 }
 
 onMounted(() => {
+  if (props.userRole === 'admin') {
+    fetchBusinesses()
+  }
   fetchLeaves()
 })
 </script>
+
 <style scoped>
 :root {
   --primary-color: #4f46e5;

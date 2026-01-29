@@ -49,7 +49,6 @@
           Showing: {{ getBusinessName(selectedBusinessId) }}
         </span>
       </div>
-
       <!-- Search and Items Per Page Controls -->
       <div class="table-controls">
         <div class="search-box">
@@ -80,7 +79,6 @@
           </div>
         </div>
       </div>
-
       <table class="employees-table">
         <thead>
           <tr>
@@ -167,7 +165,7 @@
           </tr>
         </tbody>
       </table>
-      
+     
       <!-- Empty State -->
       <div v-if="filteredEmployees.length === 0" class="empty-state">
         <p v-if="searchQuery">No employees found matching "{{ searchQuery }}"</p>
@@ -177,17 +175,16 @@
           Add First Employee
         </button>
       </div>
-
       <!-- Pagination Component -->
       <div v-if="filteredEmployees.length > 0" class="pagination">
-        <button 
-          @click="prevPage" 
-          :disabled="currentPage === 1" 
+        <button
+          @click="prevPage"
+          :disabled="currentPage === 1"
           class="pagination-btn"
         >
           Previous
         </button>
-        
+       
         <div class="page-numbers">
           <button
             v-for="page in visiblePages"
@@ -203,10 +200,10 @@
             {{ page }}
           </button>
         </div>
-        
-        <button 
-          @click="nextPage" 
-          :disabled="currentPage === totalPages" 
+       
+        <button
+          @click="nextPage"
+          :disabled="currentPage === totalPages"
           class="pagination-btn"
         >
           Next
@@ -262,7 +259,7 @@
             <label>Email *</label>
             <input v-model="form.email" type="email" required placeholder="employee@example.com" />
           </div>
-        
+       
           <!-- Enhanced Country Selector -->
           <div class="form-group full-width">
             <label>Country *</label>
@@ -287,7 +284,7 @@
                 </div>
                 <span class="dropdown-arrow">{{ showCountryDropdown ? '▲' : '▼' }}</span>
               </div>
-              
+             
               <div v-if="showCountryDropdown" class="country-dropdown">
                 <div class="country-search">
                   <input
@@ -339,7 +336,7 @@
               This country is currently inactive.
             </small>
           </div>
-        
+       
           <div class="form-group">
             <label>Role *</label>
             <select v-model="form.role" required @change="onRoleChange">
@@ -353,15 +350,15 @@
               <label>Position *</label>
               <input v-model="form.position" type="text" required placeholder="e.g., Software Developer" />
             </div>
-            
+           
             <!-- DYNAMIC DEPARTMENTS FROM BACKEND SETTINGS -->
             <div class="form-group">
               <label>Department *</label>
               <select v-model="form.department" required :disabled="loadingDepartments || !form.business_id">
                 <option value="">{{ loadingDepartments ? 'Loading departments...' : 'Select Department' }}</option>
-                <option 
-                  v-for="(dept, index) in availableDepartments" 
-                  :key="index" 
+                <option
+                  v-for="(dept, index) in availableDepartments"
+                  :key="index"
                   :value="dept.name"
                 >
                   {{ dept.name }}
@@ -372,7 +369,7 @@
                 No departments found for this business. Please configure settings.
               </small>
             </div>
-            
+           
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -436,11 +433,9 @@
     </div>
   </div>
 </template>
-
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
-
 export default {
   name: 'EmployeeManagement',
   setup() {
@@ -453,11 +448,10 @@ export default {
       managers: [],
       countries: [],
       businesses: [],
-      
+     
       // Department Logic
       availableDepartments: [],
       loadingDepartments: false,
-
       loading: false,
       error: null,
       showAddModal: false,
@@ -465,20 +459,20 @@ export default {
       submitting: false,
       formError: null,
       currentEmployee: null,
-      selectedBusinessId: this.authStore.user?.business_id || '',
+      selectedBusinessId: '',
       showCountryDropdown: false,
       countrySearch: '',
-      
+     
       // Pagination data
       currentPage: 1,
       itemsPerPage: 10,
       searchQuery: '',
-      
+     
       form: {
         first_name: '',
         last_name: '',
         email: '',
-        business_id: this.authStore.user?.business_id || '',
+        business_id: '',
         country_id: '',
         role: 'employee',
         position: '',
@@ -523,13 +517,13 @@ export default {
       if (!this.form.country_id) return null
       return this.countries.find(c => c.id === this.form.country_id)
     },
-    
+   
     // Filter employees based on search query
     filteredEmployees() {
       if (!this.searchQuery.trim()) {
         return this.employees
       }
-      
+     
       const searchTerm = this.searchQuery.toLowerCase()
       return this.employees.filter(employee => {
         const name = this.getEmployeeName(employee).toLowerCase()
@@ -537,7 +531,7 @@ export default {
         const position = (employee.position || '').toLowerCase()
         const department = (employee.department || '').toLowerCase()
         const employeeId = (employee.employee_id || employee.id || '').toString().toLowerCase()
-        
+       
         return name.includes(searchTerm) ||
                email.includes(searchTerm) ||
                position.includes(searchTerm) ||
@@ -545,35 +539,35 @@ export default {
                employeeId.includes(searchTerm)
       })
     },
-    
+   
     // Pagination calculations
     totalItems() {
       return this.filteredEmployees.length
     },
-    
+   
     totalPages() {
       return Math.ceil(this.totalItems / this.itemsPerPage)
     },
-    
+   
     showingStart() {
       return (this.currentPage - 1) * this.itemsPerPage + 1
     },
-    
+   
     showingEnd() {
       const end = this.currentPage * this.itemsPerPage
       return end > this.totalItems ? this.totalItems : end
     },
-    
+   
     paginatedEmployees() {
       const startIndex = (this.currentPage - 1) * this.itemsPerPage
       const endIndex = startIndex + this.itemsPerPage
       return this.filteredEmployees.slice(startIndex, endIndex)
     },
-    
+   
     visiblePages() {
       const pages = []
       const maxVisible = 5
-      
+     
       if (this.totalPages <= maxVisible) {
         for (let i = 1; i <= this.totalPages; i++) {
           pages.push(i)
@@ -601,7 +595,7 @@ export default {
           pages.push(this.totalPages)
         }
       }
-      
+     
       return pages
     }
   },
@@ -609,13 +603,23 @@ export default {
     // Watch for changes in the form's business selection to fetch relevant departments
     'form.business_id': {
       handler(newVal) {
+        console.log('form.business_id changed to:', newVal);
         if (newVal) {
           this.fetchSettingsForBusiness(newVal)
         } else {
           this.availableDepartments = []
         }
       },
-      immediate: true
+      immediate: false // Changed to false - we'll handle initialization manually
+    },
+    
+    // NEW WATCHER: Watch for modal opening
+    showAddModal(newVal) {
+      if (newVal && this.authStore.isAdmin) {
+        this.$nextTick(() => {
+          this.initializeFormForAdd();
+        });
+      }
     }
   },
   mounted() {
@@ -636,19 +640,22 @@ export default {
         this.error = 'You do not have permission to access this page.'
         return
       }
-      
+     
       try {
         // Load businesses first (for admin)
         if (this.authStore.isAdmin) {
           await this.fetchBusinesses()
         }
-        
-        // Set default business if user has only one business
+       
+        // Set selectedBusinessId for filtering
         if (this.authStore.isAdmin && this.businesses.length === 1) {
-          this.form.business_id = this.businesses[0].id
           this.selectedBusinessId = this.businesses[0].id
+          console.log('Single business detected, selectedBusinessId set to:', this.selectedBusinessId);
+        } else if (this.authStore.user?.current_business_id) {
+          this.selectedBusinessId = this.authStore.user.current_business_id
+          console.log('selectedBusinessId set from user current_business_id:', this.selectedBusinessId);
         }
-        
+       
         await Promise.all([
           this.fetchEmployees(),
           this.fetchManagers(),
@@ -660,10 +667,39 @@ export default {
       }
     },
     
+    /**
+     * NEW METHOD: Initialize form when Add Employee modal opens
+     */
+    initializeFormForAdd() {
+      console.log('Initializing form for add employee modal');
+      console.log('Businesses count:', this.businesses.length);
+      console.log('Current user business_id:', this.authStore.user?.current_business_id);
+      
+      // If admin has only one business, automatically set it
+      if (this.authStore.isAdmin && this.businesses.length === 1) {
+        const businessId = this.businesses[0].id;
+        this.form.business_id = businessId;
+        console.log('Auto-setting business_id to:', businessId);
+        
+        // Manually fetch departments since watcher won't trigger
+        this.fetchSettingsForBusiness(businessId);
+      }
+      // If user has a current business set, use that
+      else if (this.authStore.user?.current_business_id) {
+        const businessId = this.authStore.user.current_business_id;
+        this.form.business_id = businessId;
+        console.log('Setting business_id from user current_business_id:', businessId);
+        
+        // Manually fetch departments
+        this.fetchSettingsForBusiness(businessId);
+      }
+    },
+   
     async fetchBusinesses() {
       try {
         const response = await axios.get('/api/admin/businesses')
         this.businesses = response.data.data || []
+        console.log('Businesses fetched:', this.businesses.length);
       } catch (error) {
         console.error('Failed to fetch businesses:', error)
         this.$notify({
@@ -673,21 +709,25 @@ export default {
         })
       }
     },
-    
-    // NEW: Fetch department settings for the specific business
+   
+    // Fetch department settings for the specific business
     async fetchSettingsForBusiness(businessId) {
+      console.log('Fetching departments for business:', businessId);
       this.loadingDepartments = true;
       try {
         const response = await axios.get('/api/admin/settings', {
           params: { business_id: businessId }
         });
-
+        console.log('Settings response:', response.data);
+        
         // Structure from AdminController::getSettings
         // Returns { settings: { departments: [{name: 'IT'}], ... }, ... }
         if (response.data && response.data.settings && response.data.settings.departments) {
           this.availableDepartments = response.data.settings.departments;
+          console.log('Departments loaded:', this.availableDepartments.length);
         } else {
           this.availableDepartments = [];
+          console.log('No departments found in response');
         }
       } catch (error) {
         console.error('Failed to load business settings:', error);
@@ -696,27 +736,27 @@ export default {
         this.loadingDepartments = false;
       }
     },
-
+    
     async fetchEmployees() {
       this.loading = true
       this.error = null
       try {
         let url = '/api/admin/employees'
-        
+       
         // Add business filter if selected
         if (this.selectedBusinessId) {
           url += `?business_id=${this.selectedBusinessId}`
         }
-        
+       
         const response = await axios.get(url)
         let employeesData = []
         if (response.data && response.data.employees) employeesData = response.data.employees
         else if (response.data && response.data.data) employeesData = response.data.data
         else employeesData = response.data || []
-        
+       
         this.employees = employeesData
         this.currentPage = 1 // Reset to first page when data changes
-        
+       
       } catch (err) {
         console.error('Fetch employees error:', err)
         this.handleApiError(err)
@@ -724,26 +764,26 @@ export default {
         this.loading = false
       }
     },
-    
+   
     async fetchManagers() {
       try {
         let url = '/api/admin/managers'
-        
+       
         // Add business filter if selected
         if (this.selectedBusinessId) {
           url += `?business_id=${this.selectedBusinessId}`
         }
-        
+       
         const response = await axios.get(url)
         this.managers = Array.isArray(response.data) ? response.data :
                      response.data?.data || response.data || []
-        
+       
       } catch (err) {
         console.error('Failed to fetch managers:', err)
         this.managers = []
       }
     },
-    
+   
     async fetchCountries() {
       try {
         const response = await axios.get('/api/admin/countries')
@@ -753,7 +793,7 @@ export default {
         this.countries = []
       }
     },
-    
+   
     // Enhanced country selection methods
     toggleCountryDropdown() {
       this.showCountryDropdown = !this.showCountryDropdown
@@ -765,7 +805,7 @@ export default {
         })
       }
     },
-    
+   
     closeCountryDropdown(event) {
       const countrySelector = document.querySelector('.country-select-wrapper')
       if (countrySelector && !countrySelector.contains(event.target)) {
@@ -773,61 +813,62 @@ export default {
         this.countrySearch = ''
       }
     },
-    
+   
     selectCountry(country) {
       this.form.country_id = country.id
       this.showCountryDropdown = false
       this.countrySearch = ''
     },
-    
+   
     // Pagination methods
     prevPage() {
       if (this.currentPage > 1) {
         this.currentPage--
       }
     },
-    
+   
     nextPage() {
       if (this.currentPage < this.totalPages) {
         this.currentPage++
       }
     },
-    
+   
     goToPage(page) {
       if (page !== '...' && page >= 1 && page <= this.totalPages) {
         this.currentPage = page
       }
     },
-    
+   
     onSearch() {
       this.currentPage = 1 // Reset to first page when searching
     },
-    
+   
     onItemsPerPageChange() {
       this.currentPage = 1 // Reset to first page when changing items per page
     },
-    
+   
     onBusinessFilterChange() {
       this.currentPage = 1 // Reset to first page when changing business filter
       this.fetchEmployees()
       this.fetchManagers()
-      
+     
       // Update form business_id if in add mode
       if (this.showAddModal && this.selectedBusinessId) {
         this.form.business_id = this.selectedBusinessId
+        this.fetchSettingsForBusiness(this.selectedBusinessId);
       }
     },
-    
+   
     getBusinessName(businessId) {
       const business = this.businesses.find(b => b.id === businessId)
       return business ? business.name : 'Unknown Business'
     },
-    
+   
     getCountry(employee) {
       const countryId = employee.country_id || (employee.country && employee.country.id)
       return this.countries.find(c => c.id === countryId) || null
     },
-    
+   
     getEmployeeName(employee) {
       if (employee.first_name && employee.last_name) return `${employee.first_name} ${employee.last_name}`.trim()
       if (employee.user?.first_name) return `${employee.user.first_name} ${employee.user.last_name || ''}`.trim()
@@ -835,22 +876,22 @@ export default {
       if (employee.full_name) return employee.full_name
       return 'N/A'
     },
-    
+   
     getEmployeeRole(employee) {
       return employee.role || employee.user?.role || 'employee'
     },
-    
+   
     getManagerName(managerId) {
       if (!managerId) return 'No Manager'
       const manager = this.managers.find(m => m.id === managerId)
       return manager ? `${manager.first_name} ${manager.last_name}` : 'Unknown Manager'
     },
-    
+   
     formatRole(role) {
       const map = { admin: 'Admin', manager: 'Manager', employee: 'Employee' }
       return map[role] || 'Employee'
     },
-    
+   
     getRoleBadgeClass(role) {
       return {
         'role-employee': role === 'employee',
@@ -858,36 +899,41 @@ export default {
         'role-admin': role === 'admin'
       }
     },
-    
+   
     onRoleChange() {
       if (this.form.role === 'manager' || this.form.role === 'admin') {
         this.form.manager_id = ''
       }
     },
-    
+   
     async submitForm() {
       this.submitting = true
       this.formError = null
+     
+      console.log('Submitting form with data:', this.form);
       
       // Validations
       if (this.authStore.isAdmin && !this.form.business_id) {
         this.formError = 'Please select a business for the employee.'
         this.submitting = false
+        console.error('Validation failed: No business_id');
         return
       }
-      
+     
       if (!this.form.country_id) {
         this.formError = 'Please select a country for the employee.'
         this.submitting = false
+        console.error('Validation failed: No country_id');
         return
       }
-      
+     
       if (this.form.role === 'employee' && !this.form.manager_id) {
         this.formError = 'Please select a manager for the employee.'
         this.submitting = false
+        console.error('Validation failed: No manager_id for employee');
         return
       }
-      
+     
       const payload = {
         first_name: this.form.first_name,
         last_name: this.form.last_name,
@@ -905,13 +951,15 @@ export default {
         manager_id: this.form.role === 'employee' ? this.form.manager_id : null
       }
       
+      console.log('Final payload:', payload);
+     
       try {
         if (this.showEditModal) {
           await axios.put(`/api/admin/employees/${this.currentEmployee.id}`, payload)
         } else {
           await axios.post('/api/admin/employees', payload)
         }
-        
+       
         await Promise.all([this.fetchEmployees(), this.fetchManagers()])
         this.closeModals()
         this.$notify({
@@ -923,21 +971,24 @@ export default {
         })
       } catch (err) {
         console.error('Submit error:', err)
+        console.error('Error response:', err.response?.data);
         this.handleApiError(err)
       } finally {
         this.submitting = false
       }
     },
-    
+   
     editEmployee(employee) {
       this.currentEmployee = employee
       const userRole = this.getEmployeeRole(employee)
       const countryId = employee.country_id || (employee.country && employee.country.id) || ''
-      const businessId = employee.business_id || this.authStore.user?.business_id || ''
-
+      const businessId = employee.business_id || this.authStore.user?.current_business_id || ''
+      
+      console.log('Editing employee, businessId:', businessId);
+      
       // 1. Set the ID first so the watcher triggers the department fetch
       this.form.business_id = businessId;
-      
+     
       this.form = {
         first_name: employee.first_name || employee.user?.first_name || '',
         last_name: employee.last_name || employee.user?.last_name || '',
@@ -954,19 +1005,18 @@ export default {
         hire_date: employee.hire_date?.split('T')[0] || employee.created_at?.split('T')[0] || '',
         manager_id: userRole === 'employee' ? employee.manager_id : ''
       }
-      
+     
       // Ensure departments are fetched for the correct business in edit mode
       this.fetchSettingsForBusiness(businessId);
-
       this.showEditModal = true
     },
-    
+   
     resetForm() {
       this.form = {
         first_name: '',
         last_name: '',
         email: '',
-        business_id: this.authStore.user?.business_id || '',
+        business_id: '',
         country_id: '',
         role: 'employee',
         position: '',
@@ -980,37 +1030,35 @@ export default {
       }
       this.countrySearch = ''
       this.showCountryDropdown = false
-      // Reset departments if no default business
-      if(!this.authStore.user?.business_id) {
-        this.availableDepartments = [];
-      }
+      this.availableDepartments = [];
+      console.log('Form reset');
     },
-    
+   
     getInitials(name) {
       if (!name || name === 'N/A') return '??'
       return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
     },
-    
+   
     formatNumber(num) {
       return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0)
     },
-    
+   
     formatDate(date) {
       if (!date) return 'N/A'
       return new Date(date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     },
-    
+   
     formatEmploymentType(type) {
       const types = { full_time: 'Full Time', part_time: 'Part Time', contract: 'Contract' }
       return types[type] || type || 'N/A'
     },
-    
+   
     retryFetch() {
       this.retryCount++
       if (this.retryCount <= 3) this.fetchEmployees()
       else this.error = 'Max retries exceeded. Check your network or server.'
     },
-    
+   
     handleApiError(err) {
       let errorMsg = 'An unexpected error occurred.'
       if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
@@ -1029,7 +1077,7 @@ export default {
       }
       this.error = errorMsg
     },
-    
+   
     closeModals() {
       this.showAddModal = false
       this.showEditModal = false
@@ -1037,11 +1085,11 @@ export default {
       this.formError = null
       this.resetForm()
     },
-    
+   
     async deleteEmployee(employee) {
       const name = this.getEmployeeName(employee)
       if (!confirm(`Are you sure you want to delete ${name}? This action cannot be undone.`)) return
-      
+     
       try {
         await axios.delete(`/api/admin/employees/${employee.id}`)
         await this.fetchEmployees()
@@ -1053,7 +1101,6 @@ export default {
   }
 }
 </script>
-
 <style scoped>
 /* Enhanced Country Selector Styles */
 .country-select-wrapper {
@@ -1205,7 +1252,6 @@ export default {
   color: #718096;
   font-size: 0.875rem;
 }
-
 /* Table Controls */
 .table-controls {
   display: flex;
@@ -1218,13 +1264,11 @@ export default {
   flex-wrap: wrap;
   gap: 1rem;
 }
-
 .search-box {
   position: relative;
   flex: 1;
   min-width: 250px;
 }
-
 .search-input {
   width: 100%;
   padding: 0.75rem 2.5rem 0.75rem 1rem;
@@ -1233,13 +1277,11 @@ export default {
   font-size: 0.95rem;
   transition: border-color 0.2s;
 }
-
 .search-input:focus {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
-
 .search-box .search-icon {
   position: absolute;
   right: 1rem;
@@ -1247,20 +1289,17 @@ export default {
   transform: translateY(-50%);
   color: #718096;
 }
-
 .pagination-controls {
   display: flex;
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
 }
-
 .pagination-controls label {
   font-weight: 600;
   color: #4a5568;
   white-space: nowrap;
 }
-
 .items-per-page-select {
   padding: 0.5rem 1rem;
   border: 1px solid #e2e8f0;
@@ -1269,13 +1308,11 @@ export default {
   color: #4a5568;
   min-width: 80px;
 }
-
 .table-info {
   color: #718096;
   font-size: 0.9rem;
   white-space: nowrap;
 }
-
 /* Pagination Styles */
 .pagination {
   display: flex;
@@ -1286,7 +1323,6 @@ export default {
   border-top: 1px solid #e2e8f0;
   margin-top: 1rem;
 }
-
 .pagination-btn {
   padding: 0.75rem 1.5rem;
   background: white;
@@ -1298,23 +1334,19 @@ export default {
   transition: all 0.2s;
   min-width: 100px;
 }
-
 .pagination-btn:hover:not(:disabled) {
   background: #f7fafc;
   border-color: #667eea;
   color: #667eea;
 }
-
 .pagination-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-
 .page-numbers {
   display: flex;
   gap: 0.5rem;
 }
-
 .page-btn {
   padding: 0.5rem 1rem;
   background: white;
@@ -1326,30 +1358,25 @@ export default {
   transition: all 0.2s;
   min-width: 40px;
 }
-
 .page-btn:hover:not(:disabled) {
   background: #f7fafc;
   border-color: #667eea;
 }
-
 .page-btn.active {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-color: #667eea;
 }
-
 .page-btn.ellipsis {
   background: transparent;
   border: none;
   cursor: default;
   min-width: auto;
 }
-
 .page-btn.ellipsis:hover {
   background: transparent;
   border: none;
 }
-
 /* Existing CSS styles */
 .business-filter {
   background: #f8fafc;
@@ -1622,7 +1649,7 @@ export default {
 .empty-state p {
   margin-bottom: 1rem;
 }
-/* Modal Styles */
+/* Modal Styles - SCROLLING FIX HERE */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1640,8 +1667,10 @@ export default {
   border-radius: 12px;
   width: 90%;
   max-width: 600px;
-  max-height: 90vh;
-  overflow-y: auto;
+  max-height: 90vh; /* Limits total height */
+  /* These lines allow the internal parts to scroll independently */
+  display: flex;
+  flex-direction: column;
 }
 .modal-header {
   display: flex;
@@ -1649,6 +1678,7 @@ export default {
   align-items: center;
   padding: 1.5rem;
   border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0; /* Prevents header from shrinking */
 }
 .modal-header h2 {
   margin: 0;
@@ -1673,6 +1703,8 @@ export default {
 }
 .modal-body {
   padding: 1.5rem;
+  overflow-y: auto; /* Enables scrolling on the form content */
+  flex-grow: 1; /* Takes up remaining space */
 }
 .form-row {
   display: grid;
@@ -1714,6 +1746,7 @@ export default {
   gap: 1rem;
   padding-top: 1rem;
   border-top: 1px solid #e2e8f0;
+  margin-top: 1rem;
 }
 .btn-secondary {
   background: #e2e8f0;
@@ -1730,83 +1763,75 @@ export default {
   margin-top: 0.25rem;
   display: block;
 }
-
 @media (max-width: 768px) {
+  .modal {
+    max-height: 95vh; /* More space on mobile */
+  }
   .table-controls {
     flex-direction: column;
     align-items: stretch;
   }
-  
+ 
   .search-box {
     width: 100%;
     min-width: unset;
   }
-  
+ 
   .pagination-controls {
     width: 100%;
     justify-content: space-between;
   }
-  
+ 
   .pagination {
     flex-direction: column;
     gap: 0.75rem;
   }
-  
+ 
   .page-numbers {
     order: -1;
     width: 100%;
     justify-content: center;
   }
-  
+ 
   .employees-table-wrapper {
     font-size: 0.875rem;
   }
-
   .employees-table th,
   .employees-table td {
     padding: 0.75rem 0.5rem;
   }
-
   .employee-actions {
     flex-direction: row;
     gap: 0.25rem;
   }
-
   .employee-actions button {
     min-width: 35px;
     height: 35px;
     padding: 0.25rem;
   }
-
   .employee-actions .icon {
     font-size: 0.875rem;
   }
-
   .form-row {
     grid-template-columns: 1fr;
   }
-
   .page-header {
     flex-direction: column;
     gap: 1rem;
     align-items: stretch;
   }
-
   .business-filter {
     flex-direction: column;
     align-items: stretch;
   }
-
   .business-select {
     min-width: 100%;
   }
-
   .country-info {
     flex-direction: row;
     align-items: center;
     gap: 0.5rem;
   }
-
   .country-code {
     font-size: 0.7rem;
   }

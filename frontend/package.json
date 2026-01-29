@@ -13,6 +13,7 @@
     "@headlessui/vue": "^1.7.17",
     "@heroicons/vue": "^2.2.0",
     "@kyvg/vue3-notification": "^3.4.1",
+    "@slack/web-api": "^7.13.0",
     "@vueform/multiselect": "^2.6.11",
     "axios": "^1.13.2",
     "chart.js": "^4.4.0",

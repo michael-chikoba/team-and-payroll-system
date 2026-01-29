@@ -1,540 +1,543 @@
 <template>
-  <TransitionRoot appear :show="show" as="template">
-    <Dialog as="div" class="relative z-50" @close="closeModal">
-      <TransitionChild
-        as="template"
-        enter="duration-300 ease-out"
-        enter-from="opacity-0"
-        enter-to="opacity-100"
-        leave="duration-200 ease-in"
-        leave-from="opacity-100"
-        leave-to="opacity-0"
-      >
-        <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" />
-      </TransitionChild>
+  <!-- Teleport the modal to body to avoid z-index conflicts -->
+  <Teleport to="body">
+    <TransitionRoot appear :show="show" as="template">
+      <Dialog as="div" class="relative z-[9999]" @close="closeModal">
+        <TransitionChild
+          as="template"
+          enter="duration-300 ease-out"
+          enter-from="opacity-0"
+          enter-to="opacity-100"
+          leave="duration-200 ease-in"
+          leave-from="opacity-100"
+          leave-to="opacity-0"
+        >
+          <div class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm" />
+        </TransitionChild>
 
-      <div class="fixed inset-0 overflow-y-auto">
-        <div class="flex min-h-full items-center justify-center p-4">
-          <TransitionChild
-            as="template"
-            enter="duration-300 ease-out"
-            enter-from="opacity-0 scale-95"
-            enter-to="opacity-100 scale-100"
-            leave="duration-200 ease-in"
-            leave-from="opacity-100 scale-100"
-            leave-to="opacity-0 scale-95"
-          >
-            <DialogPanel
-              class="w-full max-w-6xl transform overflow-hidden rounded-2xl bg-white shadow-xl transition-all"
+        <div class="fixed inset-0 overflow-y-auto">
+          <div class="flex min-h-full items-center justify-center p-4">
+            <TransitionChild
+              as="template"
+              enter="duration-300 ease-out"
+              enter-from="opacity-0 scale-95"
+              enter-to="opacity-100 scale-100"
+              leave="duration-200 ease-in"
+              leave-from="opacity-100 scale-100"
+              leave-to="opacity-0 scale-95"
             >
-              <!-- Header -->
-              <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center space-x-3">
-                    <div :class="[
-                      'p-2 rounded-lg',
-                      getTypeBadgeClass(ticket?.type).replace('text-', 'bg-').replace('800', '100')
-                    ]">
-                      <component :is="getTypeIcon(ticket?.type)" class="w-6 h-6" :class="getTypeBadgeClass(ticket?.type).split(' ')[1]" />
-                    </div>
-                    <div>
-                      <DialogTitle class="text-xl font-bold text-gray-900 line-clamp-1">
-                        {{ ticket?.title }}
-                      </DialogTitle>
-                      <div class="flex items-center space-x-2 mt-1">
-                        <StatusBadge :status="ticket?.status" />
-                        <PriorityBadge :priority="ticket?.priority" />
-                        <span class="text-sm text-gray-500">
-                          #{{ ticket?.id }} • {{ getTypeLabel(ticket?.type) }}
-                        </span>
+              <DialogPanel
+                class="w-full max-w-6xl transform overflow-hidden rounded-2xl bg-white shadow-xl transition-all"
+              >
+                <!-- Header -->
+                <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-2000">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                      <div :class="[
+                        'p-2 rounded-lg',
+                        getTypeBadgeClass(ticket?.type).replace('text-', 'bg-').replace('800', '100')
+                      ]">
+                        <component :is="getTypeIcon(ticket?.type)" class="w-6 h-6" :class="getTypeBadgeClass(ticket?.type).split(' ')[1]" />
+                      </div>
+                      <div>
+                        <DialogTitle class="text-xl font-bold text-gray-900 line-clamp-1">
+                          {{ ticket?.title }}
+                        </DialogTitle>
+                        <div class="flex items-center space-x-2 mt-1">
+                          <StatusBadge :status="ticket?.status" />
+                          <PriorityBadge :priority="ticket?.priority" />
+                          <span class="text-sm text-gray-500">
+                            #{{ ticket?.id }} • {{ getTypeLabel(ticket?.type) }}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <button
+                      @click="closeModal"
+                      class="rounded-full p-2 hover:bg-gray-100 transition-colors"
+                    >
+                      <XMarkIcon class="w-6 h-6 text-gray-500" />
+                    </button>
                   </div>
-                  <button
-                    @click="closeModal"
-                    class="rounded-full p-2 hover:bg-gray-100 transition-colors"
-                  >
-                    <XMarkIcon class="w-6 h-6 text-gray-500" />
-                  </button>
-                </div>
-              </div>
-
-              <!-- Tabs -->
-              <div class="border-b border-gray-200 bg-gray-50 px-6">
-                <nav class="-mb-px flex space-x-8">
-                  <button
-                    v-for="tab in tabs"
-                    :key="tab.name"
-                    @click="activeTab = tab.name"
-                    :class="[
-                      'py-3 px-1 border-b-2 font-medium text-sm transition-colors',
-                      activeTab === tab.name
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    ]"
-                  >
-                    {{ tab.label }}
-                    <span v-if="tab.count" :class="[
-                      'ml-2 py-0.5 px-2 rounded-full text-xs',
-                      activeTab === tab.name
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'bg-gray-200 text-gray-600'
-                    ]">
-                      {{ tab.count }}
-                    </span>
-                  </button>
-                </nav>
-              </div>
-
-              <!-- Content -->
-              <div class="px-6 py-4 max-h-[calc(100vh-250px)] overflow-y-auto">
-                <!-- Loading State -->
-                <div v-if="loading" class="flex items-center justify-center py-12">
-                  <ArrowPathIcon class="w-8 h-8 text-blue-600 animate-spin" />
                 </div>
 
-                <!-- Error State -->
-                <div v-else-if="error" class="text-center py-12">
-                  <ExclamationCircleIcon class="w-12 h-12 text-red-500 mx-auto mb-4" />
-                  <p class="text-lg font-medium text-gray-900 mb-2">Unable to load ticket</p>
-                  <p class="text-gray-600">{{ error }}</p>
+                <!-- Tabs -->
+                <div class="border-b border-gray-200 bg-gray-50 px-6">
+                  <nav class="-mb-px flex space-x-8">
+                    <button
+                      v-for="tab in tabs"
+                      :key="tab.name"
+                      @click="activeTab = tab.name"
+                      :class="[
+                        'py-3 px-1 border-b-2 font-medium text-sm transition-colors',
+                        activeTab === tab.name
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ]"
+                    >
+                      {{ tab.label }}
+                      <span v-if="tab.count" :class="[
+                        'ml-2 py-0.5 px-2 rounded-full text-xs',
+                        activeTab === tab.name
+                          ? 'bg-blue-100 text-blue-600'
+                          : 'bg-gray-200 text-gray-600'
+                      ]">
+                        {{ tab.count }}
+                      </span>
+                    </button>
+                  </nav>
                 </div>
 
-                <!-- Content by Tab -->
-                <div v-else-if="ticketDetails" class="space-y-6">
-                  <!-- Details Tab -->
-                  <div v-if="activeTab === 'details'" class="space-y-6">
-                    <!-- Basic Info Grid -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div class="space-y-4">
-                        <div>
-                          <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                            Created By
-                          </label>
-                          <div class="flex items-center">
-                            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
-                              <span class="text-sm font-medium text-blue-600">
-                                {{ getUserInitials(ticketDetails.user) }}
-                              </span>
-                            </div>
-                            <div>
-                              <p class="font-medium text-gray-900">{{ getUserName(ticketDetails.user) }}</p>
-                              <p class="text-sm text-gray-500">{{ ticketDetails.user?.email }}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div v-if="ticketDetails.category">
-                          <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                            Category
-                          </label>
-                          <div class="flex items-center">
-                            <FolderIcon class="w-5 h-5 text-gray-400 mr-2" />
-                            <span class="font-medium text-gray-900">{{ ticketDetails.category }}</span>
-                            <span v-if="ticketDetails.subcategory" class="ml-2 text-sm text-gray-500">
-                              › {{ ticketDetails.subcategory }}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="space-y-4">
-                        <div>
-                          <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                            Due Date
-                          </label>
-                          <div class="flex items-center">
-                            <CalendarDaysIcon class="w-5 h-5 text-gray-400 mr-2" />
-                            <span :class="[
-                              'font-medium',
-                              isOverdue ? 'text-red-600' : 'text-gray-900'
-                            ]">
-                              {{ formatDate(ticketDetails.due_date) || 'No due date' }}
-                            </span>
-                            <span v-if="isOverdue" class="ml-2 px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
-                              Overdue
-                            </span>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                            Time Tracking
-                          </label>
-                          <div class="flex items-center space-x-4">
-                            <div class="flex items-center">
-                              <ClockIcon class="w-5 h-5 text-gray-400 mr-2" />
-                              <span class="text-sm font-medium text-gray-900">
-                                {{ ticketDetails.estimated_hours || 0 }}h estimated
-                              </span>
-                            </div>
-                            <div class="flex items-center">
-                              <ClockIcon class="w-5 h-5 text-gray-400 mr-2" />
-                              <span class="text-sm font-medium text-gray-900">
-                                {{ ticketDetails.time_spent || 0 }}h spent
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Description -->
-                    <div>
-                      <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                        Description
-                      </label>
-                      <div class="mt-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <p class="text-gray-700 whitespace-pre-wrap">{{ ticketDetails.description }}</p>
-                      </div>
-                    </div>
-
-                    <!-- Assignments -->
-                    <div v-if="ticketDetails.assigned_users?.length > 0">
-                      <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                        Assigned To
-                      </label>
-                      <div class="flex flex-wrap gap-2 mt-2">
-                        <div
-                          v-for="user in ticketDetails.assigned_users"
-                          :key="user.id"
-                          class="flex items-center px-3 py-2 bg-blue-50 rounded-lg"
-                        >
-                          <div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center mr-2">
-                            <span class="text-xs font-medium text-blue-600">
-                              {{ getUserInitials(user) }}
-                            </span>
-                          </div>
-                          <span class="text-sm font-medium text-blue-700">{{ getUserName(user) }}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- Approver Information -->
-                    <div v-if="ticketDetails.approver">
-                      <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                        Approval Information
-                      </label>
-                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                        <div class="flex items-center p-3 bg-green-50 rounded-lg border border-green-100">
-                          <CheckCircleIcon class="w-5 h-5 text-green-600 mr-3" />
-                          <div>
-                            <p class="font-medium text-gray-900">{{ ticketDetails.approver?.name || 'Not assigned' }}</p>
-                            <p class="text-sm text-gray-500">{{ ticketDetails.approver?.email }}</p>
-                          </div>
-                        </div>
-                        <div v-if="ticketDetails.approved_at" class="flex items-center p-3 bg-green-50 rounded-lg border border-green-100">
-                          <CalendarDaysIcon class="w-5 h-5 text-green-600 mr-3" />
-                          <div>
-                            <p class="font-medium text-gray-900">Approved</p>
-                            <p class="text-sm text-gray-500">{{ formatDateTime(ticketDetails.approved_at) }}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- SLA Information -->
-                    <div v-if="ticketDetails.sla_status">
-                      <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
-                        SLA Status
-                      </label>
-                      <div class="flex items-center p-3 bg-gray-50 rounded-lg">
-                        <div :class="[
-                          'w-3 h-3 rounded-full mr-3',
-                          getSlaBadgeClass(ticketDetails.sla_status).split(' ')[0]
-                        ]"></div>
-                        <span :class="[
-                          'font-medium',
-                          getSlaBadgeClass(ticketDetails.sla_status).split(' ')[1]
-                        ]">
-                          {{ getSlaLabel(ticketDetails.sla_status) }}
-                        </span>
-                        <span class="ml-auto text-sm text-gray-500">
-                          Due: {{ formatDate(ticketDetails.due_date) }}
-                        </span>
-                      </div>
-                    </div>
+                <!-- Content -->
+                <div class="px-6 py-4 max-h-[calc(100vh-250px)] overflow-y-auto">
+                  <!-- Loading State -->
+                  <div v-if="loading" class="flex items-center justify-center py-12">
+                    <ArrowPathIcon class="w-8 h-8 text-blue-600 animate-spin" />
                   </div>
 
-                  <!-- Comments Tab -->
-                  <div v-if="activeTab === 'comments'">
-                    <div class="space-y-4">
-                      <!-- Comment Input -->
-                      <div class="bg-white border border-gray-200 rounded-lg p-4">
-                        <textarea
-                          v-model="newComment"
-                          rows="3"
-                          placeholder="Add a comment..."
-                          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        ></textarea>
-                        <div class="flex items-center justify-between mt-3">
-                          <div class="flex items-center space-x-3">
-                            <label class="flex items-center">
-                              <input
-                                v-model="isInternalComment"
-                                type="checkbox"
-                                class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
-                              <span class="ml-2 text-sm text-gray-600">Internal note</span>
+                  <!-- Error State -->
+                  <div v-else-if="error" class="text-center py-12">
+                    <ExclamationCircleIcon class="w-12 h-12 text-red-500 mx-auto mb-4" />
+                    <p class="text-lg font-medium text-gray-900 mb-2">Unable to load ticket</p>
+                    <p class="text-gray-600">{{ error }}</p>
+                  </div>
+
+                  <!-- Content by Tab -->
+                  <div v-else-if="ticketDetails" class="space-y-6">
+                    <!-- Details Tab -->
+                    <div v-if="activeTab === 'details'" class="space-y-6">
+                      <!-- Basic Info Grid -->
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                          <div>
+                            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                              Created By
                             </label>
-                            <input
-                              type="file"
-                              ref="commentFileInput"
-                              multiple
-                              @change="handleCommentFileSelect"
-                              class="hidden"
-                            />
-                            <button
-                              @click="$refs.commentFileInput.click()"
-                              type="button"
-                              class="text-sm text-gray-600 hover:text-gray-900"
-                            >
-                              <PaperClipIcon class="w-4 h-4 inline mr-1" />
-                              Add files
-                            </button>
-                          </div>
-                          <button
-                            @click="submitComment"
-                            :disabled="!newComment.trim() || submittingComment"
-                            :class="[
-                              'px-4 py-2 text-sm font-medium text-white rounded-md transition-colors',
-                              !newComment.trim() || submittingComment
-                                ? 'bg-blue-400 cursor-not-allowed'
-                                : 'bg-blue-600 hover:bg-blue-700'
-                            ]"
-                          >
-                            <ArrowPathIcon v-if="submittingComment" class="w-4 h-4 inline mr-2 animate-spin" />
-                            {{ submittingComment ? 'Posting...' : 'Post Comment' }}
-                          </button>
-                        </div>
-                        <!-- Selected Files -->
-                        <div v-if="commentFiles.length > 0" class="mt-3 space-y-2">
-                          <div
-                            v-for="(file, index) in commentFiles"
-                            :key="index"
-                            class="flex items-center justify-between bg-gray-50 p-2 rounded"
-                          >
                             <div class="flex items-center">
-                              <DocumentIcon class="w-4 h-4 text-gray-400 mr-2" />
-                              <span class="text-sm truncate max-w-xs">{{ file.name }}</span>
-                              <span class="text-xs text-gray-500 ml-2">{{ formatFileSize(file.size) }}</span>
-                            </div>
-                            <button
-                              @click="removeCommentFile(index)"
-                              class="text-red-500 hover:text-red-700"
-                            >
-                              <XMarkIcon class="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- Comments List -->
-                      <div v-if="comments.length > 0" class="space-y-4">
-                        <div
-                          v-for="comment in comments"
-                          :key="comment.id"
-                          :class="[
-                            'border rounded-lg p-4',
-                            comment.is_internal
-                              ? 'border-yellow-200 bg-yellow-50'
-                              : 'border-gray-200 bg-white'
-                          ]"
-                        >
-                          <!-- Comment Header -->
-                          <div class="flex items-start justify-between mb-3">
-                            <div class="flex items-center">
-                              <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                              <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
                                 <span class="text-sm font-medium text-blue-600">
-                                  {{ getUserInitials(comment.user) }}
+                                  {{ getUserInitials(ticketDetails.user) }}
                                 </span>
                               </div>
                               <div>
-                                <div class="flex items-center">
-                                  <span class="font-medium text-gray-900">{{ comment.user_name }}</span>
-                                  <span v-if="comment.is_internal" class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                                    Internal
+                                <p class="font-medium text-gray-900">{{ getUserName(ticketDetails.user) }}</p>
+                                <p class="text-sm text-gray-500">{{ ticketDetails.user?.email }}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div v-if="ticketDetails.category">
+                            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                              Category
+                            </label>
+                            <div class="flex items-center">
+                              <FolderIcon class="w-5 h-5 text-gray-400 mr-2" />
+                              <span class="font-medium text-gray-900">{{ ticketDetails.category }}</span>
+                              <span v-if="ticketDetails.subcategory" class="ml-2 text-sm text-gray-500">
+                                › {{ ticketDetails.subcategory }}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="space-y-4">
+                          <div>
+                            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                              Due Date
+                            </label>
+                            <div class="flex items-center">
+                              <CalendarDaysIcon class="w-5 h-5 text-gray-400 mr-2" />
+                              <span :class="[
+                                'font-medium',
+                                isOverdue ? 'text-red-600' : 'text-gray-900'
+                              ]">
+                                {{ formatDate(ticketDetails.due_date) || 'No due date' }}
+                              </span>
+                              <span v-if="isOverdue" class="ml-2 px-2 py-1 text-xs font-medium bg-red-100 text-red-800 rounded-full">
+                                Overdue
+                              </span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                              Time Tracking
+                            </label>
+                            <div class="flex items-center space-x-4">
+                              <div class="flex items-center">
+                                <ClockIcon class="w-5 h-5 text-gray-400 mr-2" />
+                                <span class="text-sm font-medium text-gray-900">
+                                  {{ ticketDetails.estimated_hours || 0 }}h estimated
+                                </span>
+                              </div>
+                              <div class="flex items-center">
+                                <ClockIcon class="w-5 h-5 text-gray-400 mr-2" />
+                                <span class="text-sm font-medium text-gray-900">
+                                  {{ ticketDetails.time_spent || 0 }}h spent
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Description -->
+                      <div>
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                          Description
+                        </label>
+                        <div class="mt-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                          <p class="text-gray-700 whitespace-pre-wrap">{{ ticketDetails.description }}</p>
+                        </div>
+                      </div>
+
+                      <!-- Assignments -->
+                      <div v-if="ticketDetails.assigned_users?.length > 0">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                          Assigned To
+                        </label>
+                        <div class="flex flex-wrap gap-2 mt-2">
+                          <div
+                            v-for="user in ticketDetails.assigned_users"
+                            :key="user.id"
+                            class="flex items-center px-3 py-2 bg-blue-50 rounded-lg"
+                          >
+                            <div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center mr-2">
+                              <span class="text-xs font-medium text-blue-600">
+                                {{ getUserInitials(user) }}
+                              </span>
+                            </div>
+                            <span class="text-sm font-medium text-blue-700">{{ getUserName(user) }}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Approver Information -->
+                      <div v-if="ticketDetails.approver">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                          Approval Information
+                        </label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                          <div class="flex items-center p-3 bg-green-50 rounded-lg border border-green-100">
+                            <CheckCircleIcon class="w-5 h-5 text-green-600 mr-3" />
+                            <div>
+                              <p class="font-medium text-gray-900">{{ ticketDetails.approver?.name || 'Not assigned' }}</p>
+                              <p class="text-sm text-gray-500">{{ ticketDetails.approver?.email }}</p>
+                            </div>
+                          </div>
+                          <div v-if="ticketDetails.approved_at" class="flex items-center p-3 bg-green-50 rounded-lg border border-green-100">
+                            <CalendarDaysIcon class="w-5 h-5 text-green-600 mr-3" />
+                            <div>
+                              <p class="font-medium text-gray-900">Approved</p>
+                              <p class="text-sm text-gray-500">{{ formatDateTime(ticketDetails.approved_at) }}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- SLA Information -->
+                      <div v-if="ticketDetails.sla_status">
+                        <label class="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+                          SLA Status
+                        </label>
+                        <div class="flex items-center p-3 bg-gray-50 rounded-lg">
+                          <div :class="[
+                            'w-3 h-3 rounded-full mr-3',
+                            getSlaBadgeClass(ticketDetails.sla_status).split(' ')[0]
+                          ]"></div>
+                          <span :class="[
+                            'font-medium',
+                            getSlaBadgeClass(ticketDetails.sla_status).split(' ')[1]
+                          ]">
+                            {{ getSlaLabel(ticketDetails.sla_status) }}
+                          </span>
+                          <span class="ml-auto text-sm text-gray-500">
+                            Due: {{ formatDate(ticketDetails.due_date) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Comments Tab -->
+                    <div v-if="activeTab === 'comments'">
+                      <div class="space-y-4">
+                        <!-- Comment Input -->
+                        <div class="bg-white border border-gray-200 rounded-lg p-4">
+                          <textarea
+                            v-model="newComment"
+                            rows="3"
+                            placeholder="Add a comment..."
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          ></textarea>
+                          <div class="flex items-center justify-between mt-3">
+                            <div class="flex items-center space-x-3">
+                              <label class="flex items-center">
+                                <input
+                                  v-model="isInternalComment"
+                                  type="checkbox"
+                                  class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <span class="ml-2 text-sm text-gray-600">Internal note</span>
+                              </label>
+                              <input
+                                type="file"
+                                ref="commentFileInput"
+                                multiple
+                                @change="handleCommentFileSelect"
+                                class="hidden"
+                              />
+                              <button
+                                @click="$refs.commentFileInput.click()"
+                                type="button"
+                                class="text-sm text-gray-600 hover:text-gray-900"
+                              >
+                                <PaperClipIcon class="w-4 h-4 inline mr-1" />
+                                Add files
+                              </button>
+                            </div>
+                            <button
+                              @click="submitComment"
+                              :disabled="!newComment.trim() || submittingComment"
+                              :class="[
+                                'px-4 py-2 text-sm font-medium text-white rounded-md transition-colors',
+                                !newComment.trim() || submittingComment
+                                  ? 'bg-blue-400 cursor-not-allowed'
+                                  : 'bg-blue-600 hover:bg-blue-700'
+                              ]"
+                            >
+                              <ArrowPathIcon v-if="submittingComment" class="w-4 h-4 inline mr-2 animate-spin" />
+                              {{ submittingComment ? 'Posting...' : 'Post Comment' }}
+                            </button>
+                          </div>
+                          <!-- Selected Files -->
+                          <div v-if="commentFiles.length > 0" class="mt-3 space-y-2">
+                            <div
+                              v-for="(file, index) in commentFiles"
+                              :key="index"
+                              class="flex items-center justify-between bg-gray-50 p-2 rounded"
+                            >
+                              <div class="flex items-center">
+                                <DocumentIcon class="w-4 h-4 text-gray-400 mr-2" />
+                                <span class="text-sm truncate max-w-xs">{{ file.name }}</span>
+                                <span class="text-xs text-gray-500 ml-2">{{ formatFileSize(file.size) }}</span>
+                              </div>
+                              <button
+                                @click="removeCommentFile(index)"
+                                class="text-red-500 hover:text-red-700"
+                              >
+                                <XMarkIcon class="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Comments List -->
+                        <div v-if="comments.length > 0" class="space-y-4">
+                          <div
+                            v-for="comment in comments"
+                            :key="comment.id"
+                            :class="[
+                              'border rounded-lg p-4',
+                              comment.is_internal
+                                ? 'border-yellow-200 bg-yellow-50'
+                                : 'border-gray-200 bg-white'
+                            ]"
+                          >
+                            <!-- Comment Header -->
+                            <div class="flex items-start justify-between mb-3">
+                              <div class="flex items-center">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mr-3">
+                                  <span class="text-sm font-medium text-blue-600">
+                                    {{ getUserInitials(comment.user) }}
                                   </span>
                                 </div>
-                                <div class="text-xs text-gray-500">{{ comment.formatted_created_at }}</div>
+                                <div>
+                                  <div class="flex items-center">
+                                    <span class="font-medium text-gray-900">{{ comment.user_name }}</span>
+                                    <span v-if="comment.is_internal" class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                      Internal
+                                    </span>
+                                  </div>
+                                  <div class="text-xs text-gray-500">{{ comment.formatted_created_at }}</div>
+                                </div>
+                              </div>
+                              <!-- Comment Actions -->
+                              <div v-if="comment.can_edit || comment.can_delete" class="flex items-center space-x-2">
+                                <button
+                                  v-if="comment.can_edit"
+                                  @click="editComment(comment)"
+                                  class="text-gray-400 hover:text-blue-600"
+                                  title="Edit comment"
+                                >
+                                  <PencilIcon class="w-4 h-4" />
+                                </button>
+                                <button
+                                  v-if="comment.can_delete"
+                                  @click="deleteComment(comment)"
+                                  class="text-gray-400 hover:text-red-600"
+                                  title="Delete comment"
+                                >
+                                  <TrashIcon class="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
-                            <!-- Comment Actions -->
-                            <div v-if="comment.can_edit || comment.can_delete" class="flex items-center space-x-2">
-                              <button
-                                v-if="comment.can_edit"
-                                @click="editComment(comment)"
-                                class="text-gray-400 hover:text-blue-600"
-                                title="Edit comment"
-                              >
-                                <PencilIcon class="w-4 h-4" />
-                              </button>
-                              <button
-                                v-if="comment.can_delete"
-                                @click="deleteComment(comment)"
-                                class="text-gray-400 hover:text-red-600"
-                                title="Delete comment"
-                              >
-                                <TrashIcon class="w-4 h-4" />
-                              </button>
+                            <!-- Comment Content -->
+                            <div class="text-gray-700 whitespace-pre-wrap mb-3">
+                              {{ comment.content }}
+                            </div>
+                            <!-- Attachments -->
+                            <div v-if="comment.attachments?.length > 0" class="mt-3 pt-3 border-t border-gray-200">
+                              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div
+                                  v-for="attachment in comment.attachments"
+                                  :key="attachment.id"
+                                  class="flex items-center p-2 bg-gray-50 rounded hover:bg-gray-100"
+                                >
+                                  <a
+                                    :href="attachment.download_url"
+                                    target="_blank"
+                                    class="flex items-center flex-1 text-sm text-gray-700 hover:text-blue-600"
+                                  >
+                                    <component :is="getFileIcon(attachment)" class="w-5 h-5 mr-2 text-gray-400" />
+                                    <span class="truncate">{{ attachment.original_name }}</span>
+                                    <span class="ml-auto text-xs text-gray-500">{{ attachment.formatted_size }}</span>
+                                  </a>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <!-- Comment Content -->
-                          <div class="text-gray-700 whitespace-pre-wrap mb-3">
-                            {{ comment.content }}
-                          </div>
-                          <!-- Attachments -->
-                          <div v-if="comment.attachments?.length > 0" class="mt-3 pt-3 border-t border-gray-200">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <div
-                                v-for="attachment in comment.attachments"
-                                :key="attachment.id"
-                                class="flex items-center p-2 bg-gray-50 rounded hover:bg-gray-100"
-                              >
+                        </div>
+                        <!-- No Comments -->
+                        <div v-else class="text-center py-8">
+                          <ChatBubbleLeftRightIcon class="mx-auto h-12 w-12 text-gray-300" />
+                          <h3 class="mt-2 text-sm font-medium text-gray-900">No comments yet</h3>
+                          <p class="mt-1 text-sm text-gray-500">Be the first to add a comment.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Attachments Tab -->
+                    <div v-if="activeTab === 'attachments'" class="space-y-4">
+                      <!-- Upload Section -->
+                      <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                        <input
+                          type="file"
+                          ref="attachmentInput"
+                          multiple
+                          @change="handleAttachmentUpload"
+                          class="hidden"
+                        />
+                        <button
+                          @click="$refs.attachmentInput.click()"
+                          type="button"
+                          class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                          <PaperClipIcon class="h-4 w-4 mr-2" />
+                          Upload Files
+                        </button>
+                        <p class="mt-2 text-xs text-gray-500">
+                          Upload images, documents, or other files. Max 10MB per file.
+                        </p>
+                      </div>
+
+                      <!-- Attachments List -->
+                      <div v-if="attachments.length > 0" class="space-y-3">
+                        <div
+                          v-for="attachment in attachments"
+                          :key="attachment.id"
+                          class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        >
+                          <div class="flex items-start">
+                            <div class="flex-shrink-0">
+                              <div class="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center">
+                                <component :is="getFileIcon(attachment)" class="h-6 w-6 text-gray-400" />
+                              </div>
+                            </div>
+                            <div class="ml-4 flex-1 min-w-0">
+                              <p class="text-sm font-medium text-gray-900 truncate">
+                                {{ attachment.original_name }}
+                              </p>
+                              <p class="text-xs text-gray-500">
+                                {{ attachment.formatted_size }} • Uploaded {{ formatDate(attachment.created_at) }}
+                              </p>
+                              <div class="mt-2 flex space-x-3">
+                                <a
+                                  :href="attachment.url"
+                                  target="_blank"
+                                  class="text-xs text-blue-600 hover:text-blue-800"
+                                >
+                                  View
+                                </a>
                                 <a
                                   :href="attachment.download_url"
-                                  target="_blank"
-                                  class="flex items-center flex-1 text-sm text-gray-700 hover:text-blue-600"
+                                  class="text-xs text-blue-600 hover:text-blue-800"
                                 >
-                                  <component :is="getFileIcon(attachment)" class="w-5 h-5 mr-2 text-gray-400" />
-                                  <span class="truncate">{{ attachment.original_name }}</span>
-                                  <span class="ml-auto text-xs text-gray-500">{{ attachment.formatted_size }}</span>
+                                  Download
                                 </a>
+                                <button
+                                  v-if="canDeleteAttachment(attachment)"
+                                  @click="deleteAttachment(attachment)"
+                                  class="text-xs text-red-600 hover:text-red-800"
+                                >
+                                  Delete
+                                </button>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                      <!-- No Comments -->
+
+                      <!-- No Attachments -->
                       <div v-else class="text-center py-8">
-                        <ChatBubbleLeftRightIcon class="mx-auto h-12 w-12 text-gray-300" />
-                        <h3 class="mt-2 text-sm font-medium text-gray-900">No comments yet</h3>
-                        <p class="mt-1 text-sm text-gray-500">Be the first to add a comment.</p>
+                        <PaperClipIcon class="mx-auto h-12 w-12 text-gray-300" />
+                        <h3 class="mt-2 text-sm font-medium text-gray-900">No attachments</h3>
+                        <p class="mt-1 text-sm text-gray-500">Upload files to share with the team.</p>
+                      </div>
+                    </div>
+
+                    <!-- History Tab -->
+                    <div v-if="activeTab === 'history'">
+                      <!-- ActivityHistory Component -->
+                      <div class="space-y-4">
+                        <ActivityHistoryComponent :ticket-id="ticketDetails.id" />
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <!-- Attachments Tab -->
-                  <div v-if="activeTab === 'attachments'" class="space-y-4">
-                    <!-- Upload Section -->
-                    <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                      <input
-                        type="file"
-                        ref="attachmentInput"
-                        multiple
-                        @change="handleAttachmentUpload"
-                        class="hidden"
-                      />
+                <!-- Footer -->
+                <div class="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
+                  <div class="flex items-center justify-between">
+                    <div class="text-sm text-gray-500">
+                      <span v-if="ticketDetails">
+                        Last updated {{ timeAgo(ticketDetails.updated_at) }}
+                      </span>
+                    </div>
+                    <div class="flex items-center space-x-3">
                       <button
-                        @click="$refs.attachmentInput.click()"
-                        type="button"
-                        class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        v-if="canApprove"
+                        @click="openApproval"
+                        class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 rounded-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all"
                       >
-                        <PaperClipIcon class="h-4 w-4 mr-2" />
-                        Upload Files
+                        <CheckCircleIcon class="w-4 h-4 mr-2 inline" />
+                        Review & Approve
                       </button>
-                      <p class="mt-2 text-xs text-gray-500">
-                        Upload images, documents, or other files. Max 10MB per file.
-                      </p>
-                    </div>
-
-                    <!-- Attachments List -->
-                    <div v-if="attachments.length > 0" class="space-y-3">
-                      <div
-                        v-for="attachment in attachments"
-                        :key="attachment.id"
-                        class="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                      <button
+                        @click="closeModal"
+                        class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
                       >
-                        <div class="flex items-start">
-                          <div class="flex-shrink-0">
-                            <div class="h-12 w-12 rounded-lg bg-gray-100 flex items-center justify-center">
-                              <component :is="getFileIcon(attachment)" class="h-6 w-6 text-gray-400" />
-                            </div>
-                          </div>
-                          <div class="ml-4 flex-1 min-w-0">
-                            <p class="text-sm font-medium text-gray-900 truncate">
-                              {{ attachment.original_name }}
-                            </p>
-                            <p class="text-xs text-gray-500">
-                              {{ attachment.formatted_size }} • Uploaded {{ formatDate(attachment.created_at) }}
-                            </p>
-                            <div class="mt-2 flex space-x-3">
-                              <a
-                                :href="attachment.url"
-                                target="_blank"
-                                class="text-xs text-blue-600 hover:text-blue-800"
-                              >
-                                View
-                              </a>
-                              <a
-                                :href="attachment.download_url"
-                                class="text-xs text-blue-600 hover:text-blue-800"
-                              >
-                                Download
-                              </a>
-                              <button
-                                v-if="canDeleteAttachment(attachment)"
-                                @click="deleteAttachment(attachment)"
-                                class="text-xs text-red-600 hover:text-red-800"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <!-- No Attachments -->
-                    <div v-else class="text-center py-8">
-                      <PaperClipIcon class="mx-auto h-12 w-12 text-gray-300" />
-                      <h3 class="mt-2 text-sm font-medium text-gray-900">No attachments</h3>
-                      <p class="mt-1 text-sm text-gray-500">Upload files to share with the team.</p>
-                    </div>
-                  </div>
-
-                  <!-- History Tab -->
-                  <div v-if="activeTab === 'history'">
-                    <!-- ActivityHistory Component -->
-                    <div class="space-y-4">
-                      <ActivityHistoryComponent :ticket-id="ticketDetails.id" />
+                        Close
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <!-- Footer -->
-              <div class="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4">
-                <div class="flex items-center justify-between">
-                  <div class="text-sm text-gray-500">
-                    <span v-if="ticketDetails">
-                      Last updated {{ timeAgo(ticketDetails.updated_at) }}
-                    </span>
-                  </div>
-                  <div class="flex items-center space-x-3">
-                    <button
-                      v-if="canApprove"
-                      @click="openApproval"
-                      class="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 rounded-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all"
-                    >
-                      <CheckCircleIcon class="w-4 h-4 mr-2 inline" />
-                      Review & Approve
-                    </button>
-                    <button
-                      @click="closeModal"
-                      class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </DialogPanel>
-          </TransitionChild>
+              </DialogPanel>
+            </TransitionChild>
+          </div>
         </div>
-      </div>
-    </Dialog>
-  </TransitionRoot>
+      </Dialog>
+    </TransitionRoot>
+  </Teleport>
 </template>
 
 <script setup>

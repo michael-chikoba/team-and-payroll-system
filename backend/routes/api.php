@@ -32,7 +32,15 @@ use App\Http\Controllers\Api\ChatIntegrationController;
 use App\Http\Controllers\Api\ChatWebhookController;
 use App\Http\Controllers\Api\TaskReportController;
 use App\Http\Controllers\Api\ActivityTrackingController;
+use App\Http\Controllers\Api\NotificationChannelController;
+use App\Http\Controllers\Api\SlackIntegrationController;
+use App\Http\Controllers\Api\PublicController;
 
+
+
+// Public routes (no authentication required)
+Route::post('/demo-requests', [PublicController::class, 'storeDemoRequest']);
+Route::post('/contact', [PublicController::class, 'storeContactRequest']);
 
 
 /*
@@ -46,6 +54,16 @@ Route::get('/sanctum/csrf-cookie', function () {
     return response()->noContent();
 });
 
+// Slack Integration Routes (Admin only)
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/slack-integration', [SlackIntegrationController::class, 'index']);
+    Route::post('/slack-integration', [SlackIntegrationController::class, 'store']);
+    Route::put('/slack-integration/{slackIntegration}', [SlackIntegrationController::class, 'update']);
+    Route::delete('/slack-integration/{slackIntegration}', [SlackIntegrationController::class, 'delete']);
+    Route::post('/slack-integration/{slackIntegration}/test', [SlackIntegrationController::class, 'test']);
+    Route::get('/slack-integration/{slackIntegration}/logs', [SlackIntegrationController::class, 'logs']);
+});
+//public login routes
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
@@ -60,12 +78,21 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Auth routes
     Route::post('/logout', [AuthController::class, 'logout']);
+        Route::get('/debug-token', [AuthController::class, 'debugToken']); // ADD THIS
     Route::get('/user', [AuthController::class, 'user']);
+    Route::post('/refresh-token', [AuthController::class, 'refreshToken']);
     Route::get('/auth/login-history', [AuthController::class, 'loginHistory']);
    
     // Dashboard (Available to all authenticated users)
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
+      /*
+    |--------------------------------------------------------------------------
+    | Shared Resources (Accessible by ID)
+    |--------------------------------------------------------------------------
+    | These must be placed carefully to avoid conflicting with specific routes.
+    */
+    Route::get('/leaves/{leave}', [LeaveController::class, 'show'])->whereNumber('leave');
     /*
     |--------------------------------------------------------------------------
     | Notification Routes (Available to ALL authenticated users)
@@ -78,6 +105,24 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
         Route::delete('/{id}', [NotificationController::class, 'destroy']);
     });
+    Route::middleware(['auth:sanctum'])->group(function () {
+    
+    // Notification Channel Management
+    Route::prefix('notification-channels')->group(function () {
+        Route::get('/', [NotificationChannelController::class, 'index']);
+        Route::post('/', [NotificationChannelController::class, 'store']);
+        Route::put('/{channel}', [NotificationChannelController::class, 'update']);
+        Route::delete('/{channel}', [NotificationChannelController::class, 'destroy']);
+        
+        // Helper endpoints
+        Route::get('/available-chat-groups', [NotificationChannelController::class, 'getAvailableChatGroups']);
+        Route::get('/available-events', [NotificationChannelController::class, 'getAvailableEvents']);
+        
+        // Test and logs
+        Route::post('/{channel}/test', [NotificationChannelController::class, 'test']);
+        Route::get('/{channel}/logs', [NotificationChannelController::class, 'getLogs']);
+    });
+});
 
     /*
     |--------------------------------------------------------------------------
@@ -246,6 +291,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('pending', [LeaveController::class, 'pendingLeaves']);
             Route::post('{leave}/approve', [LeaveController::class, 'approve']);
             Route::post('{leave}/reject', [LeaveController::class, 'reject']);
+            // ADDED: Missing route for current-month leaves (fixes 404 for managers)
+            Route::get('current-month', [LeaveController::class, 'currentMonthLeaves']);
         });
       
         // Reports
@@ -270,6 +317,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         // Leave Management
         Route::get('/leaves/current-month', [LeaveController::class, 'currentMonthLeaves']);
+         Route::post('/leaves/{leave}/approve', [LeaveController::class, 'approve']);  // ADD THIS LINE
+    Route::post('/leaves/{leave}/reject', [LeaveController::class, 'reject']);    // ADD THIS LINE
         
         // Admin's Personal Attendance
         Route::prefix('attendance')->group(function () {
@@ -378,6 +427,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/business-settings/initialize', [AdminController::class, 'initializeBusinessSettings']);
         Route::delete('/business-settings/{businessId}', [AdminController::class, 'deleteBusinessSettings']);
         Route::get('/stats', [AdminController::class, 'systemStats']);
+        Route::get('accessible-businesses', [AdminController::class, 'getAccessibleBusinesses']);
 
         // Country Management
         Route::prefix('countries')->group(function () {
@@ -389,16 +439,22 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::post('/{country}/toggle-status', [CountryController::class, 'toggleStatus']);
             Route::get('/{country}/statistics', [CountryController::class, 'statistics']);
         });
-        
+         Route::get('users/search', [EmployeeController::class, 'searchUsers']);
+    
         // Business Management
-        Route::prefix('businesses')->group(function () {
-            Route::get('/', [BusinessController::class, 'index']);
-            Route::post('/', [BusinessController::class, 'store']);
-            Route::get('/{business}', [BusinessController::class, 'show']);
-            Route::put('/{business}', [BusinessController::class, 'update']);
-            Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
-            Route::delete('/{business}', [BusinessController::class, 'destroy']);
-        });
+    Route::prefix('businesses')->group(function () {
+        Route::get('/', [BusinessController::class, 'index']);
+        Route::post('/', [BusinessController::class, 'store']);
+        Route::get('/{business}', [BusinessController::class, 'show']);
+        Route::put('/{business}', [BusinessController::class, 'update']);
+        Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
+        Route::delete('/{business}', [BusinessController::class, 'destroy']);
+        
+        // Admin management routes
+        Route::post('/{business}/admins', [BusinessController::class, 'addAdmin']);
+        Route::delete('/{business}/admins/{adminUser}', [BusinessController::class, 'removeAdmin']); // Fixed route
+        Route::put('/{business}/admins/{adminUser}/primary', [BusinessController::class, 'updatePrimaryAdmin']);
+    });
     });
 });
 

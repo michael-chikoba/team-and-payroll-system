@@ -56,6 +56,9 @@
             :business="selectedBusiness"
             @cancel="showBusinessList"
             @success="handleAdminsUpdated"
+            @search-user="searchUser"
+            @add-admin="addAdmin"
+            @remove-admin="removeAdmin"
           />
         </div>
       </Transition>
@@ -100,21 +103,26 @@ export default {
       this.currentView = 'list'
       this.selectedBusiness = null
     },
+    
     showRegistrationForm() {
       this.currentView = 'create'
     },
+    
     editBusiness(business) {
       this.selectedBusiness = business
       this.currentView = 'edit'
     },
+    
     manageAdmins(business) {
       this.selectedBusiness = business
       this.currentView = 'admins'
     },
+    
     confirmDeleteBusiness(business) {
       this.businessToDelete = business
       this.showDeleteModal = true
     },
+    
     async deleteBusiness() {
       try {
         await axios.delete(`/api/admin/businesses/${this.businessToDelete.id}`)
@@ -139,10 +147,12 @@ export default {
         })
       }
     },
+    
     cancelDelete() {
       this.showDeleteModal = false
       this.businessToDelete = null
     },
+    
     handleBusinessCreated(business) {
       this.showBusinessList()
       // Use $nextTick to ensure the ref exists before calling the method
@@ -152,6 +162,7 @@ export default {
         }
       })
     },
+    
     handleBusinessUpdated(business) {
       this.showBusinessList()
       this.$nextTick(() => {
@@ -160,6 +171,7 @@ export default {
         }
       })
     },
+    
     handleAdminsUpdated() {
       this.showBusinessList()
       this.$nextTick(() => {
@@ -168,8 +180,108 @@ export default {
         }
       })
     },
+    
     goToDashboard() {
       this.$router.push('/admin/dashboard')
+    },
+    
+    /**
+     * Search for a user by email
+     * @param {string} email - Email address to search for
+     * @returns {Promise<Object>} User data
+     */
+    async searchUser(email) {
+      try {
+        const response = await axios.get('/api/admin/users/search', {
+          params: { email }
+        })
+        
+        if (response.data.success) {
+          this.$notify({
+            type: 'success',
+            title: 'User Found',
+            text: `Found user: ${response.data.data.first_name} ${response.data.data.last_name}`
+          })
+          return response.data.data
+        } else {
+          throw new Error(response.data.message || 'User not found')
+        }
+      } catch (error) {
+        console.error('Error searching for user:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Search Failed',
+          text: error.response?.data?.message || 'User not found with this email'
+        })
+        throw error
+      }
+    },
+    
+    /**
+     * Add an admin to a business
+     * @param {number} businessId - ID of the business
+     * @param {number} userId - ID of the user to add as admin
+     * @param {string} role - Role to assign (admin, manager, owner)
+     * @returns {Promise<Object>} Updated business data
+     */
+    async addAdmin(businessId, userId, role) {
+      try {
+        const response = await axios.post(`/api/admin/businesses/${businessId}/admins`, {
+          user_id: userId,
+          role: role,
+          is_primary: false
+        })
+        
+        if (response.data.success) {
+          this.$notify({
+            type: 'success',
+            title: 'Admin Added',
+            text: 'Administrator added successfully to the business'
+          })
+          return response.data
+        } else {
+          throw new Error(response.data.message || 'Failed to add admin')
+        }
+      } catch (error) {
+        console.error('Error adding admin:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Failed to Add Admin',
+          text: error.response?.data?.message || 'Could not add administrator to the business'
+        })
+        throw error
+      }
+    },
+    
+    /**
+     * Remove an admin from a business
+     * @param {number} businessId - ID of the business
+     * @param {number} adminUserId - ID of the admin user to remove
+     * @returns {Promise<Object>} Response data
+     */
+    async removeAdmin(businessId, adminUserId) {
+      try {
+        const response = await axios.delete(`/api/admin/businesses/${businessId}/admins/${adminUserId}`)
+        
+        if (response.data.success) {
+          this.$notify({
+            type: 'success',
+            title: 'Admin Removed',
+            text: 'Administrator removed successfully from the business'
+          })
+          return response.data
+        } else {
+          throw new Error(response.data.message || 'Failed to remove admin')
+        }
+      } catch (error) {
+        console.error('Error removing admin:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Failed to Remove Admin',
+          text: error.response?.data?.message || 'Could not remove administrator from the business'
+        })
+        throw error
+      }
     }
   }
 }

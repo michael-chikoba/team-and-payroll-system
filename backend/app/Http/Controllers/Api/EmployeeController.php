@@ -9,8 +9,8 @@ use App\Models\Manager;
 use App\Models\Document;
 use App\Models\User;
 use App\Models\SystemSetting;
-use App\Models\Country; // Added missing import
-use App\Models\LeaveBalance; // Added missing import
+use App\Models\Country; 
+use App\Models\LeaveBalance; 
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Http\JsonResponse;
@@ -136,6 +136,90 @@ class EmployeeController extends Controller
         }
     }
 
+    /**
+ * Search for users by email (Admin only)
+ * Used for adding admins to businesses
+ */
+public function searchUsers(Request $request): JsonResponse
+{
+    try {
+        $email = $request->query('email');
+        
+        if (!$email) {
+            Log::warning('EMPLOYEE_CONTROLLER: User search attempted without email parameter');
+            return response()->json([
+                'success' => false,
+                'message' => 'Email parameter is required'
+            ], 422);
+        }
+        
+        Log::info('EMPLOYEE_CONTROLLER: Searching for user by email', [
+            'email' => $email,
+            'requested_by' => $request->user()->id,
+        ]);
+        
+        $user = User::where('email', $email)->first();
+        
+        if (!$user) {
+            Log::info('EMPLOYEE_CONTROLLER: User not found', [
+                'email' => $email,
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'User not found with this email address'
+            ], 404);
+        }
+        
+        // Load employee relationship to get additional context
+        $user->load('employee');
+        
+        Log::info('EMPLOYEE_CONTROLLER: User found successfully', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+            'has_employee_record' => $user->employee !== null,
+            'current_business_id' => $user->current_business_id,
+        ]);
+        
+        // Build response with additional context
+        $userData = [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'current_business_id' => $user->current_business_id,
+        ];
+        
+        // Add employee-specific data if exists
+        if ($user->employee) {
+            $userData['employee'] = [
+                'id' => $user->employee->id,
+                'employee_id' => $user->employee->employee_id,
+                'position' => $user->employee->position,
+                'department' => $user->employee->department,
+                'business_id' => $user->employee->business_id,
+            ];
+        }
+        
+        return response()->json([
+            'success' => true,
+            'data' => $userData
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: User search failed', [
+            'email' => $request->query('email'),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to search for user. Please try again.'
+        ], 500);
+    }
+}
     /**
      * Get business-scoped employees query
      */

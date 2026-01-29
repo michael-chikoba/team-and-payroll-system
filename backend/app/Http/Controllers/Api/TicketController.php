@@ -22,9 +22,18 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use App\Services\TicketNotificationService;
+
 
 class TicketController extends Controller
 {
+
+protected $notificationService;
+
+public function __construct(TicketNotificationService $notificationService)
+{
+    $this->notificationService = $notificationService;
+}
     /**
      * Get list of tickets with filtering (BACKWARD COMPATIBLE)
      */
@@ -494,6 +503,7 @@ class TicketController extends Controller
 
             // Load relationships
             $ticket->load(['user', 'approver', 'assignedUsers']);
+        $this->notificationService->notifyTicketCreated($ticket);
 
             // Send notifications to ALL business admins if approval is required
             $emailsSent = 0;
@@ -637,7 +647,12 @@ class TicketController extends Controller
                 $actionDescription .= " (approved by alternate admin)";
             }
             $this->logActivity($ticket, 'status_updated', $actionDescription, $user);
-
+// ✨ NEW: Send notifications for important status changes
+        if ($request->status === 'approved') {
+            $this->notificationService->notifyTicketApproved($ticket);
+        } elseif (in_array($request->status, ['resolved', 'closed', 'in_progress'])) {
+            $this->notificationService->notifyStatusChanged($ticket, $oldStatus, $request->status);
+        }
             // Send notification if requested
             if ($request->filled('send_email') && $request->send_email && $ticket->user_id !== $user->id) {
                 try {
@@ -1419,6 +1434,10 @@ public function addComment(Request $request, Ticket $ticket)
 
         // Update ticket's updated_at timestamp
         $ticket->touch();
+// ✨ NEW: Send notification (only for non-internal comments)
+        if (!$comment->is_internal) {
+            $this->notificationService->notifyCommentAdded($ticket, $comment);
+        }
 
         DB::commit();
 
@@ -1607,6 +1626,8 @@ public function uploadAttachment(Request $request, Ticket $ticket)
 
         // Update ticket's updated_at timestamp
         $ticket->touch();
+// ✨ NEW: Send notification
+        $this->notificationService->notifyAttachmentUploaded($ticket, $attachment);
 
         return response()->json([
             'success' => true,
@@ -1790,6 +1811,4 @@ public function uploadAttachment(Request $request, Ticket $ticket)
     {
         return $this->canViewTicket($ticket, $user);
     }
-
-   
 }

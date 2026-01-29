@@ -74,6 +74,7 @@ export default [
           title: 'My Tickets'
         }
       }
+      
     ]
   }
 ]

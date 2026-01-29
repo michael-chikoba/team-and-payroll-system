@@ -28,8 +28,8 @@ export default [
         path: 'employ',
         name: 'ADDEmployees',
         component: () => import('@/views/admin/AddEmployees.vue'),
-        meta: { 
-          requiresAuth: true, 
+        meta: {
+          requiresAuth: true,
           roles: ['admin'],
           specificUser: 'michaelchikoba0@gmail.com'
         }
@@ -73,22 +73,21 @@ export default [
       {
         path: 'leaves',
         name: 'LeaveManagement',
-        component: () => import('@/views/admin/LeaveManagement.vue') 
+        component: () => import('@/views/admin/LeaveManagement.vue')
       },
       {
         path: 'attendance',
         name: 'Attendancemonitor',
         component: () => import('@/views/admin/AttendanceMonitor.vue')
       },
-      // 11. COUNTRY MANAGEMENT - RESTRICTED TO SPECIFIC USER
+      // 11. COUNTRY MANAGEMENT - NO LONGER RESTRICTED TO SPECIFIC USER
       {
         path: 'countries',
         name: 'CountryManagement',
         component: () => import('@/views/admin/CountryManagement.vue'),
-        meta: { 
-          requiresAuth: true, 
-          roles: ['admin'],
-          specificUser: 'michaelchikoba0@gmail.com'
+        meta: {
+          requiresAuth: true,
+          roles: ['admin']
         }
       },
       // 12. ADMIN SETTINGS
@@ -98,27 +97,26 @@ export default [
         component: () => import('@/views/admin/Settings.vue')
       },
       // Add this to your admin routes
-{
-  path: 'tickets',
-  name: 'AdminTickets',
-  component: () => import('@/views/Tickets.vue'),
-  meta: { title: 'Ticket Management' }
-},
-{
-  path: 'Tasks',
-  name: 'AdminTasks',
-  component: () => import('@/views/admin/AdminTasks.vue'),
-  meta: { title: 'Tasks Management' }
-},
-      // 13. BUSINESS MANAGEMENT - RESTRICTED TO SPECIFIC USER
+      {
+        path: 'tickets',
+        name: 'AdminTickets',
+        component: () => import('@/views/Tickets.vue'),
+        meta: { title: 'Ticket Management' }
+      },
+      {
+        path: 'Tasks',
+        name: 'AdminTasks',
+        component: () => import('@/views/admin/AdminTasks.vue'),
+        meta: { title: 'Tasks Management' }
+      },
+      // 13. BUSINESS MANAGEMENT - NO LONGER RESTRICTED TO SPECIFIC USER
       {
         path: 'businesses',
         name: 'Addbusiness',
         component: () => import('@/views/admin/BusinessManagement.vue'),
-        meta: { 
-          requiresAuth: true, 
-          roles: ['admin'],
-          specificUser: 'michaelchikoba0@gmail.com'
+        meta: {
+          requiresAuth: true,
+          roles: ['admin']
         }
       }
     ]

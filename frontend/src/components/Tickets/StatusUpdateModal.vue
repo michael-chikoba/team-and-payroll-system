@@ -1,6 +1,7 @@
 <template>
   <TransitionRoot as="template" :show="show">
-    <Dialog as="div" class="relative z-50" @close="closeModal">
+    <!-- Updated z-index to z-[2000] to overlay AdminLayout (z-1000) -->
+    <Dialog as="div" class="relative z-[2000]" @close="closeModal">
       <TransitionChild
         as="template"
         enter="ease-out duration-300"
@@ -13,7 +14,8 @@
         <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" />
       </TransitionChild>
 
-      <div class="fixed inset-0 z-10 overflow-y-auto">
+      <!-- Updated container z-index to z-[2000] -->
+      <div class="fixed inset-0 z-[2000] overflow-y-auto">
         <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
           <TransitionChild
             as="template"
@@ -198,7 +200,7 @@ const updateStatus = async () => {
   
   try {
     // Use update-status endpoint
-    const response = await axios.patch(`/api/tickets/${props.ticket.id}/update-status`, {
+    const response = await axios.post(`/api/tickets/${props.ticket.id}/update-status`, {
       status: selectedStatus.value,
       comments: comments.value || null
     })

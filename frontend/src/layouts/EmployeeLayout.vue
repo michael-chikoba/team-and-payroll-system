@@ -116,20 +116,31 @@
           <!-- Dropdown Menu -->
           <transition name="dropdown">
             <div v-if="isDropdownOpen" class="dropdown-menu">
+              <div class="dropdown-header">
+                <span class="dropdown-avatar">{{ getInitials() }}</span>
+                <div class="dropdown-user-info">
+                  <span class="dropdown-user-name">{{ authStore.user?.fullName || 'Employee' }}</span>
+                  <span class="dropdown-user-email">{{ authStore.user?.email || '' }}</span>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
               <router-link to="/employee/profile" class="dropdown-item" @click="closeDropdown">
-                <span class="dropdown-icon">👤</span> Profile
+                <span class="dropdown-icon">👤</span> 
+                <span class="dropdown-item-text">Profile</span>
               </router-link>
               <router-link :to="{ name: 'mytickets' }" class="dropdown-item" @click="closeDropdown">
-                <span class="dropdown-icon">🎫</span> My Tickets
+                <span class="dropdown-icon">🎫</span> 
+                <span class="dropdown-item-text">My Tickets</span>
                 <span v-if="pendingTicketsCount > 0" class="dropdown-badge">{{ pendingTicketsCount }}</span>
               </router-link>
               <router-link to="/employee/charts" class="dropdown-item" @click="closeDropdown">
-                <span class="dropdown-icon">📊</span> Reports & Charts
+                <span class="dropdown-icon">📊</span> 
+                <span class="dropdown-item-text">Reports & Charts</span>
               </router-link>
               <div class="dropdown-divider"></div>
               <button @click="handleLogout" class="dropdown-item logout-item">
                 <span class="dropdown-icon">🚪</span> 
-                Logout
+                <span class="dropdown-item-text">Logout</span>
               </button>
             </div>
           </transition>
@@ -382,6 +393,8 @@ export default {
   --nav-text: #111827; /* Deep Charcoal/Black */
   --nav-text-active: #1a56db;
   --nav-border: #f0f0f0;
+  --dropdown-bg: #ffffff;
+  --dropdown-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
 }
 
 /* Layout */
@@ -685,7 +698,7 @@ export default {
   color: #ff5252;
 }
 
-/* Profile Dropdown */
+/* Profile Dropdown - UPDATED FOR SOLID BACKGROUND */
 .profile-dropdown-container {
   position: relative;
 }
@@ -739,40 +752,93 @@ export default {
   transform: rotate(180deg);
 }
 
+/* UPDATED DROPDOWN MENU - SOLID BACKGROUND */
 .dropdown-menu {
   position: absolute;
   top: 120%;
   right: 0;
-  background-color: var(--surface-color);
+  background-color: var(--dropdown-bg);
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-  min-width: 240px;
-  padding: 0.75rem 0;
+  box-shadow: var(--dropdown-shadow);
+  min-width: 280px;
+  padding: 0;
   z-index: 1000;
   border: 1px solid var(--border-color);
+  overflow: hidden;
+  backdrop-filter: none;
+  background: white;
+}
+
+.dropdown-header {
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dropdown-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.dropdown-user-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dropdown-user-name {
+  font-weight: 600;
+  color: var(--text-color);
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-user-email {
+  font-size: 0.8rem;
+  color: var(--text-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
 }
 
 .dropdown-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0.85rem 1.25rem;
+  padding: 0.85rem 1.5rem;
   color: var(--text-color);
   text-decoration: none;
   width: 100%;
   text-align: left;
   border: none;
-  background: none;
+  background: transparent;
   cursor: pointer;
   font-size: 0.95rem;
   transition: all 0.15s ease;
   font-weight: 500;
+  background-color: white;
 }
 
 .dropdown-item:hover {
   background-color: #f0f4f8;
   color: var(--primary-color);
-  padding-left: 1.5rem;
+  padding-left: 1.75rem;
 }
 
 /* Special styling for tickets dropdown item */
@@ -784,6 +850,11 @@ export default {
 .dropdown-icon {
   font-size: 1.2rem;
   width: 24px;
+  text-align: center;
+}
+
+.dropdown-item-text {
+  flex: 1;
 }
 
 .dropdown-badge {
@@ -803,7 +874,7 @@ export default {
 
 .dropdown-divider {
   border-bottom: 1px solid var(--border-color);
-  margin: 0.5rem 0;
+  margin: 0;
 }
 
 .logout-item {
@@ -1038,6 +1109,19 @@ export default {
     padding: 1rem;
     min-height: 300px;
   }
+  
+  .dropdown-menu {
+    min-width: 250px;
+    right: 0;
+    position: fixed;
+    top: 80px;
+    width: calc(100% - 2rem);
+    margin: 0 1rem;
+  }
+  
+  .dropdown-header {
+    padding: 1rem;
+  }
 }
 
 @media (max-width: 576px) {
@@ -1063,6 +1147,12 @@ export default {
   .ticket-notification-badge::after {
     content: '🎫';
     font-size: 1.2rem;
+  }
+  
+  .dropdown-menu {
+    min-width: 200px;
+    width: calc(100% - 1rem);
+    margin: 0 0.5rem;
   }
 }
 </style>

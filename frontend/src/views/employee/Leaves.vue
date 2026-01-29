@@ -54,7 +54,7 @@
               <tr v-for="leave in getPaginatedPending()" :key="leave.id">
                 <td>{{ formatLeaveType(leave.leave_type) }}</td>
                 <td>{{ formatDateRange(leave.start_date, leave.end_date) }}</td>
-                <td>{{ leave.duration }} days</td>
+                <td>{{ calculateDuration(leave.start_date, leave.end_date) }} days</td>
                 <td class="reason-cell">{{ truncateText(leave.reason) }}</td>
                 <td>
                   <span :class="['status-badge', leave.status.toLowerCase()]">
@@ -62,11 +62,12 @@
                   </span>
                 </td>
                 <td>
-                  <button @click="cancelLeave(leave.id)" class="action-btn cancel" v-if="leave.status === 'pending'">
+                  <button 
+                    @click="cancelLeave(leave.id)" 
+                    class="action-btn cancel" 
+                    v-if="leave.status === 'pending' || leave.status === 'under_review'"
+                  >
                     <i class="icon-cancel"></i> Cancel
-                  </button>
-                  <button @click="viewDetails(leave.id)" class="action-btn view">
-                    <i class="icon-eye"></i> View
                   </button>
                 </td>
               </tr>
@@ -103,7 +104,7 @@
               <tr v-for="leave in getPaginatedHistory()" :key="leave.id">
                 <td>{{ formatLeaveType(leave.leave_type) }}</td>
                 <td>{{ formatDateRange(leave.start_date, leave.end_date) }}</td>
-                <td>{{ leave.duration }} days</td>
+                <td>{{ calculateDuration(leave.start_date, leave.end_date) }} days</td>
                 <td>
                   <span :class="['status-badge', leave.status.toLowerCase()]">
                     {{ formatStatus(leave.status) }}
@@ -193,6 +194,20 @@ export default {
         // Handle different response structures
         const leavesData = response.data.data || response.data || []
        
+        // Log each leave to see the structure
+        leavesData.forEach((leave, index) => {
+          console.log(`Leave ${index + 1}:`, {
+            id: leave.id,
+            leave_type: leave.leave_type,
+            start_date: leave.start_date,
+            end_date: leave.end_date,
+            duration: leave.duration,
+            reason: leave.reason,
+            status: leave.status,
+            rawData: leave
+          })
+        })
+       
         // Filter leaves into pending and history
         this.pendingLeaves = leavesData.filter(leave =>
           leave.status === 'pending' || leave.status === 'under_review'
@@ -235,10 +250,6 @@ export default {
           text: err.response?.data?.message || 'Failed to cancel leave request. Please try again.'
         })
       }
-    },
-   
-    viewDetails(id) {
-      this.$router.push({ name: 'leave-details', params: { id } })
     },
    
     retryFetch() {
@@ -305,6 +316,31 @@ export default {
         day: 'numeric'
       })
     },
+    
+    calculateDuration(startDate, endDate) {
+      if (!startDate || !endDate) {
+        console.log('Missing dates for duration calculation:', { startDate, endDate })
+        return 0
+      }
+      
+      try {
+        const start = new Date(startDate)
+        const end = new Date(endDate)
+        
+        // Calculate difference in milliseconds
+        const diffTime = Math.abs(end - start)
+        
+        // Convert to days and add 1 to include both start and end dates
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+        
+        console.log(`Duration calculation: ${startDate} to ${endDate} = ${diffDays} days`)
+        return diffDays
+      } catch (error) {
+        console.error('Error calculating duration:', error)
+        return 0
+      }
+    },
+    
     truncateText(text) {
       if (!text) return ''
       return text.length > 50 ? text.substring(0, 50) + '...' : text
@@ -550,17 +586,6 @@ export default {
   align-items: center;
   gap: 0.25rem;
   font-weight: 500;
-}
-
-.action-btn.view {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-}
-
-.action-btn.view:hover {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  transform: translateY(-1px);
 }
 
 .action-btn.cancel {

@@ -330,7 +330,7 @@
           <div class="content-card payslip-card" v-if="hasUpcomingPayslip()">
             <div class="card-title-bar">
               <h2>Next Payslip</h2>
-              <span class="status-badge upcoming">Upcoming</span>
+              <span :class="['status-badge', getPaydayStatusClass()]">{{ getPaydayStatusText() }}</span>
             </div>
             <div class="payslip-content">
               <div class="payslip-icon">
@@ -344,15 +344,15 @@
               <div class="payslip-details">
                 <div class="payslip-detail">
                   <span class="label">Pay Period:</span>
-                  <span class="value">{{ stats.upcoming_payslip.payroll_period }}</span>
+                  <span class="value">{{ formatPayPeriod(stats.upcoming_payslip.payroll_period) }}</span>
                 </div>
                 <div class="payslip-detail">
                   <span class="label">Processing Date:</span>
-                  <span class="value">{{ formatDate(stats.upcoming_payslip.processing_date) }}</span>
+                  <span class="value">{{ formatPayslipDate(stats.upcoming_payslip.processing_date) }}</span>
                 </div>
                 <div class="payslip-detail">
-                  <span class="label">Estimated Days:</span>
-                  <span class="value highlight">{{ stats.upcoming_payslip.estimated_days }} days</span>
+                  <span class="label">Days Until Payday:</span>
+                  <span class="value highlight">{{ getDaysUntilPayday() }}</span>
                 </div>
               </div>
             </div>
@@ -427,7 +427,8 @@ export default {
       currentDay: now.toLocaleDateString('en-US', { weekday: 'long' }),
       currentDateNum: now.getDate(),
       currentMonthYear: now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-      statsLoaded: false
+      statsLoaded: false,
+      refreshInterval: null
     }
   },
   mounted() {
@@ -467,6 +468,12 @@ export default {
             recent_leaves: response.data.stats.recent_leaves || [],
             upcoming_payslip: response.data.stats.upcoming_payslip || null
           }
+          
+          // Fix the payslip data if it has invalid dates
+          if (this.stats.upcoming_payslip) {
+            this.fixPayslipData()
+          }
+          
           this.statsLoaded = true
         } else if (response.data.role !== 'employee') {
           this.error = 'This dashboard is for employees only.'
@@ -482,6 +489,51 @@ export default {
         }
       }
     },
+    
+    // Fix payslip data with invalid dates
+    fixPayslipData() {
+      if (!this.stats.upcoming_payslip) return
+      
+      const payslip = this.stats.upcoming_payslip
+      
+      // If processing_date is invalid, try to parse it from payroll_period
+      if (!this.isValidDate(payslip.processing_date) && payslip.payroll_period) {
+        // Try to extract date from payroll_period format like "2012-01"
+        const match = payslip.payroll_period.match(/^(\d{4})-(\d{2})$/)
+        if (match) {
+          const year = parseInt(match[1])
+          const month = parseInt(match[2]) - 1 // JavaScript months are 0-indexed
+          
+          // Create a date for the end of the pay period (last day of month)
+          const endOfMonth = new Date(year, month + 1, 0)
+          
+          // Set processing date to 3 days after end of pay period (typical payroll processing)
+          const processingDate = new Date(endOfMonth)
+          processingDate.setDate(endOfMonth.getDate() + 3)
+          
+          payslip.processing_date = processingDate.toISOString().split('T')[0]
+        }
+      }
+      
+      // Fix estimated_days if it's invalid
+      if (typeof payslip.estimated_days === 'number' && (payslip.estimated_days < 0 || !Number.isInteger(payslip.estimated_days))) {
+        // Use our frontend calculation instead
+        payslip.estimated_days = this.getDaysUntilPaydayValue()
+      }
+    },
+    
+    // Check if a date string is valid
+    isValidDate(dateString) {
+      if (!dateString) return false
+      
+      try {
+        const date = new Date(dateString)
+        return !isNaN(date.getTime()) && date.toString() !== 'Invalid Date'
+      } catch (error) {
+        return false
+      }
+    },
+    
     async fetchEmployeeProfile() {
       try {
         const response = await axios.get('/api/profile')
@@ -522,6 +574,130 @@ export default {
     retryFetch() {
       this.fetchDashboardData()
       this.fetchEmployeeProfile()
+    },
+    
+    // Payslip date calculations - FIXED
+    getDaysUntilPaydayValue() {
+      if (!this.stats.upcoming_payslip?.processing_date) {
+        return 0
+      }
+      
+      try {
+        const processingDate = new Date(this.stats.upcoming_payslip.processing_date)
+        const today = new Date()
+        
+        // Reset both dates to midnight for accurate day calculation
+        today.setHours(0, 0, 0, 0)
+        processingDate.setHours(0, 0, 0, 0)
+        
+        // Calculate difference in days
+        const diffTime = processingDate - today
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+        
+        return Math.max(diffDays, 0)
+      } catch (error) {
+        console.error('Error calculating days until payday:', error)
+        return 0
+      }
+    },
+    
+    getDaysUntilPayday() {
+      const days = this.getDaysUntilPaydayValue()
+      
+      if (days === 0) {
+        return 'Today'
+      } else if (days === 1) {
+        return '1 day'
+      } else if (days < 0) {
+        return 'Past due'
+      } else {
+        return `${days} days`
+      }
+    },
+    
+    getPaydayStatusClass() {
+      const days = this.getDaysUntilPaydayValue()
+      
+      if (days === 0) {
+        return 'today'
+      } else if (days < 0) {
+        return 'past-due'
+      } else if (days <= 7) {
+        return 'upcoming'
+      } else {
+        return 'upcoming'
+      }
+    },
+    
+    getPaydayStatusText() {
+      const days = this.getDaysUntilPaydayValue()
+      
+      if (days === 0) {
+        return 'Today'
+      } else if (days < 0) {
+        return 'Past Due'
+      } else if (days <= 7) {
+        return 'Upcoming'
+      } else {
+        return 'Upcoming'
+      }
+    },
+    
+    // Format pay period (e.g., "2012-01" -> "Jan 2012")
+    formatPayPeriod(period) {
+      if (!period) return 'N/A'
+      
+      try {
+        // Handle format like "2012-01"
+        const match = period.match(/^(\d{4})-(\d{2})$/)
+        if (match) {
+          const year = match[1]
+          const month = parseInt(match[2]) - 1
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          return `${monthNames[month]} ${year}`
+        }
+        
+        // Handle other formats
+        return period
+      } catch (error) {
+        console.error('Error formatting pay period:', error)
+        return period || 'N/A'
+      }
+    },
+    
+    // Special date formatter for payslip dates
+    formatPayslipDate(date) {
+      if (!date) return 'N/A'
+      
+      try {
+        const dateObj = new Date(date)
+        
+        if (isNaN(dateObj.getTime())) {
+          // Try alternative parsing if standard parsing fails
+          const parts = date.split('-')
+          if (parts.length === 3) {
+            const [year, month, day] = parts.map(Number)
+            const altDate = new Date(year, month - 1, day)
+            if (!isNaN(altDate.getTime())) {
+              return altDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+              })
+            }
+          }
+          return 'Invalid Date'
+        }
+        
+        return dateObj.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+      } catch (e) {
+        console.error('Date formatting error:', e)
+        return 'Invalid Date'
+      }
     },
     
     // Safe getter methods for stats
@@ -586,7 +762,12 @@ export default {
       return this.stats.recent_leaves && this.stats.recent_leaves.length > 0
     },
     hasUpcomingPayslip() {
-      return this.stats.upcoming_payslip !== null
+      if (!this.stats.upcoming_payslip) {
+        return false
+      }
+      
+      // Check if we have at least a pay period
+      return !!this.stats.upcoming_payslip.payroll_period
     },
     
     // Getter methods with limits
@@ -621,13 +802,36 @@ export default {
     },
     formatDate(date) {
       if (!date) return 'N/A'
+      
       try {
-        return new Date(date).toLocaleDateString('en-US', {
+        // Handle string dates that might have timezone issues
+        const dateObj = new Date(date)
+        
+        // Check if date is valid
+        if (isNaN(dateObj.getTime())) {
+          // Try alternative parsing
+          const parts = date.split('-')
+          if (parts.length === 3) {
+            const [year, month, day] = parts.map(Number)
+            const altDate = new Date(year, month - 1, day)
+            if (!isNaN(altDate.getTime())) {
+              return altDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+              })
+            }
+          }
+          return 'Invalid Date'
+        }
+        
+        return dateObj.toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'short',
           day: 'numeric'
         })
       } catch (e) {
+        console.error('Date formatting error:', e)
         return 'Invalid Date'
       }
     },
@@ -640,6 +844,9 @@ export default {
       
       const total = this.getTotalDays(balanceData)
       const available = this.getAvailableDays(balanceData)
+      
+      if (total === 0) return 0
+      
       const percentage = (available / total) * 100
       return Math.min(Math.max(percentage, 0), 100)
     },
@@ -690,6 +897,7 @@ export default {
   }
 }
 </script>
+
 <style scoped>
 /* Add these new styles to the existing CSS */
 
@@ -779,6 +987,25 @@ export default {
   margin-top: auto;
   padding-top: 1rem;
   border-top: 1px solid #f1f5f9;
+}
+
+/* Payday status badges */
+.status-badge.upcoming {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.status-badge.today {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.status-badge.past-due {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 /* Update existing styles for better spacing */

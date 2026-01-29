@@ -1378,4 +1378,90 @@ class AdminController extends Controller
             return 'Unknown';
         }
     }
+    /**
+     * Get businesses accessible to the authenticated admin
+     * - Super admins see all businesses
+     * - Regular admins only see businesses they're assigned to via business_admins table
+     */
+    public function getAccessibleBusinesses(Request $request): JsonResponse
+    {
+        $currentUser = $request->user();
+        
+        Log::info('ADMIN: Getting accessible businesses', [
+            'user_id' => $currentUser->id,
+            'role' => $currentUser->role
+        ]);
+        
+        try {
+            $query = Business::with(['country', 'admins'])
+                ->where('status', 'active');
+            
+            // Super admins see all active businesses
+            $isSuperAdmin = $currentUser->role === 'super_admin';
+            
+            if (!$isSuperAdmin) {
+                // Regular admins only see businesses they're assigned to
+                $query->whereHas('admins', function($q) use ($currentUser) {
+                    $q->where('user_id', $currentUser->id);
+                });
+                
+                Log::info('ADMIN: Filtering businesses by admin assignment', [
+                    'user_id' => $currentUser->id
+                ]);
+            }
+            
+            $businesses = $query->get()->map(function($business) use ($currentUser) {
+                $adminRelation = $business->admins()
+                    ->where('user_id', $currentUser->id)
+                    ->first();
+                
+                return [
+                    'id' => $business->id,
+                    'name' => $business->name,
+                    'legal_name' => $business->legal_name,
+                    'country_code' => $business->country?->code,
+                    'country_name' => $business->country?->name ?? 'Unknown',
+                    'country' => $business->country ? [
+                        'id' => $business->country->id,
+                        'code' => $business->country->code,
+                        'name' => $business->country->name,
+                        'flag_emoji' => $business->country->flag_emoji
+                    ] : null,
+                    'flag_emoji' => $business->country?->flag_emoji ?? '🏳️',
+                    'currency_code' => $business->currency_code,
+                    'tax_identification_number' => $business->tax_identification_number,
+                    'address_line_1' => $business->address_line_1,
+                    'is_primary' => $adminRelation?->pivot->is_primary ?? false,
+                    'admin_role' => $adminRelation?->pivot->role ?? null,
+                    'has_settings' => SystemSetting::where('business_id', $business->id)
+                        ->where('country_code', $business->country?->code)
+                        ->exists()
+                ];
+            });
+            
+            Log::info('ADMIN: Accessible businesses retrieved', [
+                'user_id' => $currentUser->id,
+                'is_super_admin' => $isSuperAdmin,
+                'total' => $businesses->count(),
+                'business_ids' => $businesses->pluck('id')->toArray()
+            ]);
+            
+            return response()->json([
+                'businesses' => $businesses,
+                'total' => $businesses->count(),
+                'is_super_admin' => $isSuperAdmin
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('ADMIN: Error getting accessible businesses', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'message' => 'Error fetching accessible businesses',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

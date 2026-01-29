@@ -11,7 +11,6 @@ use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
@@ -29,7 +28,6 @@ class AuthController extends Controller
             'email' => $request->email,
             'role' => $request->role,
             'ip' => $ip,
-            'user_agent' => $request->userAgent(),
         ]);
 
         try {
@@ -41,38 +39,15 @@ class AuthController extends Controller
                 'role' => $request->role,
             ];
 
-            Log::debug('Attempting to create user with data', [
-                'email' => $userData['email'],
-                'first_name' => $userData['first_name'],
-                'last_name' => $userData['last_name'],
-                'role' => $userData['role'],
-                'has_password' => !empty($userData['password']),
-            ]);
-
-            // Check if we need to add a name field for the database
-            $user = new User();
-            $fillable = $user->getFillable();
-            
-            if (in_array('name', $fillable)) {
-                $userData['name'] = "{$userData['first_name']} {$userData['last_name']}";
-                Log::debug('Added name field for database compatibility', [
-                    'name' => $userData['name']
-                ]);
-            }
-
             $user = User::create($userData);
 
             Log::info('User created successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'role' => $user->role,
-                'first_name' => $user->first_name,
-                'last_name' => $user->last_name,
             ]);
 
-            $token = $user->createToken('auth-token')->plainTextToken;
-
-            // Log the initial registration login
+            $tokenResult = $user->createAuthToken('auth-token');
+            
             $loginAudit = $this->logLoginAttempt(
                 $user->id,
                 $user->email,
@@ -81,49 +56,17 @@ class AuthController extends Controller
                 'success'
             );
 
-            Log::info('Auth token created for user', [
-                'user_id' => $user->id,
-                'token_type' => 'auth-token',
-                'location' => $loginAudit ? $loginAudit->location : 'unknown',
-            ]);
-
             return response()->json([
                 'user' => $user->makeHidden(['password', 'remember_token']),
-                'token' => $token,
+                'token' => $tokenResult->plainTextToken,
+                'expires_at' => $tokenResult->accessToken->expires_at->toISOString(),
                 'message' => 'User registered successfully',
-                'login_location' => $loginAudit ? $loginAudit->location : null,
             ], 201);
 
-        } catch (\Illuminate\Database\QueryException $e) {
-            Log::error('Database error during user registration', [
-                'email' => $request->email,
-                'error_code' => $e->getCode(),
-                'error_message' => $e->getMessage(),
-                'sql_state' => $e->errorInfo[0] ?? 'unknown',
-                'driver_code' => $e->errorInfo[1] ?? 'unknown',
-            ]);
-
-            if (str_contains($e->getMessage(), "Field 'name' doesn't have a default value")) {
-                Log::error('Database schema issue: name field required but not provided', [
-                    'email' => $request->email,
-                    'solution' => 'Update User model fillable fields or database schema',
-                ]);
-                
-                return response()->json([
-                    'message' => 'Registration failed due to system configuration. Please contact administrator.'
-                ], 500);
-            }
-
-            return response()->json([
-                'message' => 'Registration failed due to database error.'
-            ], 500);
-
         } catch (\Exception $e) {
-            Log::error('User registration failed with general exception', [
+            Log::error('User registration failed', [
                 'email' => $request->email,
                 'error' => $e->getMessage(),
-                'exception_type' => get_class($e),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -140,26 +83,19 @@ class AuthController extends Controller
         Log::info('Login attempt', [
             'email' => $request->email,
             'ip' => $ip,
-            'user_agent' => $userAgent,
         ]);
 
         try {
             $user = User::where('email', $request->email)->first();
 
-            if (!$user) {
-                Log::warning('Login failed - user not found', [
-                    'email' => $request->email,
-                    'ip' => $ip,
-                ]);
-
-                // Log failed attempt
+            if (!$user || !Hash::check($request->password, $user->password)) {
                 $this->logLoginAttempt(
-                    null,
+                    $user?->id,
                     $request->email,
                     $ip,
                     $userAgent,
                     'failed',
-                    'User not found'
+                    'Invalid credentials'
                 );
 
                 throw ValidationException::withMessages([
@@ -167,54 +103,9 @@ class AuthController extends Controller
                 ]);
             }
 
-            if (!Hash::check($request->password, $user->password)) {
-                Log::warning('Login failed - invalid password', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'ip' => $ip,
-                ]);
-
-                // Log failed attempt
-                $this->logLoginAttempt(
-                    $user->id,
-                    $user->email,
-                    $ip,
-                    $userAgent,
-                    'failed',
-                    'Invalid password'
-                );
-
-                throw ValidationException::withMessages([
-                    'email' => ['The provided credentials are incorrect.'],
-                ]);
-            }
-
-            // Check if user is active or has any restrictions
-            if (property_exists($user, 'status') && $user->status !== 'active') {
-                Log::warning('Login failed - user account not active', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'status' => $user->status,
-                ]);
-
-                // Log failed attempt
-                $this->logLoginAttempt(
-                    $user->id,
-                    $user->email,
-                    $ip,
-                    $userAgent,
-                    'failed',
-                    'Account inactive'
-                );
-
-                throw ValidationException::withMessages([
-                    'email' => ['Your account is not active. Please contact administrator.'],
-                ]);
-            }
-
-            $token = $user->createToken('auth-token')->plainTextToken;
-
-            // Log successful login with location
+            // Create token with expiration
+            $tokenResult = $user->createAuthToken('auth-token');
+            
             $loginAudit = $this->logLoginAttempt(
                 $user->id,
                 $user->email,
@@ -223,51 +114,30 @@ class AuthController extends Controller
                 'success'
             );
 
-            // Check for suspicious login
-            if ($loginAudit && $loginAudit->isSuspicious()) {
-                Log::warning('⚠️ SUSPICIOUS LOGIN DETECTED', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'location' => $loginAudit->location,
-                    'ip' => $ip,
-                    'device' => $loginAudit->device_type,
-                    'browser' => $loginAudit->browser,
-                ]);
-
-                // TODO: Send security alert email to user
-                // $user->notify(new SuspiciousLoginNotification($loginAudit));
-            }
-
             Log::info('✅ Login successful', [
                 'user_id' => $user->id,
                 'email' => $user->email,
-                'role' => $user->role,
-                'token_created' => true,
-                'location' => $loginAudit ? $loginAudit->location : 'unknown',
-                'device' => $loginAudit ? $loginAudit->device_type : 'unknown',
-                'browser' => $loginAudit ? $loginAudit->browser : 'unknown',
+                'token_expires_at' => $tokenResult->accessToken->expires_at,
             ]);
 
             return response()->json([
                 'user' => $user->makeHidden(['password', 'remember_token']),
-                'token' => $token,
+                'token' => $tokenResult->plainTextToken,
+                'expires_at' => $tokenResult->accessToken->expires_at->toISOString(),
                 'message' => 'Login successful',
                 'login_info' => $loginAudit ? [
                     'location' => $loginAudit->location,
                     'device' => $loginAudit->device_type,
                     'browser' => $loginAudit->browser,
-                    'platform' => $loginAudit->platform,
-                    'is_suspicious' => $loginAudit->isSuspicious(),
                 ] : null,
             ]);
 
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::error('Login process failed with exception', [
+            Log::error('Login failed', [
                 'email' => $request->email,
                 'error' => $e->getMessage(),
-                'exception_type' => get_class($e),
             ]);
 
             throw ValidationException::withMessages([
@@ -283,50 +153,33 @@ class AuthController extends Controller
         Log::info('Logout attempt', [
             'user_id' => $user->id,
             'email' => $user->email,
-            'ip' => $request->ip(),
         ]);
 
         try {
-            $tokenId = $request->user()->currentAccessToken()->id;
-            
-            // Update logout time for latest login audit
+            // Update logout time
             $latestLogin = LoginAudit::where('user_id', $user->id)
                 ->whereNull('logout_at')
                 ->latest('login_at')
                 ->first();
 
             if ($latestLogin) {
-                $latestLogin->update([
-                    'logout_at' => now()
-                ]);
-
-                Log::info('✅ Logout successful', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'token_id' => $tokenId,
-                    'session_duration_minutes' => $latestLogin->session_duration,
-                    'login_at' => $latestLogin->login_at,
-                    'logout_at' => $latestLogin->logout_at,
-                ]);
-            } else {
-                Log::info('✅ Logout successful (no active session found)', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'token_id' => $tokenId,
-                ]);
+                $latestLogin->update(['logout_at' => now()]);
             }
 
-            $request->user()->currentAccessToken()->delete();
+            // Revoke all tokens and sessions
+            $user->revokeAllTokens();
+
+            Log::info('✅ Logout successful', [
+                'user_id' => $user->id,
+            ]);
 
             return response()->json([
                 'message' => 'Logged out successfully',
-                'session_duration' => $latestLogin ? $latestLogin->session_duration : null,
             ]);
 
         } catch (\Exception $e) {
             Log::error('Logout failed', [
                 'user_id' => $user->id,
-                'email' => $user->email,
                 'error' => $e->getMessage(),
             ]);
 
@@ -339,35 +192,86 @@ class AuthController extends Controller
     public function user(Request $request): JsonResponse
     {
         $user = $request->user();
-        
-        Log::debug('User profile request', [
-            'user_id' => $user->id,
-            'email' => $user->email,
-            'ip' => $request->ip(),
+        $user->load('employee');
+
+        return response()->json([
+            'user' => $user->makeHidden('password'),
+            'token_expires_at' => $user->currentAccessToken()?->expires_at?->toISOString(),
         ]);
+    }
 
+    public function refreshToken(Request $request): JsonResponse
+    {
         try {
-            $user->load('employee');
-
-            Log::debug('User profile loaded successfully', [
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'message' => 'Unauthenticated'
+                ], 401);
+            }
+            
+            $newToken = $user->refreshAuthToken();
+            
+            if (!$newToken) {
+                return response()->json([
+                    'message' => 'Failed to refresh token'
+                ], 500);
+            }
+            
+            Log::info('Token refreshed', [
                 'user_id' => $user->id,
-                'employee_loaded' => !is_null($user->employee),
+                'expires_at' => $newToken->accessToken->expires_at,
             ]);
-
+            
             return response()->json([
-                'user' => $user->makeHidden('password')
+                'token' => $newToken->plainTextToken,
+                'expires_at' => $newToken->accessToken->expires_at->toISOString(),
+                'user' => $user->makeHidden('password'),
             ]);
-
+            
         } catch (\Exception $e) {
-            Log::error('Failed to load user profile', [
-                'user_id' => $user->id,
+            Log::error('Token refresh failed', [
                 'error' => $e->getMessage(),
             ]);
-
+            
             return response()->json([
-                'user' => $user->makeHidden('password'),
-                'message' => 'Profile loaded but employee data unavailable'
+                'message' => 'Token refresh failed'
+            ], 500);
+        }
+    }
+
+    private function logLoginAttempt(
+        ?int $userId,
+        string $email,
+        string $ip,
+        ?string $userAgent,
+        string $status,
+        ?string $failureReason = null
+    ): ?LoginAudit {
+        try {
+            $locationData = $this->locationService->getLocationFromIp($ip);
+            $deviceInfo = $this->locationService->parseUserAgent($userAgent ?? '');
+
+            $auditData = array_merge([
+                'user_id' => $userId,
+                'email' => $email,
+                'ip_address' => $ip,
+                'user_agent' => $userAgent,
+                'status' => $status,
+                'failure_reason' => $failureReason,
+                'login_at' => now(),
+            ], $locationData, $deviceInfo);
+
+            return LoginAudit::create($auditData);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to log login audit', [
+                'email' => $email,
+                'error' => $e->getMessage(),
             ]);
+            
+            return null;
         }
     }
 
@@ -462,6 +366,46 @@ class AuthController extends Controller
             ], 500);
         }
     }
+    public function debugToken(Request $request): JsonResponse
+{
+    $user = $request->user();
+    
+    if (!$user) {
+        return response()->json([
+            'authenticated' => false,
+            'message' => 'No user found'
+        ]);
+    }
+    
+    $token = $user->currentAccessToken();
+    
+    $sessionData = DB::table('sessions')
+        ->where('user_id', $user->id)
+        ->first();
+    
+    return response()->json([
+        'authenticated' => true,
+        'user' => [
+            'id' => $user->id,
+            'email' => $user->email,
+            'role' => $user->role,
+        ],
+        'token' => [
+            'id' => $token?->id,
+            'name' => $token?->name,
+            'abilities' => $token?->abilities,
+            'expires_at' => $token?->expires_at?->toISOString(),
+            'created_at' => $token?->created_at?->toISOString(),
+            'is_expired' => $token?->expires_at ? $token->expires_at->isPast() : null,
+        ],
+        'session' => $sessionData ? [
+            'id' => $sessionData->id,
+            'ip_address' => $sessionData->ip_address,
+            'last_activity' => date('Y-m-d H:i:s', $sessionData->last_activity),
+        ] : null,
+        'timestamp' => now()->toISOString(),
+    ]);
+}
 
     /**
      * Get the login attempts history for current user (for security monitoring)
@@ -536,47 +480,6 @@ class AuthController extends Controller
                 'success' => false,
                 'message' => 'Failed to retrieve login history'
             ], 500);
-        }
-    }
-
-    /**
-     * Log login attempt with location data
-     */
-    private function logLoginAttempt(
-        ?int $userId,
-        string $email,
-        string $ip,
-        ?string $userAgent,
-        string $status,
-        ?string $failureReason = null
-    ): ?LoginAudit {
-        try {
-            // Get location data
-            $locationData = $this->locationService->getLocationFromIp($ip);
-            
-            // Parse user agent
-            $deviceInfo = $this->locationService->parseUserAgent($userAgent ?? '');
-
-            $auditData = array_merge([
-                'user_id' => $userId,
-                'email' => $email,
-                'ip_address' => $ip,
-                'user_agent' => $userAgent,
-                'status' => $status,
-                'failure_reason' => $failureReason,
-                'login_at' => now(),
-            ], $locationData, $deviceInfo);
-
-            return LoginAudit::create($auditData);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to log login audit', [
-                'email' => $email,
-                'ip' => $ip,
-                'error' => $e->getMessage(),
-            ]);
-            
-            return null; // Don't fail the login if audit logging fails
         }
     }
 }

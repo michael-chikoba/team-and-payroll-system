@@ -34,6 +34,20 @@
               </div>
             </div>
             <div class="h-8 w-px bg-gray-200 hidden md:block"></div>
+            
+            <!-- Slack Integration Button (Admin Only) -->
+            <button
+              v-if="currentUser?.role === 'admin'"
+              @click="openSlackConfigModal"
+              class="relative inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-purple-700 transition-all duration-200 bg-white border-2 border-purple-200 rounded-xl hover:bg-purple-50 hover:border-purple-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 shadow-sm hover:shadow active:scale-95"
+              title="Configure Slack Integration"
+            >
+              <svg class="w-5 h-5 mr-2 -ml-1" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+              </svg>
+              Slack
+            </button>
+            
             <button
               @click="openCreateModal"
               class="relative inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 bg-gray-900 border border-transparent rounded-xl hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 shadow-lg shadow-gray-900/20 hover:shadow-gray-900/30 active:scale-95"
@@ -649,6 +663,14 @@
         @close="closeAssignModal"
         @assigned="handleUsersAssigned"
       />
+      
+      <!-- Slack Configuration Modal -->
+      <SlackConfigModal
+        v-if="showSlackConfigModal"
+        :show="showSlackConfigModal"
+        @close="closeSlackConfigModal"
+        @saved="handleSlackConfigSaved"
+      />
     </main>
   </div>
 </template>
@@ -684,6 +706,7 @@ import PriorityEditModal from '@/components/Tickets/PriorityEditModal.vue'
 import ReassignTicketModal from '@/components/Tickets/ReassignTicketModal.vue'
 import StatusUpdateModal from '@/components/Tickets/StatusUpdateModal.vue'
 import AssignUsersModal from '@/components/Tickets/AssignUsersModal.vue'
+import SlackConfigModal from '@/components/Tickets/SlackConfigModal.vue'
 // ===== Reactive State =====
 const tickets = ref({ data: [], meta: {} })
 const statistics = ref({})
@@ -709,6 +732,7 @@ const showPriorityModal = ref(false)
 const showReassignModal = ref(false)
 const showStatusModal = ref(false)
 const showAssignModal = ref(false)
+const showSlackConfigModal = ref(false)
 const selectedTicket = ref(null)
 const currentUser = ref(null)
 const showQuickActions = ref(null)
@@ -1136,6 +1160,21 @@ const closeAssignModal = () => {
   showAssignModal.value = false
   selectedTicket.value = null
 }
+
+const openSlackConfigModal = () => {
+  showSlackConfigModal.value = true
+}
+
+const closeSlackConfigModal = () => {
+  showSlackConfigModal.value = false
+}
+
+const handleSlackConfigSaved = () => {
+  closeSlackConfigModal()
+  // Optionally refresh data or show success message
+  console.log('Slack configuration saved successfully')
+}
+
 const resolveTicket = async (ticket) => {
   closeQuickActions()
   if (confirm(`Mark ticket #${ticket.id} as resolved?`)) {

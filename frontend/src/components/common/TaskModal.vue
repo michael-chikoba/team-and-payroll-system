@@ -90,7 +90,14 @@
             type="date"
             class="form-control"
             :disabled="loading"
+            :min="minDate"
           />
+          <div v-if="deadlineError" class="error-text">
+            {{ deadlineError }}
+          </div>
+          <div v-else class="hint-text">
+            Deadline must be today or a future date
+          </div>
         </div>
 
         <div class="modal-footer">
@@ -140,6 +147,7 @@ const loading = ref(false);
 const employees = ref([]);
 const loadingEmployees = ref(false);
 const employeeError = ref('');
+const deadlineError = ref('');
 
 const currentUser = computed(() => {
   return {
@@ -154,6 +162,15 @@ const currentUser = computed(() => {
     is_self: true,
     role: authStore.user?.role
   };
+});
+
+// Get today's date in YYYY-MM-DD format for the min attribute
+const minDate = computed(() => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 });
 
 onMounted(async () => {
@@ -233,6 +250,29 @@ const getEmployeeDisplayName = (employee) => {
   return name;
 };
 
+const validateDeadline = () => {
+  deadlineError.value = '';
+  
+  if (!formData.value.deadline) {
+    // Deadline is optional, so empty is valid
+    return true;
+  }
+  
+  const selectedDate = new Date(formData.value.deadline);
+  const today = new Date();
+  
+  // Clear time components for accurate date comparison
+  selectedDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  
+  if (selectedDate < today) {
+    deadlineError.value = 'Deadline cannot be in the past. Please select today or a future date.';
+    return false;
+  }
+  
+  return true;
+};
+
 const handleSubmit = async () => {
   if (!formData.value.title.trim()) {
     alert('Please enter a task title.');
@@ -241,6 +281,13 @@ const handleSubmit = async () => {
 
   if (!formData.value.assigned_to) {
     alert('Please select a team member to assign this task to.');
+    return;
+  }
+
+  // Validate deadline
+  if (!validateDeadline()) {
+    // Focus on the deadline field
+    document.getElementById('deadline')?.focus();
     return;
   }
 
@@ -364,6 +411,17 @@ const handleSubmit = async () => {
   opacity: 0.6;
 }
 
+/* Style for date input with past dates disabled */
+input[type="date"]:invalid {
+  border-color: #f56565;
+  background-color: #fff5f5;
+}
+
+input[type="date"]:valid {
+  border-color: #48bb78;
+  background-color: #f0fff4;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -432,6 +490,13 @@ const handleSubmit = async () => {
 .info-text {
   font-size: 12px;
   color: #718096;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.hint-text {
+  font-size: 12px;
+  color: #48bb78;
   margin-top: 4px;
   font-style: italic;
 }

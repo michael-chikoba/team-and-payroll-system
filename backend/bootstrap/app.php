@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'json-api' => \App\Http\Middleware\ValidateJsonApiDocument::class,
             'ensure.employee' => \App\Http\Middleware\EnsureUserHasEmployee::class,
             'dept' => \App\Http\Middleware\ValidateDepartment::class,
+            \App\Http\Middleware\CheckTokenExpiration::class,
 
         ]);
 

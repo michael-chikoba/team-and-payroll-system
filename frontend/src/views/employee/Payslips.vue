@@ -87,12 +87,12 @@
           </thead>
           <tbody>
             <tr v-for="payslip in paginatedPayslips" :key="payslip.id">
-              <td><strong>{{ payslip.period }}</strong></td>
+              <td><strong>{{ safeFormatPeriod(payslip.period) }}</strong></td>
               <td>{{ formatCurrency(payslip.grossPay) }}</td>
               <td class="deduction">{{ formatCurrency(payslip.deductions) }}</td>
               <td class="net-pay"><strong>{{ formatCurrency(payslip.netPay) }}</strong></td>
               <td>
-                <span :class="['status-badge', payslip.status.toLowerCase()]">
+                <span :class="['status-badge', getStatusClass(payslip.status)]">
                   {{ formatStatus(payslip.status) }}
                 </span>
               </td>
@@ -106,7 +106,7 @@
                     <i class="icon icon-eye"></i> View
                   </button>
                   <button
-                    @click.prevent="downloadPayslip(payslip)"
+                    @click="downloadPayslip(payslip)"
                     class="action-btn download"
                     :class="{ 'downloading': downloading[payslip.id] }"
                     :disabled="downloading[payslip.id]"
@@ -131,11 +131,11 @@
       </div>
     </div>
     <!-- Payslip Detail Modal -->
-    <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
+    <div v-if="selectedPayslip" class="modal-overlay" @click.self="closeModal">
       <div class="modal-card">
         <div class="modal-header">
-          <h2>Payslip Details - {{ selectedPayslip.period }}</h2>
-          <button @click="selectedPayslip = null" class="close-btn">✕</button>
+          <h2>Payslip Details - {{ safeFormatPeriod(selectedPayslip.period) }}</h2>
+          <button @click="closeModal" class="close-btn">✕</button>
         </div>
         <div class="modal-body">
           <div class="detail-section">
@@ -144,9 +144,9 @@
               <i class="icon icon-info"></i>
             </div>
             <div class="detail-grid">
-              <div><strong>Period:</strong> {{ selectedPayslip.period }}</div>
+              <div><strong>Period:</strong> {{ safeFormatPeriod(selectedPayslip.period) }}</div>
               <div><strong>Payment Date:</strong> {{ formatDate(selectedPayslip.payment_date) }}</div>
-              <div><strong>Status:</strong> <span :class="['status-badge', selectedPayslip.status]">{{ formatStatus(selectedPayslip.status) }}</span></div>
+              <div><strong>Status:</strong> <span :class="['status-badge', getStatusClass(selectedPayslip.status)]">{{ formatStatus(selectedPayslip.status) }}</span></div>
             </div>
           </div>
           <div class="detail-section">
@@ -157,27 +157,27 @@
             <div class="amount-grid">
               <div class="amount-row">
                 <span>Basic Salary:</span>
-                <span>{{ formatCurrency(selectedPayslip.basic_salary) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.basic_salary || selectedPayslip.basicSalary || 0) }}</span>
               </div>
               <div class="amount-row">
                 <span>House Allowance:</span>
-                <span>{{ formatCurrency(selectedPayslip.house_allowance) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.house_allowance || selectedPayslip.houseAllowance || 0) }}</span>
               </div>
               <div class="amount-row">
                 <span>Transport Allowance:</span>
-                <span>{{ formatCurrency(selectedPayslip.transport_allowance) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.transport_allowance || selectedPayslip.transportAllowance || 0) }}</span>
               </div>
               <div class="amount-row">
                 <span>Other Allowances:</span>
-                <span>{{ formatCurrency(selectedPayslip.other_allowances) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.other_allowances || selectedPayslip.otherAllowances || 0) }}</span>
               </div>
               <div class="amount-row">
-                <span>Overtime Pay ({{ selectedPayslip.overtime_hours }}h):</span>
-                <span>{{ formatCurrency(selectedPayslip.overtime_pay) }}</span>
+                <span>Overtime Pay:</span>
+                <span>{{ formatCurrency(selectedPayslip.overtime_pay || selectedPayslip.overtimePay || 0) }}</span>
               </div>
               <div class="amount-row total">
                 <span><strong>Gross Pay:</strong></span>
-                <span><strong>{{ formatCurrency(selectedPayslip.grossPay) }}</strong></span>
+                <span><strong>{{ formatCurrency(selectedPayslip.grossPay || selectedPayslip.gross_pay || 0) }}</strong></span>
               </div>
             </div>
           </div>
@@ -189,29 +189,29 @@
             <div class="amount-grid">
               <div class="amount-row">
                 <span>NAPSA (5%):</span>
-                <span>{{ formatCurrency(selectedPayslip.napsa) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.napsa || selectedPayslip.napsa_deduction || 0) }}</span>
               </div>
               <div class="amount-row">
                 <span>PAYE Tax:</span>
-                <span>{{ formatCurrency(selectedPayslip.paye) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.paye || selectedPayslip.paye_tax || 0) }}</span>
               </div>
               <div class="amount-row">
                 <span>NHIMA (1%):</span>
-                <span>{{ formatCurrency(selectedPayslip.nhima) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.nhima || selectedPayslip.nhima_deduction || 0) }}</span>
               </div>
               <div class="amount-row">
                 <span>Other Deductions:</span>
-                <span>{{ formatCurrency(selectedPayslip.other_deductions) }}</span>
+                <span>{{ formatCurrency(selectedPayslip.other_deductions || selectedPayslip.otherDeductions || 0) }}</span>
               </div>
               <div class="amount-row total deduction">
                 <span><strong>Total Deductions:</strong></span>
-                <span><strong>{{ formatCurrency(selectedPayslip.deductions) }}</strong></span>
+                <span><strong>{{ formatCurrency(selectedPayslip.deductions || selectedPayslip.total_deductions || 0) }}</strong></span>
               </div>
             </div>
           </div>
           <div class="net-pay-section">
             <div class="net-pay-label">NET PAY</div>
-            <div class="net-pay-amount">{{ formatCurrency(selectedPayslip.netPay) }}</div>
+            <div class="net-pay-amount">{{ formatCurrency(selectedPayslip.netPay || selectedPayslip.net_pay || 0) }}</div>
           </div>
         </div>
         <div class="modal-footer">
@@ -219,9 +219,14 @@
             @click="downloadPayslip(selectedPayslip)"
             class="btn-primary"
             :disabled="downloading[selectedPayslip.id]">
-            {{ downloading[selectedPayslip.id] ? '⏳ Downloading...' : '⬇️ Download PDF' }}
+            <span v-if="downloading[selectedPayslip.id]">
+              <i class="icon icon-spinner"></i> Downloading...
+            </span>
+            <span v-else>
+              <i class="icon icon-download"></i> Download PDF
+            </span>
           </button>
-          <button @click="selectedPayslip = null" class="btn-secondary">Close</button>
+          <button @click="closeModal" class="btn-secondary">Close</button>
         </div>
       </div>
     </div>
@@ -231,9 +236,11 @@
     </div>
   </div>
 </template>
+
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+
 export default {
   name: 'EmployeePayslips',
   setup() {
@@ -277,11 +284,14 @@ export default {
   },
   computed: {
     totalEarnings() {
-      return this.payslips.reduce((sum, payslip) => sum + (payslip.netPay || 0), 0)
+      return this.payslips.reduce((sum, payslip) => {
+        const netPay = payslip.netPay || payslip.net_pay || 0
+        return sum + netPay
+      }, 0)
     },
     latestPayslipPeriod() {
       if (this.payslips.length === 0) return 'N/A'
-      return this.payslips[0].period || 'N/A'
+      return this.safeFormatPeriod(this.payslips[0].period) || 'N/A'
     },
     paginatedPayslips() {
       const start = (this.currentPage - 1) * this.perPage
@@ -314,12 +324,17 @@ export default {
         // Extract available years from payslips
         if (this.payslips.length > 0) {
           const years = [...new Set(this.payslips.map(p => {
-            // Try different date field names that might be in the response
-            const dateStr = p.pay_period_start || p.period_start || p.created_at
-            const date = new Date(dateStr)
-            return date.getFullYear()
+            // Try to extract year from period or date fields
+            const period = this.safeFormatPeriod(p.period)
+            if (period) {
+              const yearMatch = period.match(/\d{4}/)
+              if (yearMatch) return parseInt(yearMatch[0])
+            }
+            if (p.payment_date) return new Date(p.payment_date).getFullYear()
+            if (p.created_at) return new Date(p.created_at).getFullYear()
+            return new Date().getFullYear()
           }))].sort((a, b) => b - a)
-          this.availableYears = years
+          this.availableYears = years.length > 0 ? years : [new Date().getFullYear()]
         } else {
           this.availableYears = [new Date().getFullYear()]
         }
@@ -332,27 +347,66 @@ export default {
     },
     
     async downloadPayslip(payslip) {
-      // Fix: Use direct property assignment instead of this.$set
+      // Ensure we have the correct ID
+      const payslipId = payslip.id || payslip.payslip_id
+      if (!payslipId) {
+        this.showToast('Invalid payslip ID', 'error')
+        return
+      }
+      
+      // Set downloading state
       this.downloading = {
         ...this.downloading,
-        [payslip.id]: true
+        [payslipId]: true
       }
      
       try {
-        // Use the correct endpoint structure
-        const response = await axios.get(`/api/employee/payslips/${payslip.id}/download`, {
-          responseType: 'blob',
-          headers: {
-            'Accept': 'application/pdf'
+        // Try multiple possible endpoint patterns
+        let response
+        try {
+          response = await axios.get(`/api/employee/payslips/${payslipId}/download`, {
+            responseType: 'blob',
+            headers: {
+              'Accept': 'application/pdf'
+            }
+          })
+        } catch (firstError) {
+          // Try alternative endpoint if first fails
+          console.log('First endpoint failed, trying alternative...', firstError)
+          try {
+            response = await axios.get(`/api/payslips/${payslipId}/download`, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/pdf'
+              }
+            })
+          } catch (secondError) {
+            console.log('Second endpoint failed, trying third...', secondError)
+            response = await axios.get(`/api/download-payslip/${payslipId}`, {
+              responseType: 'blob',
+              headers: {
+                'Accept': 'application/pdf'
+              }
+            })
           }
-        })
+        }
        
-        // Check if we got a PDF
-        if (response.data.type === 'application/pdf') {
-          const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+        // Check if we got a PDF or any file
+        const contentType = response.headers['content-type'] || response.headers['Content-Type']
+        const isPDF = contentType && contentType.includes('pdf')
+        const isFile = response.data && response.data.size > 0
+        
+        if (isPDF || isFile) {
+          const blob = new Blob([response.data], { type: 'application/pdf' })
+          const url = window.URL.createObjectURL(blob)
           const link = document.createElement('a')
           link.href = url
-          link.setAttribute('download', `payslip-${payslip.period?.replace(/ /g, '-') || payslip.id}.pdf`)
+          
+          // Create filename from period - FIXED: Use safeFormatPeriod
+          const period = this.safeFormatPeriod(payslip.period) || payslipId
+          const fileName = `payslip-${String(period).replace(/\s+/g, '-').toLowerCase()}.pdf`
+          
+          link.setAttribute('download', fileName)
           document.body.appendChild(link)
           link.click()
           link.remove()
@@ -360,8 +414,18 @@ export default {
          
           this.showToast('Payslip downloaded successfully!', 'success')
         } else {
-          // Handle case where PDF generation might have failed
-          throw new Error('Invalid file type received')
+          // Check if we got an error message in the response
+          const reader = new FileReader()
+          reader.onload = () => {
+            try {
+              const text = reader.result
+              const data = JSON.parse(text)
+              throw new Error(data.message || data.error || 'Invalid file type received')
+            } catch (e) {
+              throw new Error('Invalid file type received')
+            }
+          }
+          reader.readAsText(response.data)
         }
       } catch (err) {
         console.error('Download error:', err)
@@ -371,31 +435,54 @@ export default {
           this.showToast('Payslip PDF not found. Please contact HR.', 'error')
         } else if (err.response?.status === 403) {
           this.showToast('You do not have permission to download this payslip.', 'error')
+        } else if (err.response?.status === 500) {
+          this.showToast('Server error while generating PDF. Please try again later.', 'error')
+        } else if (err.message) {
+          this.showToast(err.message, 'error')
         } else {
           this.showToast('Failed to download payslip. Please try again.', 'error')
         }
        
         this.handleApiError(err)
       } finally {
-        // Fix: Use direct property assignment instead of this.$set
+        // Reset downloading state
         this.downloading = {
           ...this.downloading,
-          [payslip.id]: false
+          [payslipId]: false
         }
       }
     },
     
     async viewPayslip(payslip) {
       try {
+        const payslipId = payslip.id || payslip.payslip_id
+        
         // Fetch detailed payslip information
-        const response = await axios.get(`/api/employee/payslips/${payslip.id}`)
-        this.selectedPayslip = response.data.data || response.data
+        const response = await axios.get(`/api/employee/payslips/${payslipId}`)
+        const detailedPayslip = response.data.data || response.data
+        
+        // Merge with original payslip data to ensure we have all fields
+        this.selectedPayslip = {
+          ...payslip,
+          ...detailedPayslip,
+          id: payslipId // Ensure ID is always set
+        }
       } catch (err) {
         console.error('Error fetching payslip details:', err)
-        this.showToast('Failed to load payslip details.', 'error')
-        // Fallback to basic payslip data
-        this.selectedPayslip = payslip
+        
+        // If detailed fetch fails, use the original payslip data
+        this.selectedPayslip = {
+          ...payslip,
+          id: payslip.id || payslip.payslip_id // Ensure ID is set
+        }
+        
+        // Show a warning toast but don't prevent viewing
+        this.showToast('Showing basic payslip information. Some details may be incomplete.', 'warning')
       }
+    },
+    
+    closeModal() {
+      this.selectedPayslip = null
     },
     
     resetFilters() {
@@ -424,7 +511,7 @@ export default {
       } else if (err.response?.status === 403) {
         errorMsg = 'Access denied.'
       } else if (err.response?.status === 404) {
-        errorMsg = 'Payslip not found. Please contact HR.'
+        errorMsg = 'Resource not found.'
       } else if (err.response?.status === 500) {
         errorMsg = 'Server error. Please try again later.'
       } else {
@@ -436,11 +523,12 @@ export default {
     
     formatCurrency(amount) {
       if (amount === null || amount === undefined) return 'ZMW 0.00'
+      const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
       return new Intl.NumberFormat('en-ZM', {
         style: 'currency',
         currency: 'ZMW',
         minimumFractionDigits: 2
-      }).format(amount)
+      }).format(numAmount)
     },
     
     formatStatus(status) {
@@ -448,24 +536,72 @@ export default {
         generated: 'Generated',
         paid: 'Paid',
         draft: 'Draft',
-        processing: 'Processing'
+        processing: 'Processing',
+        pending: 'Pending',
+        completed: 'Completed'
       }
-      return statuses[status] || status
+      return statuses[status?.toLowerCase()] || status || 'Unknown'
+    },
+    
+    getStatusClass(status) {
+      const statusClassMap = {
+        generated: 'generated',
+        paid: 'paid',
+        draft: 'draft',
+        processing: 'generated',
+        pending: 'draft',
+        completed: 'paid'
+      }
+      return statusClassMap[status?.toLowerCase()] || 'draft'
     },
     
     formatDate(date) {
       if (!date) return 'N/A'
-      return new Date(date).toLocaleDateString('en-ZM', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })
+      try {
+        const dateObj = new Date(date)
+        if (isNaN(dateObj.getTime())) return 'N/A'
+        return dateObj.toLocaleDateString('en-ZM', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        })
+      } catch (error) {
+        console.error('Date formatting error:', error)
+        return 'N/A'
+      }
     },
+    
+    // FIXED: Added type checking and safe string conversion
+    safeFormatPeriod(period) {
+      if (!period) return 'N/A'
+      
+      // Convert to string if it's not already
+      const periodStr = String(period)
+      
+      // Handle different period formats
+      // Format 1: "2024-01" -> "Jan 2024"
+      if (/^\d{4}-\d{2}$/.test(periodStr)) {
+        const [year, month] = periodStr.split('-')
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        const monthIndex = parseInt(month, 10) - 1
+        return `${monthNames[monthIndex] || month} ${year}`
+      }
+      
+      // Format 2: Already formatted or other format
+      return periodStr
+    },
+    
+    // Keep the original for backward compatibility
+    formatPeriod(period) {
+      return this.safeFormatPeriod(period)
+    },
+    
     prevPage() {
       if (this.currentPage > 1) {
         this.currentPage--
       }
     },
+    
     nextPage() {
       if (this.currentPage < this.totalPages) {
         this.currentPage++
@@ -474,6 +610,7 @@ export default {
   }
 }
 </script>
+
 <style scoped>
 .payslips-view {
   --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -497,6 +634,7 @@ export default {
   min-height: 100vh;
   color: var(--text-primary);
 }
+
 /* Toast Notification */
 .toast {
   position: fixed;
@@ -509,14 +647,22 @@ export default {
   animation: slideIn 0.3s ease-out;
   font-weight: 500;
 }
+
 .toast.success {
   background: var(--success-gradient);
   color: white;
 }
+
 .toast.error {
   background: var(--danger-gradient);
   color: white;
 }
+
+.toast.warning {
+  background: var(--warning-gradient);
+  color: white;
+}
+
 @keyframes slideIn {
   from {
     transform: translateX(400px);
@@ -527,6 +673,7 @@ export default {
     opacity: 1;
   }
 }
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -538,6 +685,7 @@ export default {
   box-shadow: var(--shadow-lg);
   margin-bottom: 2rem;
 }
+
 .title {
   margin: 0 0 0.5rem 0;
   font-size: 2.5rem;
@@ -547,12 +695,14 @@ export default {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
 .subtitle {
   margin: 0;
   color: var(--text-secondary);
   font-size: 1.1rem;
   font-weight: 400;
 }
+
 .filters {
   display: flex;
   gap: 1rem;
@@ -565,17 +715,20 @@ export default {
   flex-wrap: wrap;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
+
 .filter-group {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   min-width: 150px;
 }
+
 .filter-group label {
   font-weight: 600;
   color: var(--text-primary);
   font-size: 0.9rem;
 }
+
 .filter-group select {
   padding: 0.75rem;
   border: 1px solid var(--border);
@@ -584,11 +737,13 @@ export default {
   background: white;
   transition: var(--transition);
 }
+
 .filter-group select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
+
 .summary-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -599,6 +754,7 @@ export default {
   margin-left: auto;
   margin-right: auto;
 }
+
 .card {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
@@ -611,6 +767,7 @@ export default {
   position: relative;
   overflow: hidden;
 }
+
 .card::before {
   content: '';
   position: absolute;
@@ -622,13 +779,16 @@ export default {
   opacity: 0;
   transition: var(--transition);
 }
+
 .card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
 }
+
 .card:hover::before {
   opacity: 1;
 }
+
 .card-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
@@ -636,6 +796,7 @@ export default {
   transition: var(--transition);
   color: var(--text-secondary);
 }
+
 .card h3 {
   margin: 0 0 0.5rem;
   font-size: 0.875rem;
@@ -644,6 +805,7 @@ export default {
   letter-spacing: 0.05em;
   font-weight: 500;
 }
+
 .card .value {
   margin: 0;
   font-size: 2.5rem;
@@ -651,6 +813,7 @@ export default {
   color: var(--text-primary);
   line-height: 1.2;
 }
+
 .content {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
@@ -659,21 +822,25 @@ export default {
   overflow: hidden;
   padding: 2rem;
 }
+
 .empty-state {
   text-align: center;
   padding: 6rem 2rem;
   color: var(--text-secondary);
 }
+
 .empty-state .icon {
   font-size: 4rem;
   color: var(--text-secondary);
   margin-bottom: 1rem;
   display: block;
 }
+
 .table-container {
   overflow-x: auto;
   margin-top: 1rem;
 }
+
 .payslips-table {
   width: 100%;
   border-collapse: collapse;
@@ -683,12 +850,14 @@ export default {
   overflow: hidden;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
+
 .payslips-table th,
 .payslips-table td {
   padding: 1.25rem 1rem;
   text-align: left;
   border-bottom: 1px solid #f3f4f6;
 }
+
 .payslips-table th {
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   font-weight: 600;
@@ -697,20 +866,24 @@ export default {
   font-size: 0.8rem;
   letter-spacing: 0.05em;
 }
+
 .payslips-table tr:hover {
   background: #f8fafc;
   transform: scale(1.01);
   transition: var(--transition);
 }
+
 .deduction {
   color: #dc2626;
   font-weight: 500;
 }
+
 .net-pay {
   color: #059669;
   font-size: 1.1rem;
   font-weight: 700;
 }
+
 .status-badge {
   padding: 0.5rem 1rem;
   border-radius: 50px;
@@ -720,22 +893,27 @@ export default {
   letter-spacing: 0.05em;
   display: inline-block;
 }
+
 .status-badge.generated {
   background: var(--warning-gradient);
   color: white;
 }
+
 .status-badge.paid {
   background: var(--success-gradient);
   color: white;
 }
+
 .status-badge.draft {
   background: var(--danger-gradient);
   color: white;
 }
+
 .action-buttons {
   display: flex;
   gap: 0.5rem;
 }
+
 .action-btn {
   padding: 0.5rem 1rem;
   border: none;
@@ -749,27 +927,33 @@ export default {
   gap: 0.25rem;
   font-weight: 500;
 }
+
 .action-btn.download {
   background: var(--success-gradient);
   box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
 }
+
 .action-btn.download:hover:not(:disabled) {
   background: linear-gradient(135deg, #059669 0%, #047857 100%);
   transform: translateY(-1px);
 }
+
 .action-btn.download:disabled {
   background: #6c757d;
   cursor: not-allowed;
   opacity: 0.6;
 }
+
 .action-btn.view {
   background: var(--primary-gradient);
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
+
 .action-btn.view:hover {
   background: linear-gradient(135deg, #5a67d8 0%, #4c51bf 100%);
   transform: translateY(-1px);
 }
+
 .loading {
   display: flex;
   flex-direction: column;
@@ -778,6 +962,7 @@ export default {
   padding: 6rem 2rem;
   color: var(--text-secondary);
 }
+
 .spinner {
   width: 60px;
   height: 60px;
@@ -787,10 +972,12 @@ export default {
   animation: spin 1s linear infinite;
   margin-bottom: 1.5rem;
 }
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
 .error-message {
   background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
   color: #991b1b;
@@ -804,6 +991,7 @@ export default {
   box-shadow: var(--shadow-lg);
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
+
 .btn-primary, .btn-secondary {
   padding: 1rem 2rem;
   border: none;
@@ -815,24 +1003,29 @@ export default {
   align-items: center;
   gap: 0.5rem;
 }
+
 .btn-primary {
   background: var(--primary-gradient);
   color: white;
   box-shadow: 0 4px 14px rgba(102, 126, 234, 0.3);
 }
+
 .btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
   box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
+
 .btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 .btn-secondary {
   background: rgba(248, 250, 252, 0.5);
   color: var(--text-primary);
   border: 1px solid var(--border);
 }
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -846,6 +1039,7 @@ export default {
   justify-content: center;
   z-index: 1000;
 }
+
 .modal-card {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(20px);
@@ -858,6 +1052,7 @@ export default {
   margin: 1rem;
   width: calc(100% - 2rem);
 }
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -865,12 +1060,14 @@ export default {
   padding: 2rem;
   border-bottom: 1px solid var(--border);
 }
+
 .modal-header h2 {
   margin: 0;
   color: var(--text-primary);
   font-size: 1.5rem;
   font-weight: 600;
 }
+
 .close-btn {
   background: none;
   border: none;
@@ -885,21 +1082,26 @@ export default {
   justify-content: center;
   transition: var(--transition);
 }
+
 .close-btn:hover {
   background: rgba(226, 232, 240, 0.5);
 }
+
 .modal-body {
   padding: 2rem;
 }
+
 .detail-section {
   margin-bottom: 2.5rem;
 }
+
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
 }
+
 .card-header h3 {
   margin: 0;
   color: var(--text-primary);
@@ -907,10 +1109,12 @@ export default {
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+
 .card-header .icon {
   font-size: 1.5rem;
   color: var(--text-secondary);
 }
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -919,11 +1123,13 @@ export default {
   background: rgba(248, 250, 252, 0.5);
   border-radius: 12px;
 }
+
 .amount-grid {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
+
 .amount-row {
   display: flex;
   justify-content: space-between;
@@ -932,9 +1138,11 @@ export default {
   border-radius: 8px;
   transition: var(--transition);
 }
+
 .amount-row:hover {
   background: rgba(241, 245, 249, 0.8);
 }
+
 .amount-row.total {
   border-top: 2px solid #333;
   margin-top: 0.5rem;
@@ -943,6 +1151,7 @@ export default {
   background: white;
   border-radius: 8px;
 }
+
 .net-pay-section {
   background: var(--primary-gradient);
   color: white;
@@ -951,16 +1160,19 @@ export default {
   text-align: center;
   margin-top: 2rem;
 }
+
 .net-pay-label {
   font-size: 1rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
   opacity: 0.9;
 }
+
 .net-pay-amount {
   font-size: 3rem;
   font-weight: 700;
 }
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -969,10 +1181,12 @@ export default {
   border-top: 1px solid var(--border);
   background: rgba(248, 250, 252, 0.5);
 }
+
 .icon {
   font-size: 1.2rem;
   font-weight: bold;
 }
+
 .pagination {
   display: flex;
   justify-content: center;
@@ -980,6 +1194,7 @@ export default {
   gap: 1rem;
   margin-top: 2rem;
 }
+
 .pagination button {
   padding: 0.75rem 1.5rem;
   border-radius: 8px;
@@ -989,14 +1204,17 @@ export default {
   cursor: pointer;
   transition: var(--transition);
 }
+
 .pagination button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
 .pagination span {
   font-weight: 600;
   color: var(--text-primary);
 }
+
 @media (max-width: 768px) {
   .payslips-view {
     padding: 1rem;

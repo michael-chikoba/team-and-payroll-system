@@ -5,6 +5,11 @@
         <h1 class="title">{{ pageName }}</h1>
         <p class="subtitle">Castle Holding Zambia - Manage and download your payslips</p>
       </div>
+      <!-- Role indicator for manager/admin -->
+      <div v-if="isManagerOrAdmin" class="role-badge">
+        <i class="icon icon-shield"></i>
+        <span>{{ userRoleLabel }} View</span>
+      </div>
     </header>
     
     <div class="filters">
@@ -27,9 +32,15 @@
           <option value="">All</option>
           <option value="generated">Generated</option>
           <option value="paid">Paid</option>
+          <option value="draft">Draft</option>
         </select>
       </div>
+      <!-- Employee filter for manager/admin -->
+      <div v-if="isManagerOrAdmin && employees.length > 0" class="filter-group">
+      
+      </div>
     </div>
+    
     <div class="content">
       <!-- Summary Cards -->
       <div class="summary-cards" v-if="!loading && payslips.length > 0">
@@ -54,28 +65,34 @@
           <h3>Latest Payslip</h3>
           <p class="value">{{ latestPayslipPeriod }}</p>
         </div>
+       
       </div>
+      
       <!-- Loading State -->
       <div v-if="loading" class="loading">
         <div class="spinner"></div>
         <p>Loading payslips...</p>
       </div>
+      
       <!-- Error State -->
       <div v-else-if="error" class="error-message">
         {{ error }}
         <button @click="fetchPayslips" class="btn-primary">Retry</button>
       </div>
+      
       <!-- Empty State -->
       <div v-else-if="payslips.length === 0" class="empty-state">
         <i class="icon icon-empty"></i>
         <p>No payslips found for the selected filters.</p>
         <button @click="resetFilters" class="btn-primary">Reset Filters</button>
       </div>
+      
       <!-- Payslips Table -->
       <div v-else class="table-container">
         <table class="payslips-table">
           <thead>
             <tr>
+              <th v-if="isManagerOrAdmin">Employee</th>
               <th>Period</th>
               <th>Gross Pay (ZMW)</th>
               <th>Deductions (ZMW)</th>
@@ -87,16 +104,22 @@
           </thead>
           <tbody>
             <tr v-for="payslip in paginatedPayslips" :key="payslip.id">
-              <td><strong>{{ payslip.period }}</strong></td>
-              <td>{{ formatCurrency(payslip.grossPay) }}</td>
-              <td class="deduction">{{ formatCurrency(payslip.deductions) }}</td>
-              <td class="net-pay"><strong>{{ formatCurrency(payslip.netPay) }}</strong></td>
+              <td v-if="isManagerOrAdmin">
+                <div class="employee-info">
+                  <div class="employee-name">{{ getEmployeeName(payslip) }}</div>
+                  <div class="employee-id" v-if="getEmployeeId(payslip)">ID: {{ getEmployeeId(payslip) }}</div>
+                </div>
+              </td>
+              <td><strong>{{ formatPeriodShort(payslip) }}</strong></td>
+              <td>{{ formatCurrency(payslip.grossPay || payslip.gross_pay) }}</td>
+              <td class="deduction">{{ formatCurrency(payslip.deductions || payslip.total_deductions) }}</td>
+              <td class="net-pay"><strong>{{ formatCurrency(payslip.netPay || payslip.net_pay) }}</strong></td>
               <td>
-                <span :class="['status-badge', payslip.status.toLowerCase()]">
+                <span :class="['status-badge', getStatusClass(payslip.status)]">
                   {{ formatStatus(payslip.status) }}
                 </span>
               </td>
-              <td>{{ formatDate(payslip.payment_date) }}</td>
+              <td>{{ formatDate(payslip.payment_date || payslip.paymentDate) }}</td>
               <td>
                 <div class="action-buttons">
                   <button
@@ -106,17 +129,25 @@
                     <i class="icon icon-eye"></i> View
                   </button>
                   <button
-                    @click.prevent="downloadPayslip(payslip)"
+                    @click="downloadPayslip(payslip)"
                     class="action-btn download"
                     :class="{ 'downloading': downloading[payslip.id] }"
                     :disabled="downloading[payslip.id]"
                     title="Download PDF">
                     <span v-if="downloading[payslip.id]">
-                      <i class="icon icon-spinner"></i> Downloading...
+                      <i class="icon icon-spinner"></i>
                     </span>
                     <span v-else>
-                      <i class="icon icon-download"></i> Download
+                      <i class="icon icon-download"></i>
                     </span>
+                  </button>
+                  <!-- Additional actions for manager/admin -->
+                  <button
+                    v-if="isManagerOrAdmin && payslip.status === 'draft'"
+                    @click="approvePayslip(payslip)"
+                    class="action-btn approve"
+                    title="Approve Payslip">
+                    <i class="icon icon-check"></i>
                   </button>
                 </div>
               </td>
@@ -130,101 +161,160 @@
         </div>
       </div>
     </div>
-    <!-- Payslip Detail Modal -->
-    <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
+    
+    <!-- DESIGNED PAYSLIP DETAIL MODAL -->
+    <div v-if="selectedPayslip" class="modal-overlay" @click.self="closeModal">
       <div class="modal-card">
         <div class="modal-header">
-          <h2>Payslip Details - {{ selectedPayslip.period }}</h2>
-          <button @click="selectedPayslip = null" class="close-btn">✕</button>
+          <div class="company-brand">
+            <div class="brand-icon"><i class="icon icon-building"></i></div>
+            <div>
+              <h2>Payslip Details</h2>
+              <span class="company-name">Castle Holding Zambia</span>
+            </div>
+          </div>
+          <button @click="closeModal" class="close-btn" title="Close">✕</button>
         </div>
-        <div class="modal-body">
-          <div class="detail-section">
-            <div class="card-header">
-              <h3>Period Information</h3>
-              <i class="icon icon-info"></i>
+        
+        <div class="modal-body payslip-paper">
+          <!-- Top Info Grid -->
+          <div class="payslip-top-grid">
+            <div class="info-block">
+              <h4 class="info-label">Employee Details</h4>
+              <div class="info-content">
+                <p class="emp-name">{{ getEmployeeName(selectedPayslip) }}</p>
+                <div class="emp-meta-row">
+                   <span>ID: <strong>{{ getEmployeeId(selectedPayslip) }}</strong></span>
+                </div>
+                <div class="emp-meta-row" v-if="getEmployeePosition(selectedPayslip) !== 'N/A'">
+                   <span>{{ getEmployeePosition(selectedPayslip) }}</span>
+                </div>
+                <div class="emp-meta-row" v-if="getEmployeeDepartment(selectedPayslip) !== 'N/A'">
+                   <span>{{ getEmployeeDepartment(selectedPayslip) }}</span>
+                </div>
+              </div>
             </div>
-            <div class="detail-grid">
-              <div><strong>Period:</strong> {{ selectedPayslip.period }}</div>
-              <div><strong>Payment Date:</strong> {{ formatDate(selectedPayslip.payment_date) }}</div>
-              <div><strong>Status:</strong> <span :class="['status-badge', selectedPayslip.status]">{{ formatStatus(selectedPayslip.status) }}</span></div>
-            </div>
-          </div>
-          <div class="detail-section">
-            <div class="card-header">
-              <h3>Earnings</h3>
-              <i class="icon icon-money"></i>
-            </div>
-            <div class="amount-grid">
-              <div class="amount-row">
-                <span>Basic Salary:</span>
-                <span>{{ formatCurrency(selectedPayslip.basic_salary) }}</span>
-              </div>
-              <div class="amount-row">
-                <span>House Allowance:</span>
-                <span>{{ formatCurrency(selectedPayslip.house_allowance) }}</span>
-              </div>
-              <div class="amount-row">
-                <span>Transport Allowance:</span>
-                <span>{{ formatCurrency(selectedPayslip.transport_allowance) }}</span>
-              </div>
-              <div class="amount-row">
-                <span>Other Allowances:</span>
-                <span>{{ formatCurrency(selectedPayslip.other_allowances) }}</span>
-              </div>
-              <div class="amount-row">
-                <span>Overtime Pay ({{ selectedPayslip.overtime_hours }}h):</span>
-                <span>{{ formatCurrency(selectedPayslip.overtime_pay) }}</span>
-              </div>
-              <div class="amount-row total">
-                <span><strong>Gross Pay:</strong></span>
-                <span><strong>{{ formatCurrency(selectedPayslip.grossPay) }}</strong></span>
+            
+            <div class="info-block right-align">
+              <h4 class="info-label">Payslip Summary</h4>
+              <div class="summary-list">
+                <div class="summary-row">
+                  <span class="label">Period:</span>
+                  <span class="value period-value">{{ formatPeriod(selectedPayslip) }}</span>
+                </div>
+                <div class="summary-row">
+                  <span class="label">Pay Date:</span>
+                  <span class="value">{{ getPaymentDate(selectedPayslip) }}</span>
+                </div>
+                <div class="summary-row status-row">
+                  <span class="label">Status:</span>
+                  <span :class="['status-pill', getStatusClass(selectedPayslip.status)]">
+                    {{ formatStatus(selectedPayslip.status) }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-          <div class="detail-section">
-            <div class="card-header">
-              <h3>Deductions</h3>
-              <i class="icon icon-minus"></i>
+          
+          <hr class="divider">
+          
+          <!-- Financial Split -->
+          <div class="financial-split">
+            <!-- Earnings Column -->
+            <div class="financial-col earnings-col">
+              <div class="col-header">
+                <i class="icon icon-plus-circle"></i> Earnings
+              </div>
+              <ul class="line-items">
+                <li>
+                  <span>Basic Salary</span>
+                  <span class="amount">{{ formatCurrency(selectedPayslip.basic_salary || selectedPayslip.basicSalary) }}</span>
+                </li>
+                <li>
+                  <span>House Allowance</span>
+                  <span class="amount">{{ formatCurrency(selectedPayslip.house_allowance || selectedPayslip.houseAllowance) }}</span>
+                </li>
+                <li>
+                  <span>Transport Allowance</span>
+                  <span class="amount">{{ formatCurrency(selectedPayslip.transport_allowance || selectedPayslip.transportAllowance) }}</span>
+                </li>
+                <li v-if="(selectedPayslip.overtime_pay || selectedPayslip.overtimePay) > 0">
+                  <span>Overtime Pay</span>
+                  <span class="amount">{{ formatCurrency(selectedPayslip.overtime_pay || selectedPayslip.overtimePay) }}</span>
+                </li>
+                <li v-if="(selectedPayslip.other_allowances || selectedPayslip.otherAllowances) > 0">
+                  <span>Other Allowances</span>
+                  <span class="amount">{{ formatCurrency(selectedPayslip.other_allowances || selectedPayslip.otherAllowances) }}</span>
+                </li>
+              </ul>
+              <div class="col-total">
+                <span>Total Earnings</span>
+                <span>{{ formatCurrency(selectedPayslip.grossPay || selectedPayslip.gross_pay) }}</span>
+              </div>
             </div>
-            <div class="amount-grid">
-              <div class="amount-row">
-                <span>NAPSA (5%):</span>
-                <span>{{ formatCurrency(selectedPayslip.napsa) }}</span>
+            
+            <!-- Deductions Column -->
+            <div class="financial-col deductions-col">
+              <div class="col-header">
+                <i class="icon icon-minus-circle"></i> Deductions
               </div>
-              <div class="amount-row">
-                <span>PAYE Tax:</span>
-                <span>{{ formatCurrency(selectedPayslip.paye) }}</span>
-              </div>
-              <div class="amount-row">
-                <span>NHIMA (1%):</span>
-                <span>{{ formatCurrency(selectedPayslip.nhima) }}</span>
-              </div>
-              <div class="amount-row">
-                <span>Other Deductions:</span>
-                <span>{{ formatCurrency(selectedPayslip.other_deductions) }}</span>
-              </div>
-              <div class="amount-row total deduction">
-                <span><strong>Total Deductions:</strong></span>
-                <span><strong>{{ formatCurrency(selectedPayslip.deductions) }}</strong></span>
+              <ul class="line-items">
+                <li>
+                  <span>NAPSA </span>
+                  <span class="amount deduction-text">{{ formatCurrency(selectedPayslip.napsa || selectedPayslip.napsa_deduction) }}</span>
+                </li>
+                <li>
+                  <span>PAYE Tax</span>
+                  <span class="amount deduction-text">{{ formatCurrency(selectedPayslip.paye || selectedPayslip.paye_tax) }}</span>
+                </li>
+                <li>
+                  <span>NHIMA </span>
+                  <span class="amount deduction-text">{{ formatCurrency(selectedPayslip.nhima || selectedPayslip.nhima_deduction) }}</span>
+                </li>
+                <li v-if="(selectedPayslip.other_deductions || selectedPayslip.otherDeductions) > 0">
+                  <span>Other Deductions</span>
+                  <span class="amount deduction-text">{{ formatCurrency(selectedPayslip.other_deductions || selectedPayslip.otherDeductions) }}</span>
+                </li>
+              </ul>
+              <div class="col-total">
+                <span>Total Deductions</span>
+                <span class="deduction-text">{{ formatCurrency(selectedPayslip.deductions || selectedPayslip.total_deductions) }}</span>
               </div>
             </div>
           </div>
-          <div class="net-pay-section">
-            <div class="net-pay-label">NET PAY</div>
-            <div class="net-pay-amount">{{ formatCurrency(selectedPayslip.netPay) }}</div>
+          
+          <!-- Net Pay Block -->
+          <div class="net-pay-block">
+            <div class="net-pay-label">NET PAYABLE</div>
+            <div class="net-pay-value">{{ formatCurrency(selectedPayslip.netPay || selectedPayslip.net_pay) }}</div>
           </div>
         </div>
+        
         <div class="modal-footer">
-          <button
-            @click="downloadPayslip(selectedPayslip)"
-            class="btn-primary"
-            :disabled="downloading[selectedPayslip.id]">
-            {{ downloading[selectedPayslip.id] ? '⏳ Downloading...' : '⬇️ Download PDF' }}
-          </button>
-          <button @click="selectedPayslip = null" class="btn-secondary">Close</button>
+          <div class="footer-left">
+             <span class="generated-date">Generated on {{ formatDate(selectedPayslip.created_at) }}</span>
+          </div>
+          <div class="footer-actions">
+            <button @click="closeModal" class="btn-secondary">Close</button>
+            <button v-if="isManagerOrAdmin && selectedPayslip.status === 'draft'" @click="approvePayslip(selectedPayslip)" class="btn-success">
+              <i class="icon icon-check"></i> Approve
+            </button>
+            <button
+              @click="downloadPayslip(selectedPayslip)"
+              class="btn-primary"
+              :disabled="isDownloading(selectedPayslip.id)">
+              <span v-if="isDownloading(selectedPayslip.id)">
+                <i class="icon icon-spinner"></i> Downloading...
+              </span>
+              <span v-else>
+                <i class="icon icon-download"></i> Download PDF
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
+    
     <!-- Toast Notification -->
     <div v-if="toast.show" :class="['toast', toast.type]">
       {{ toast.message }}
@@ -237,7 +327,7 @@ import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
 
 export default {
-  name: 'EmployeePayslips',
+  name: 'PayslipsView',
   setup() {
     const authStore = useAuthStore()
     return { authStore }
@@ -246,9 +336,11 @@ export default {
     return {
       pageName: 'My Payslips',
       payslips: [],
+      employees: [],
       filterYear: new Date().getFullYear(),
       filterMonth: '',
       filterStatus: '',
+      filterEmployee: '',
       availableYears: [],
       months: [
         { label: 'January', value: '01' },
@@ -278,38 +370,88 @@ export default {
     }
   },
   computed: {
-    totalEarnings() {
-      return this.payslips.reduce((sum, payslip) => sum + (payslip.netPay || 0), 0)
+    userRole() {
+      return this.authStore.user?.role?.toLowerCase() || 'employee'
     },
+    
+    isManagerOrAdmin() {
+      return this.userRole === 'manager' || this.userRole === 'admin'
+    },
+    
+    userRoleLabel() {
+      const labels = {
+        'admin': 'Admin',
+        'manager': 'Manager',
+        'employee': 'Employee'
+      }
+      return labels[this.userRole] || 'Employee'
+    },
+    
+    totalEarnings() {
+      return this.payslips.reduce((sum, payslip) => {
+        const netPay = payslip.netPay || payslip.net_pay || 0
+        return sum + netPay
+      }, 0)
+    },
+    
     latestPayslipPeriod() {
       if (this.payslips.length === 0) return 'N/A'
-      return this.payslips[0].period || 'N/A'
+      return this.formatPeriodShort(this.payslips[0])
     },
+    
+    totalEmployees() {
+      return this.employees.length
+    },
+    
     paginatedPayslips() {
       const start = (this.currentPage - 1) * this.perPage
       const end = start + this.perPage
       return this.payslips.slice(start, end)
     },
+    
     totalPages() {
       return Math.ceil(this.payslips.length / this.perPage)
     },
-    // ✅ NEW: Computed property to determine API base path based on user role
+    
+    // Dynamic API base path based on role
     apiBasePath() {
-      const userRole = this.authStore.user?.role?.toLowerCase()
-      
-      if (userRole === 'manager') {
+      if (this.userRole === 'manager') {
         return '/api/manager/payslips'
-      } else if (userRole === 'admin') {
+      } else if (this.userRole === 'admin') {
         return '/api/admin/payslips'
       } else {
         return '/api/employee/payslips'
       }
+    },
+    
+    // Employee endpoint for manager/admin
+    employeesApiPath() {
+      if (this.userRole === 'manager') {
+        return '/api/manager/employees'
+      } else if (this.userRole === 'admin') {
+        return '/api/admin/employees'
+      }
+      return null
     }
   },
   mounted() {
-    this.fetchPayslips()
+    this.initializePage()
   },
   methods: {
+    initializePage() {
+      // Update page name based on role
+      if (this.userRole === 'manager') {
+        this.pageName = 'My Payslips'
+      } else if (this.userRole === 'admin') {
+        this.pageName = 'All Payslips'
+      }
+      
+      this.fetchPayslips()
+      if (this.isManagerOrAdmin) {
+        this.fetchEmployees()
+      }
+    },
+    
     async fetchPayslips() {
       this.loading = true
       this.error = null
@@ -317,10 +459,10 @@ export default {
         const params = {
           year: this.filterYear,
           ...(this.filterMonth && { month: this.filterMonth }),
-          ...(this.filterStatus && { status: this.filterStatus })
+          ...(this.filterStatus && { status: this.filterStatus }),
+          ...(this.isManagerOrAdmin && this.filterEmployee && { employee_id: this.filterEmployee })
         }
        
-        // ✅ UPDATED: Use dynamic API path based on user role
         const response = await axios.get(this.apiBasePath, { params })
         this.payslips = response.data.data || response.data || []
         this.currentPage = 1
@@ -328,11 +470,11 @@ export default {
         // Extract available years from payslips
         if (this.payslips.length > 0) {
           const years = [...new Set(this.payslips.map(p => {
-            const dateStr = p.pay_period_start || p.period_start || p.created_at
+            const dateStr = p.pay_period_start || p.period_start || p.created_at || p.payment_date
             const date = new Date(dateStr)
-            return date.getFullYear()
+            return isNaN(date.getTime()) ? new Date().getFullYear() : date.getFullYear()
           }))].sort((a, b) => b - a)
-          this.availableYears = years
+          this.availableYears = years.length > 0 ? years : [new Date().getFullYear()]
         } else {
           this.availableYears = [new Date().getFullYear()]
         }
@@ -344,28 +486,68 @@ export default {
       }
     },
     
-    async downloadPayslip(payslip) {
-      // Use direct property assignment instead of this.$set
-      this.downloading = {
-        ...this.downloading,
-        [payslip.id]: true
+    async fetchEmployees() {
+      if (!this.employeesApiPath) return
+      
+      try {
+        const response = await axios.get(this.employeesApiPath)
+        this.employees = response.data.data || response.data.employees || response.data || []
+      } catch (err) {
+        console.error('Employees fetch error:', err)
       }
+    },
+    
+    async downloadPayslip(payslip) {
+      const payslipId = payslip.id || payslip.payslip_id
+      if (!payslipId) {
+        this.showToast('Invalid payslip ID', 'error')
+        return
+      }
+      
+      this.downloading = { ...this.downloading, [payslipId]: true }
      
       try {
-        // ✅ UPDATED: Use dynamic API path based on user role
-        const response = await axios.get(`${this.apiBasePath}/${payslip.id}/download`, {
-          responseType: 'blob',
-          headers: {
-            'Accept': 'application/pdf'
+        let response
+        try {
+          response = await axios.get(`${this.apiBasePath}/${payslipId}/download`, {
+            responseType: 'blob',
+            headers: { 'Accept': 'application/pdf' }
+          })
+        } catch (firstError) {
+          console.log('Primary endpoint failed, trying alternatives...')
+          const endpoints = [
+            `/api/payslips/${payslipId}/download`,
+            `/api/download-payslip/${payslipId}`,
+            `/api/employee/payslips/${payslipId}/download`
+          ]
+          
+          for (const endpoint of endpoints) {
+            try {
+              response = await axios.get(endpoint, {
+                responseType: 'blob',
+                headers: { 'Accept': 'application/pdf' }
+              })
+              break
+            } catch (e) { continue }
           }
-        })
+          if (!response) throw new Error('All download endpoints failed')
+        }
        
-        // Check if we got a PDF
-        if (response.data.type === 'application/pdf') {
-          const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+        const contentType = response.headers['content-type']
+        const isPDF = contentType && contentType.includes('pdf')
+        const isFile = response.data && response.data.size > 0
+        
+        if (isPDF || isFile) {
+          const blob = new Blob([response.data], { type: 'application/pdf' })
+          const url = window.URL.createObjectURL(blob)
           const link = document.createElement('a')
           link.href = url
-          link.setAttribute('download', `payslip-${payslip.period?.replace(/ /g, '-') || payslip.id}.pdf`)
+          
+          const period = String(payslip.period || payslipId).replace(/\s+/g, '-')
+          const employeeName = this.isManagerOrAdmin ? `-${this.getEmployeeName(payslip).replace(/\s+/g, '-')}` : ''
+          const fileName = `payslip-${period}${employeeName}.pdf`.toLowerCase()
+          
+          link.setAttribute('download', fileName)
           document.body.appendChild(link)
           link.click()
           link.remove()
@@ -377,112 +559,183 @@ export default {
         }
       } catch (err) {
         console.error('Download error:', err)
-       
-        if (err.response?.status === 404) {
-          this.showToast('Payslip PDF not found. Please contact HR.', 'error')
-        } else if (err.response?.status === 403) {
-          this.showToast('You do not have permission to download this payslip.', 'error')
-        } else {
-          this.showToast('Failed to download payslip. Please try again.', 'error')
-        }
-       
-        this.handleApiError(err)
+        this.showToast('Failed to download payslip. Please try again.', 'error')
       } finally {
-        this.downloading = {
-          ...this.downloading,
-          [payslip.id]: false
-        }
+        this.downloading = { ...this.downloading, [payslipId]: false }
       }
+    },
+    
+    isDownloading(payslipId) {
+      return this.downloading[payslipId] || false
     },
     
     async viewPayslip(payslip) {
       try {
-        // ✅ UPDATED: Use dynamic API path based on user role
-        const response = await axios.get(`${this.apiBasePath}/${payslip.id}`)
-        this.selectedPayslip = response.data.data || response.data
+        const payslipId = payslip.id || payslip.payslip_id
+        const response = await axios.get(`${this.apiBasePath}/${payslipId}`)
+        const detailedPayslip = response.data.data || response.data
+        
+        this.selectedPayslip = {
+          ...payslip,
+          ...detailedPayslip,
+          id: payslipId 
+        }
       } catch (err) {
         console.error('Error fetching payslip details:', err)
-        this.showToast('Failed to load payslip details.', 'error')
-        // Fallback to basic payslip data
-        this.selectedPayslip = payslip
+        this.selectedPayslip = { ...payslip, id: payslip.id || payslip.payslip_id }
+        this.showToast('Showing basic payslip information.', 'warning')
       }
+    },
+    
+    async approvePayslip(payslip) {
+      if (!confirm('Are you sure you want to approve this payslip?')) return
+      
+      try {
+        const payslipId = payslip.id || payslip.payslip_id
+        await axios.post(`${this.apiBasePath}/${payslipId}/approve`)
+        this.showToast('Payslip approved successfully!', 'success')
+        this.fetchPayslips()
+        if (this.selectedPayslip && this.selectedPayslip.id === payslipId) {
+          this.selectedPayslip.status = 'generated'
+        }
+      } catch (err) {
+        this.showToast('Failed to approve payslip.', 'error')
+      }
+    },
+    
+    getEmployeeName(payslip) {
+      if (payslip.employee?.name) return payslip.employee.name
+      if (payslip.employee?.full_name) return payslip.employee.full_name
+      if (payslip.employee?.first_name) {
+        return `${payslip.employee.first_name} ${payslip.employee.last_name || ''}`.trim()
+      }
+      return payslip.employee_name || 'Unknown Employee'
+    },
+    
+    getEmployeeId(payslip) {
+      return payslip.employee?.employee_id || payslip.employee?.id || 'N/A'
+    },
+    
+    getEmployeeDepartment(payslip) {
+      return payslip.employee?.department || 'N/A'
+    },
+    
+    getEmployeePosition(payslip) {
+      return payslip.employee?.position || 'N/A'
+    },
+    
+    closeModal() {
+      this.selectedPayslip = null
     },
     
     resetFilters() {
       this.filterYear = new Date().getFullYear()
       this.filterMonth = ''
       this.filterStatus = ''
+      this.filterEmployee = ''
       this.fetchPayslips()
     },
     
     showToast(message, type = 'success') {
       this.toast = { show: true, message, type }
-      setTimeout(() => {
-        this.toast.show = false
-      }, 3000)
+      setTimeout(() => { this.toast.show = false }, 3000)
     },
     
     handleApiError(err) {
       let errorMsg = 'An unexpected error occurred.'
-     
-      if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
-        errorMsg = 'Network error. Please check your connection.'
-      } else if (err.response?.status === 401) {
-        errorMsg = 'Session expired. Redirecting to login...'
+      if (err.response?.status === 401) {
         this.authStore.clearAuth()
         this.$router.push({ name: 'login' })
-      } else if (err.response?.status === 403) {
-        errorMsg = 'Access denied.'
-      } else if (err.response?.status === 404) {
-        errorMsg = 'Payslip not found. Please contact HR.'
-      } else if (err.response?.status === 500) {
-        errorMsg = 'Server error. Please try again later.'
       } else {
-        errorMsg = err.response?.data?.message || err.response?.data?.error || errorMsg
+        errorMsg = err.response?.data?.message || err.message
       }
-     
       this.error = errorMsg
     },
     
     formatCurrency(amount) {
       if (amount === null || amount === undefined) return 'ZMW 0.00'
+      const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
       return new Intl.NumberFormat('en-ZM', {
         style: 'currency',
         currency: 'ZMW',
         minimumFractionDigits: 2
-      }).format(amount)
+      }).format(numAmount)
     },
     
     formatStatus(status) {
-      const statuses = {
-        generated: 'Generated',
-        paid: 'Paid',
-        draft: 'Draft',
-        processing: 'Processing'
-      }
-      return statuses[status] || status
+      const statuses = { generated: 'Generated', paid: 'Paid', draft: 'Draft', processing: 'Processing' }
+      return statuses[status?.toLowerCase()] || status || 'Unknown'
+    },
+    
+    getStatusClass(status) {
+      const map = { generated: 'generated', paid: 'paid', draft: 'draft', processing: 'generated' }
+      return map[status?.toLowerCase()] || 'draft'
     },
     
     formatDate(date) {
       if (!date) return 'N/A'
-      return new Date(date).toLocaleDateString('en-ZM', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })
-    },
-    
-    prevPage() {
-      if (this.currentPage > 1) {
-        this.currentPage--
+      try {
+        const d = new Date(date)
+        if (isNaN(d.getTime())) return String(date) 
+        return d.toLocaleDateString('en-ZM', { year: 'numeric', month: 'short', day: 'numeric' })
+      } catch (e) {
+        return 'N/A'
       }
     },
     
-    nextPage() {
-      if (this.currentPage < this.totalPages) {
-        this.currentPage++
+    // NEW: Handles parsing JSON period string into a readable range
+    formatPeriod(payslip) {
+      if (!payslip || !payslip.period) return 'N/A'
+      
+      let periodData = payslip.period
+      
+      // 1. Try parsing JSON string
+      if (typeof periodData === 'string' && periodData.trim().startsWith('{')) {
+        try {
+          periodData = JSON.parse(periodData)
+        } catch (e) {
+          // If parse fails, return the string as is or cleanup
+          return periodData
+        }
       }
-    }
+      
+      // 2. Format object with start/end
+      if (typeof periodData === 'object' && periodData !== null) {
+        const start = periodData.start ? this.formatDate(periodData.start) : ''
+        const end = periodData.end ? this.formatDate(periodData.end) : ''
+        
+        if (start && end) return `${start} – ${end}`
+        if (start) return start
+      }
+      
+      // 3. Fallback
+      return periodData
+    },
+
+    // Short version for table display
+    formatPeriodShort(payslip) {
+       const period = this.formatPeriod(payslip);
+       // If it's very long, truncate or logic here, otherwise return formatted
+       return period;
+    },
+    
+    getPaymentDate(payslip) {
+      // 1. Check root property
+      if (payslip.payment_date) return this.formatDate(payslip.payment_date)
+      
+      // 2. Check inside JSON period string if applicable
+      if (typeof payslip.period === 'string' && payslip.period.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(payslip.period)
+          if (parsed.payment_date) return this.formatDate(parsed.payment_date)
+        } catch (e) { /* ignore */ }
+      }
+      
+      return 'N/A'
+    },
+    
+    prevPage() { if (this.currentPage > 1) this.currentPage-- },
+    nextPage() { if (this.currentPage < this.totalPages) this.currentPage++ }
   }
 }
 </script>
@@ -493,6 +746,7 @@ export default {
   --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
   --danger-gradient: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
   --warning-gradient: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --info-gradient: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
   --light: #f8fafc;
   --dark: #1f2937;
   --border: #e2e8f0;
@@ -511,851 +765,420 @@ export default {
   color: var(--text-primary);
 }
 
-/* Toast Notification */
-.toast {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  padding: 1rem 1.5rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  z-index: 2000;
-  animation: slideIn 0.3s ease-out;
-  font-weight: 500;
-}
-
-.toast.success {
-  background: var(--success-gradient);
-  color: white;
-}
-
-.toast.error {
-  background: var(--danger-gradient);
-  color: white;
-}
-
-@keyframes slideIn {
-  from {
-    transform: translateX(400px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  padding: 2rem;
-  border-radius: 20px;
-  box-shadow: var(--shadow-lg);
-  margin-bottom: 2rem;
-}
-
-.title {
-  margin: 0 0 0.5rem 0;
-  font-size: 2.5rem;
-  font-weight: 700;
-  background: var(--primary-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.subtitle {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  font-weight: 400;
-}
-
-.filters {
-  display: flex;
-  gap: 1rem;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  padding: 1.5rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 150px;
-}
-
-.filter-group label {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-}
-
-.filter-group select {
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.95rem;
-  background: white;
-  transition: var(--transition);
-}
-
-.filter-group select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-  padding: 0 0 2rem;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  padding: 2rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  text-align: center;
-  transition: var(--transition);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
-}
-
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--primary-gradient);
-  opacity: 0;
-  transition: var(--transition);
-}
-
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-}
-
-.card:hover::before {
-  opacity: 1;
-}
-
-.card-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-  transition: var(--transition);
-  color: var(--text-secondary);
-}
-
-.card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 500;
-}
-
-.card .value {
-  margin: 0;
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.content {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  padding: 2rem;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 6rem 2rem;
-  color: var(--text-secondary);
-}
-
-.empty-state .icon {
-  font-size: 4rem;
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-  display: block;
-}
-
-.table-container {
-  overflow-x: auto;
-  margin-top: 1rem;
-}
-
-.payslips-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-}
-
-.payslips-table th,
-.payslips-table td {
-  padding: 1.25rem 1rem;
-  text-align: left;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.payslips-table th {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-}
-
-.payslips-table tr:hover {
-  background: #f8fafc;
-  transform: scale(1.01);
-  transition: var(--transition);
-}
-
-.deduction {
-  color: #dc2626;
-  font-weight: 500;
-}
-
-.net-pay {
-  color: #059669;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.status-badge {
-  padding: 0.5rem 1rem;
-  border-radius: 50px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  display: inline-block;
-}
-
-.status-badge.generated {
-  background: var(--warning-gradient);
-  color: white;
-}
-
-.status-badge.paid {
-  background: var(--success-gradient);
-  color: white;
-}
-
-.status-badge.draft {
-  background: var(--danger-gradient);
-  color: white;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.action-btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: var(--transition);
-  color: white;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-weight: 500;
-}
-
-.action-btn.download {
-  background: var(--success-gradient);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-}
-
-.action-btn.download:hover:not(:disabled) {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  transform: translateY(-1px);
-}
-
-
-/* Toast Notification */
-.toast {
-  position: fixed;
-  bottom: 2rem;
-  right: 2rem;
-  padding: 1rem 1.5rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  z-index: 2000;
-  animation: slideIn 0.3s ease-out;
-  font-weight: 500;
-}
-.toast.success {
-  background: var(--success-gradient);
-  color: white;
-}
-.toast.error {
-  background: var(--danger-gradient);
-  color: white;
-}
-@keyframes slideIn {
-  from {
-    transform: translateX(400px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  padding: 2rem;
-  border-radius: 20px;
-  box-shadow: var(--shadow-lg);
-  margin-bottom: 2rem;
-}
-.title {
-  margin: 0 0 0.5rem 0;
-  font-size: 2.5rem;
-  font-weight: 700;
-  background: var(--primary-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.subtitle {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  font-weight: 400;
-}
-.filters {
-  display: flex;
-  gap: 1rem;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  padding: 1.5rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 150px;
-}
-.filter-group label {
-  font-weight: 600;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-}
-.filter-group select {
-  padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.95rem;
-  background: white;
-  transition: var(--transition);
-}
-.filter-group select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-  padding: 0 0 2rem;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-}
-.card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  padding: 2rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  text-align: center;
-  transition: var(--transition);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  position: relative;
-  overflow: hidden;
-}
-.card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--primary-gradient);
-  opacity: 0;
-  transition: var(--transition);
-}
-.card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-}
-.card:hover::before {
-  opacity: 1;
-}
-.card-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  display: block;
-  transition: var(--transition);
-  color: var(--text-secondary);
-}
-.card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 500;
-}
-.card .value {
-  margin: 0;
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-.content {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  padding: 2rem;
-}
-.empty-state {
-  text-align: center;
-  padding: 6rem 2rem;
-  color: var(--text-secondary);
-}
-.empty-state .icon {
-  font-size: 4rem;
-  color: var(--text-secondary);
-  margin-bottom: 1rem;
-  display: block;
-}
-.table-container {
-  overflow-x: auto;
-  margin-top: 1rem;
-}
-.payslips-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-  background: white;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-}
-.payslips-table th,
-.payslips-table td {
-  padding: 1.25rem 1rem;
-  text-align: left;
-  border-bottom: 1px solid #f3f4f6;
-}
-.payslips-table th {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
-}
-.payslips-table tr:hover {
-  background: #f8fafc;
-  transform: scale(1.01);
-  transition: var(--transition);
-}
-.deduction {
-  color: #dc2626;
-  font-weight: 500;
-}
-.net-pay {
-  color: #059669;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-.status-badge {
-  padding: 0.5rem 1rem;
-  border-radius: 50px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  display: inline-block;
-}
-.status-badge.generated {
-  background: var(--warning-gradient);
-  color: white;
-}
-.status-badge.paid {
-  background: var(--success-gradient);
-  color: white;
-}
-.status-badge.draft {
-  background: var(--danger-gradient);
-  color: white;
-}
-.action-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-.action-btn {
-  padding: 0.5rem 1rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: var(--transition);
-  color: white;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-weight: 500;
-}
-.action-btn.download {
-  background: var(--success-gradient);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-}
-.action-btn.download:hover:not(:disabled) {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-  transform: translateY(-1px);
-}
-.action-btn.download:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-.action-btn.view {
-  background: var(--primary-gradient);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-}
-.action-btn.view:hover {
-  background: linear-gradient(135deg, #5a67d8 0%, #4c51bf 100%);
-  transform: translateY(-1px);
-}
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 6rem 2rem;
-  color: var(--text-secondary);
-}
-.spinner {
-  width: 60px;
-  height: 60px;
-  border: 4px solid #f3f4f6;
-  border-top: 4px solid #667eea;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1.5rem;
-}
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-.error-message {
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  color: #991b1b;
-  padding: 2rem;
-  border-radius: var(--radius);
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-.btn-primary, .btn-secondary {
-  padding: 1rem 2rem;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
-  font-weight: 600;
-  transition: var(--transition);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.btn-primary {
-  background: var(--primary-gradient);
-  color: white;
-  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.3);
-}
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
-}
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.btn-secondary {
-  background: rgba(248, 250, 252, 0.5);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-}
+/* --- Modal & Pop-up Styles --- */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 1rem;
+  animation: fadeIn 0.3s ease-out;
 }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
 .modal-card {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: var(--radius);
-  max-width: 900px;
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 800px;
   max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: var(--shadow-lg);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  margin: 1rem;
-  width: calc(100% - 2rem);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
+
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2rem;
+  padding: 1.25rem 2rem;
   border-bottom: 1px solid var(--border);
+  background: #f8fafc;
 }
+
+.company-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand-icon {
+  width: 40px;
+  height: 40px;
+  background: var(--primary-gradient);
+  color: white;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
 .modal-header h2 {
   margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: var(--text-primary);
-  font-size: 1.5rem;
-  font-weight: 600;
 }
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
+
+.company-name {
+  font-size: 0.85rem;
   color: var(--text-secondary);
-  width: 32px;
-  height: 32px;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   transition: var(--transition);
+  line-height: 1;
 }
+
 .close-btn:hover {
-  background: rgba(226, 232, 240, 0.5);
+  background: #e2e8f0;
+  color: var(--text-primary);
 }
+
 .modal-body {
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.payslip-paper {
   padding: 2rem;
+  background: #fff;
 }
-.detail-section {
-  margin-bottom: 2.5rem;
-}
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+
+/* Payslip Layout Header (Updated) */
+.payslip-top-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
   margin-bottom: 1.5rem;
 }
-.card-header h3 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.card-header .icon {
-  font-size: 1.5rem;
+
+.info-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
   color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
 }
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  padding: 1rem;
-  background: rgba(248, 250, 252, 0.5);
-  border-radius: 12px;
+
+/* Left side: Employee details */
+.emp-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
 }
-.amount-grid {
+.emp-meta-row {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+}
+
+/* Right side: Summary Table Layout */
+.right-align {
+  text-align: right;
+}
+
+.summary-list {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
 }
-.amount-row {
+
+.summary-row {
   display: flex;
-  justify-content: space-between;
-  padding: 1rem;
-  background: rgba(248, 250, 252, 0.5);
-  border-radius: 8px;
-  transition: var(--transition);
-}
-.amount-row:hover {
-  background: rgba(241, 245, 249, 0.8);
-}
-.amount-row.total {
-  border-top: 2px solid #333;
-  margin-top: 0.5rem;
-  padding-top: 1rem;
-  font-size: 1.1rem;
-  background: white;
-  border-radius: 8px;
-}
-.net-pay-section {
-  background: var(--primary-gradient);
-  color: white;
-  padding: 2.5rem;
-  border-radius: var(--radius);
-  text-align: center;
-  margin-top: 2rem;
-}
-.net-pay-label {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-  opacity: 0.9;
-}
-.net-pay-amount {
-  font-size: 3rem;
-  font-weight: 700;
-}
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  padding: 2rem;
-  border-top: 1px solid var(--border);
-  background: rgba(248, 250, 252, 0.5);
-}
-.icon {
-  font-size: 1.2rem;
-  font-weight: bold;
-}
-.pagination {
-  display: flex;
-  justify-content: center;
+  justify-content: flex-end; /* Aligns key-value pairs to the right */
   align-items: center;
   gap: 1rem;
-  margin-top: 2rem;
+  font-size: 0.95rem;
 }
-.pagination button {
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  background: var(--primary-gradient);
-  color: white;
-  border: none;
-  cursor: pointer;
-  transition: var(--transition);
+
+.summary-row .label {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
-.pagination button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.pagination span {
+
+.summary-row .value {
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.period-value {
+  white-space: nowrap; /* Prevents date range from wrapping awkwardly */
+}
+
+.status-pill {
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.status-pill.generated { background: #dbeafe; color: #1e40af; }
+.status-pill.paid { background: #d1fae5; color: #065f46; }
+.status-pill.draft { background: #fee2e2; color: #991b1b; }
+
+.divider {
+  border: 0;
+  border-top: 1px dashed var(--border);
+  margin: 1.5rem 0;
+}
+
+/* Financial Split Section */
+.financial-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+}
+
+.financial-col {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+}
+
+.col-header {
+  font-weight: 600;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-primary);
+}
+
+.col-header .icon {
+  color: var(--text-secondary);
+}
+
+.line-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.line-items li {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.line-items li span:first-child {
+  color: var(--text-secondary);
+}
+
+.amount {
+  font-family: 'Courier New', monospace; /* Monospace for numbers aligns decimals better */
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.deduction-text {
+  color: #dc2626;
+}
+
+.col-total {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+}
+
+.net-pay-block {
+  margin-top: 2rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  color: #064e3b;
+}
+
+.net-pay-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+  opacity: 0.8;
+}
+
+.net-pay-value {
+  font-size: 2rem;
+  font-weight: 800;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Modal Footer */
+.modal-footer {
+  padding: 1.25rem 2rem;
+  border-top: 1px solid var(--border);
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.generated-date {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Existing Page Styles (Preserved & Cleaned) */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 2rem;
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+.header-left { flex: 1; }
+.role-badge {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: var(--info-gradient);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: var(--shadow);
+}
+
+.title {
+  margin: 0 0 0.5rem 0;
+  font-size: 2.5rem;
+  font-weight: 700;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.subtitle { margin: 0; color: var(--text-secondary); font-size: 1.1rem; }
+
+.filters {
+  display: flex;
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 1.5rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+.filter-group { display: flex; flex-direction: column; gap: 0.5rem; min-width: 150px; }
+.filter-group select { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; }
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+.card {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: center;
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.card-icon { font-size: 3rem; margin-bottom: 1rem; color: var(--text-secondary); }
+.card h3 { margin: 0 0 0.5rem; font-size: 0.875rem; color: var(--text-secondary); text-transform: uppercase; }
+.card .value { margin: 0; font-size: 2.5rem; font-weight: 700; color: var(--text-primary); }
+
+.content {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.table-container { overflow-x: auto; margin-top: 1rem; }
+.payslips-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; background: white; border-radius: 12px; }
+.payslips-table th, .payslips-table td { padding: 1.25rem 1rem; text-align: left; border-bottom: 1px solid #f3f4f6; }
+.payslips-table th { background: #f8fafc; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; font-size: 0.8rem; }
+.payslips-table tr:hover { background: #f8fafc; }
+
+.status-badge { padding: 0.5rem 1rem; border-radius: 50px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+.status-badge.generated { background: var(--warning-gradient); color: white; }
+.status-badge.paid { background: var(--success-gradient); color: white; }
+.status-badge.draft { background: var(--danger-gradient); color: white; }
+
+.action-buttons { display: flex; gap: 0.5rem; }
+.action-btn { padding: 0.5rem 0.8rem; border: none; border-radius: 8px; cursor: pointer; color: white; display: flex; align-items: center; gap: 0.25rem; font-size: 0.8rem; }
+.action-btn.view { background: var(--primary-gradient); }
+.action-btn.download { background: var(--success-gradient); }
+.action-btn.approve { background: var(--info-gradient); }
+
+.pagination { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; align-items: center; }
+.pagination button { padding: 0.5rem 1rem; border-radius: 6px; border: 1px solid var(--border); background: white; cursor: pointer; }
+.pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.toast { position: fixed; bottom: 2rem; right: 2rem; padding: 1rem 1.5rem; border-radius: 8px; color: white; z-index: 2000; animation: slideIn 0.3s; }
+.toast.success { background: var(--success-gradient); }
+.toast.error { background: var(--danger-gradient); }
+.toast.warning { background: var(--warning-gradient); }
+@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+/* Buttons Generic */
+.btn-primary { background: var(--primary-gradient); color: white; padding: 0.6rem 1.2rem; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+.btn-success { background: var(--success-gradient); color: white; padding: 0.6rem 1.2rem; border-radius: 8px; border: none; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
+.btn-secondary { background: white; color: var(--text-primary); border: 1px solid var(--border); padding: 0.6rem 1.2rem; border-radius: 8px; cursor: pointer; }
+
+/* Responsive */
 @media (max-width: 768px) {
-  .payslips-view {
-    padding: 1rem;
-  }
-  .header {
-    flex-direction: column;
-    gap: 1.5rem;
-    padding: 1.5rem;
-    text-align: center;
-  }
-  .filters {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  .summary-cards {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  .payslips-table {
-    font-size: 0.85rem;
-  }
-  .payslips-table th,
-  .payslips-table td {
-    padding: 0.75rem 0.5rem;
-  }
-  .action-buttons {
-    flex-direction: column;
-  }
-  .modal-card {
-    margin: 1rem;
-    max-width: calc(100% - 2rem);
-  }
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-  .modal-footer {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
-  .btn-primary, .btn-secondary {
-    justify-content: center;
-  }
+  .modal-card { height: 100vh; max-height: 100vh; border-radius: 0; width: 100%; }
+  .payslip-top-grid, .financial-split { grid-template-columns: 1fr; gap: 1rem; }
+  .right-align { text-align: left; }
+  .summary-row { justify-content: flex-start; }
+  .modal-footer { flex-direction: column; gap: 1rem; align-items: stretch; }
+  .footer-actions { justify-content: space-between; }
+  .header { flex-direction: column; text-align: center; }
+  .filters { flex-direction: column; }
 }
 </style>

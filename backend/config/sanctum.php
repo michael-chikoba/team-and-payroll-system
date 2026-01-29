@@ -15,7 +15,9 @@ return [
     
     'guard' => ['web'],
 
-    'expiration' => null,
+     'expiration' => env('SANCTUM_EXPIRATION', 60), // 24 hours in minutes
+
+    'token_prefix' => env('SANCTUM_TOKEN_PREFIX', ''),
 
     // CRITICAL FIX: Add the API middleware configuration
     'middleware' => [
