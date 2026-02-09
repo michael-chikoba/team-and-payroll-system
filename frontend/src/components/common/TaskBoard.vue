@@ -36,6 +36,7 @@
           </div>
           
           <div class="additional-filters">
+            <!-- Priority Filter -->
             <select v-model="filter.priority" class="filter-select">
               <option value="">All Priorities</option>
               <option value="low">Low</option>
@@ -44,6 +45,16 @@
               <option value="critical">Critical</option>
             </select>
             
+            <!-- ADDED: Status Filter -->
+            <select v-model="filter.status" class="filter-select">
+              <option value="">All Statuses</option>
+              <option value="todo">To Do</option>
+              <option value="in_progress">In Progress</option>
+              <option value="under_review">Under Review</option>
+              <option value="completed">Completed</option>
+            </select>
+            
+            <!-- Assignee Filter -->
             <select v-model="filter.assignedTo" class="filter-select">
               <option value="">All Assignees</option>
               <option v-for="employee in employees" :key="employee.id" :value="employee.id">
@@ -412,7 +423,7 @@ const filteredTasks = computed(() => {
       return false;
     }
     
-    // Status filter (if needed)
+    // Status filter
     if (filter.value.status && task.status !== filter.value.status) {
       return false;
     }
@@ -473,8 +484,6 @@ const applyDateFilter = () => {
     alert('Please select both start and end dates');
     return;
   }
-  
-  // Date filter is already applied in computed property
   console.log('Date filter applied:', filter.value.startDate, 'to', filter.value.endDate);
 };
 
@@ -503,7 +512,6 @@ const generateReport = async () => {
   try {
     generatingReport.value = true;
     
-    // Prepare report data
     const reportData = {
       task_ids: selectedReportTasks.value,
       report_type: reportOptions.value.type,
@@ -515,11 +523,8 @@ const generateReport = async () => {
       format: reportOptions.value.format
     };
 
-    console.log('Generating report with data:', reportData);
-
-    // Call the API endpoint
     const response = await axios.post('/api/tasks/reports/generate', reportData, {
-      responseType: 'blob', // Important for file downloads
+      responseType: 'blob',
       headers: {
         'Content-Type': 'application/json',
         'Accept': reportOptions.value.format === 'pdf' 
@@ -528,7 +533,6 @@ const generateReport = async () => {
       }
     });
 
-    // Create download link
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     const fileName = `task-report-${new Date().toISOString().split('T')[0]}.${reportOptions.value.format}`;
@@ -538,7 +542,6 @@ const generateReport = async () => {
     document.body.appendChild(link);
     link.click();
     
-    // Clean up
     link.remove();
     window.URL.revokeObjectURL(url);
     
@@ -678,10 +681,21 @@ const handleDeleteComment = async (commentId, taskId) => {
 </script>
 
 <style scoped>
+/* =========================================
+   CORE LAYOUT & VISIBILITY FIXES
+   ========================================= */
+
 .task-board {
   padding: 20px;
   min-height: 100vh;
-  background-color: #f5f7fa;
+  background-color: #eef0f3;
+  color: #1a202c; /* Ensure global dark text */
+}
+
+/* INPUT VISIBILITY FIXES */
+input, select, textarea {
+  color: #1a202c !important; /* Force dark text on inputs */
+  background-color: #ffffff !important; /* Force white background */
 }
 
 .board-header {
@@ -721,15 +735,18 @@ const handleDeleteComment = async (commentId, taskId) => {
 }
 
 .date-range-filter label {
-  font-weight: 500;
-  color: #4a5568;
+  font-weight: 600;
+  color: #2d3748;
 }
 
+/* Updated Date Input Styling */
 .date-input {
   padding: 6px 10px;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
   font-size: 14px;
+  color: #1a202c; /* Dark text */
+  background-color: #ffffff;
 }
 
 .date-input:focus {
@@ -777,12 +794,14 @@ const handleDeleteComment = async (commentId, taskId) => {
   flex-wrap: wrap;
 }
 
+/* Updated Select Styling */
 .filter-select {
   padding: 6px 10px;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
   font-size: 14px;
   background-color: white;
+  color: #1a202c; /* Dark text */
   min-width: 150px;
 }
 
@@ -860,7 +879,7 @@ const handleDeleteComment = async (commentId, taskId) => {
 
 .stat-label {
   font-size: 12px;
-  color: #718096;
+  color: #4a5568;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 5px;
@@ -872,7 +891,7 @@ const handleDeleteComment = async (commentId, taskId) => {
   color: #2d3748;
 }
 
-/* Report Modal - UPDATED WITH WHITE BACKGROUND */
+/* Report Modal */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -891,7 +910,7 @@ const handleDeleteComment = async (commentId, taskId) => {
   max-width: 800px;
   max-height: 90vh;
   overflow-y: auto;
-  background-color: white !important; /* Force white background */
+  background-color: white !important;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   border: 1px solid #e2e8f0;
@@ -964,6 +983,7 @@ const handleDeleteComment = async (commentId, taskId) => {
   border-radius: 6px;
   font-size: 14px;
   background-color: white;
+  color: #1a202c; /* Input Text */
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -987,7 +1007,6 @@ const handleDeleteComment = async (commentId, taskId) => {
   border: 1px solid #e2e8f0;
   font-size: 14px;
   color: #4a5568;
-  background-color: white;
 }
 
 .warning-text {
@@ -1146,7 +1165,7 @@ const handleDeleteComment = async (commentId, taskId) => {
   color: #e53e3e;
 }
 
-/* Scrollbar styling for the task list */
+/* Scrollbar styling */
 .tasks-list::-webkit-scrollbar {
   width: 8px;
 }

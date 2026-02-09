@@ -1,11 +1,12 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { getApiUrl } from '@/config/capacitor'
 
 // Use environment variable, fallback to current origin (for production)
 const baseURL = import.meta.env.VITE_API_BASE_URL || window.location.origin
 
 const api = axios.create({
-  baseURL: `${baseURL}/api`,
+  baseURL: getApiUrl(),
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',

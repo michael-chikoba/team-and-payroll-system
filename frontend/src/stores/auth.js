@@ -12,13 +12,17 @@ export const useAuthStore = defineStore('auth', () => {
   const tokenExpiry = ref(localStorage.getItem('tokenExpiry'))
   const isLoading = ref(false)
   const isLoggingOut = ref(false)
-  const authLoaded = ref(false) // Add this to track if auth has been loaded
+  const authLoaded = ref(false)
   
   const isAuthenticated = computed(() => !!token.value && !!user.value && !isTokenExpired())
   const userRole = computed(() => user.value?.role)
   const isAdmin = computed(() => userRole.value === 'admin')
   const isManager = computed(() => userRole.value === 'manager')
   const isEmployee = computed(() => userRole.value === 'employee')
+  
+  // NEW: Business context getters
+  const currentBusinessId = computed(() => user.value?.current_business_id || null)
+  const userId = computed(() => user.value?.id || null)
 
   const REFRESH_THRESHOLD = 2 * 60 * 60 * 1000 // 2 hours
   const ACTIVITY_TIMEOUT = 2 * 60 * 60 * 1000 // 2 hours
@@ -183,6 +187,18 @@ export const useAuthStore = defineStore('auth', () => {
       console.log('🌐 Verifying token with server...')
       await fetchUser()
       
+      // NEW: Initialize business store if user has businesses
+      if (user.value?.current_business_id) {
+        try {
+          const { useBusinessStore } = await import('./business')
+          const businessStore = useBusinessStore()
+          await businessStore.fetchBusinesses()
+          console.log('✅ Business context initialized')
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize business context:', error)
+        }
+      }
+      
       authLoaded.value = true
       console.log('✅ Auth state restored from storage successfully')
     } catch (error) {
@@ -250,6 +266,18 @@ export const useAuthStore = defineStore('auth', () => {
         response.data.expires_at
       )
       
+      // NEW: Initialize business store after login
+      if (response.data.user?.current_business_id) {
+        try {
+          const { useBusinessStore } = await import('./business')
+          const businessStore = useBusinessStore()
+          await businessStore.fetchBusinesses()
+          console.log('✅ Business context initialized after login')
+        } catch (error) {
+          console.warn('⚠️ Failed to initialize business context:', error)
+        }
+      }
+      
       console.log('✅ Login successful')
       return response
     } catch (error) {
@@ -299,14 +327,24 @@ export const useAuthStore = defineStore('auth', () => {
         console.warn('⚠️ Logout API failed:', apiError.message)
       }
       
+      // NEW: Clear business store
+      try {
+        const { useBusinessStore } = await import('./business')
+        const businessStore = useBusinessStore()
+        businessStore.clearBusinessData()
+        console.log('✅ Business context cleared')
+      } catch (error) {
+        console.warn('⚠️ Failed to clear business context:', error)
+      }
+      
       clearAuth()
-      await router.push({ name: 'login' })
+      await router.push('/auth/login')
       
       console.log('✅ Logout complete')
     } catch (error) {
       console.error('❌ Logout error:', error)
       clearAuth()
-      router.push({ name: 'login' })
+      router.push('/auth/login')
     } finally {
       isLoggingOut.value = false
     }
@@ -324,9 +362,10 @@ export const useAuthStore = defineStore('auth', () => {
     
     try {
       const response = await authAPI.getUser()
-      console.log('✅ User fetched successfully:', response.data.user.email)
+      console.log('✅ User fetched successfully:', response.data.user?.email || response.data.email)
       
-      user.value = response.data.user
+      // Handle both response formats
+      user.value = response.data.user || response.data
       localStorage.setItem('user', JSON.stringify(user.value))
       
       if (response.data.token_expires_at) {
@@ -387,6 +426,25 @@ export const useAuthStore = defineStore('auth', () => {
     return await authAPI.resetPassword(data)
   }
 
+  // NEW: Update user's current business (called from business store)
+  function updateCurrentBusiness(businessId) {
+    if (user.value) {
+      user.value.current_business_id = businessId
+      localStorage.setItem('user', JSON.stringify(user.value))
+      console.log('✅ User current_business_id updated:', businessId)
+    }
+  }
+
+  // NEW: Refresh user data from server
+  async function refreshUser() {
+    try {
+      await fetchUser()
+    } catch (error) {
+      console.error('Failed to refresh user:', error)
+      throw error
+    }
+  }
+
   // Initialize axios header if token exists
   if (token.value) {
     setAxiosAuthHeader(token.value)
@@ -403,6 +461,13 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isManager,
     isEmployee,
+    authLoaded,
+    // NEW: Business context
+    currentBusinessId,
+    userId,
+    updateCurrentBusiness,
+    refreshUser,
+    // Existing methods
     setAuth,
     clearAuth,
     hasRole,

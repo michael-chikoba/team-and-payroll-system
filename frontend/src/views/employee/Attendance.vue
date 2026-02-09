@@ -2,152 +2,173 @@
   <div class="attendance-view">
     <!-- Activity Monitor (shows when overtime is active) -->
     <ActivityMonitor v-if="isInOvertimeSession" />
-    
-    <header class="header">
+   
+    <header class="attendance-header">
       <div class="header-left">
-        <h1 class="title">{{ pageName }}</h1>
-        <p class="subtitle">Track your daily attendance and work hours</p>
+        <h1 class="page-title">{{ pageName }}</h1>
+        <p class="page-subtitle">Track your daily attendance and work hours</p>
       </div>
       <div class="header-right">
         <div class="clock-buttons">
           <button
             @click="clockIn"
             :disabled="!canClockIn || clockingIn"
-            class="clock-btn in"
+            class="btn btn-success"
           >
             {{ clockingIn ? 'Clocking In...' : 'Clock In' }}
           </button>
-          
+         
           <button
             @click="clockOut"
             :disabled="!canClockOut || clockingOut"
-            class="clock-btn out"
+            class="btn btn-danger"
           >
             {{ clockingOut ? 'Clocking Out...' : 'Clock Out' }}
           </button>
-          
+         
           <button
             v-if="canStartOvertime"
             @click="clockInOvertime"
             :disabled="clockingInOvertime"
-            class="clock-btn overtime"
+            class="btn btn-warning"
             title="Clock in for overtime after shift end"
           >
             {{ clockingInOvertime ? 'Starting...' : '⚡ Overtime' }}
           </button>
-          
+         
           <button
             v-if="showResetButton"
             @click="forceResetStatus"
             :disabled="resetting"
-            class="clock-btn reset"
+            class="btn btn-outline-secondary"
             title="Reset stuck attendance status"
           >
             {{ resetting ? 'Resetting...' : 'Reset' }}
           </button>
         </div>
-        
-        <div class="status-badge" :class="todayStatus ? todayStatus.toLowerCase() : 'absent'">
-          <span class="status-dot"></span>
-          {{ formatTodayStatus(todayStatus) }}
-          <span v-if="isInOvertimeSession" class="overtime-indicator">⚡ OVERTIME</span>
-        </div>
-        
-        <!-- Shift Info Display -->
-        <div v-if="currentShift" class="shift-info-card">
-          <span class="shift-label">Today's Shift:</span>
-          <span class="shift-time">{{ currentShift.start_time }} - {{ currentShift.end_time }}</span>
-          <span class="shift-type">{{ formatShiftType(currentShift.type) }}</span>
+       
+        <div class="status-display">
+          <div class="status-badge" :class="getStatusBadgeClass(todayStatus)">
+            <span class="status-dot"></span>
+            {{ formatTodayStatus(todayStatus) }}
+            <span v-if="isInOvertimeSession" class="overtime-indicator">⚡ OVERTIME</span>
+          </div>
+       
+          <!-- Shift Info Display -->
+          <div v-if="currentShift" class="shift-info-card">
+            <span class="shift-label">Today's Shift:</span>
+            <span class="shift-time">{{ currentShift.start_time }} - {{ currentShift.end_time }}</span>
+            <span class="shift-type-badge">{{ formatShiftType(currentShift.type) }}</span>
+          </div>
         </div>
       </div>
     </header>
    
-    <div class="filters-section">
-      <div class="filters-container">
-        <div class="filter-group">
-          <label>From Date</label>
-          <input v-model="dateFrom" type="date" @change="handleFilterChange" :max="today" />
-        </div>
-        <div class="filter-group">
-          <label>To Date</label>
-          <input v-model="dateTo" type="date" @change="handleFilterChange" :max="today" />
-        </div>
-        <div class="filter-group">
-          <label>Status</label>
-          <select v-model="statusFilter" @change="handleFilterChange">
-            <option value="">All Statuses</option>
-            <option value="present">Present</option>
-            <option value="absent">Absent</option>
-            <option value="late">Late</option>
-            <option value="completed">Completed</option>
-          </select>
-        </div>
-        <div class="filter-actions">
-          <button @click="resetFilters" class="btn-secondary">
-            Reset
-          </button>
-          <button @click="viewOvertimeSummary" class="btn-overtime">
-            ⚡ Overtime
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <div class="content">
+    <div class="attendance-content">
       <!-- Summary Cards -->
       <div class="summary-cards" v-if="!loading">
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon blue"></div>
-            <span class="card-label">Total Hours</span>
+        <div class="stat-card stat-card-primary">
+          <div class="stat-icon">⏱️</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.totalHours?.toFixed(1) || 0 }}h</div>
+            <div class="stat-label">Total Hours</div>
+            <div class="stat-sublabel">this month</div>
           </div>
-          <p class="card-value">{{ stats.totalHours?.toFixed(1) || 0 }}</p>
-          <p class="card-unit">hours this month</p>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon green"></div>
-            <span class="card-label">Regular Hours</span>
+        
+        <div class="stat-card stat-card-success">
+          <div class="stat-icon">✓</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.regularHours?.toFixed(1) || 0 }}h</div>
+            <div class="stat-label">Regular Hours</div>
+            <div class="stat-sublabel">standard time</div>
           </div>
-          <p class="card-value">{{ stats.regularHours?.toFixed(1) || 0 }}</p>
-          <p class="card-unit">standard time</p>
         </div>
-        <div class="card overtime-card">
-          <div class="card-header">
-            <div class="card-icon orange"></div>
-            <span class="card-label">Overtime Hours</span>
+        
+        <div class="stat-card stat-card-warning">
+          <div class="stat-icon">⚡</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.overtimeHours?.toFixed(1) || 0 }}h</div>
+            <div class="stat-label">Overtime Hours</div>
+            <div class="stat-sublabel">extra time</div>
           </div>
-          <p class="card-value">{{ stats.overtimeHours?.toFixed(1) || 0 }}</p>
-          <p class="card-unit">extra time</p>
         </div>
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon purple"></div>
-            <span class="card-label">Attendance Rate</span>
+        
+        <div class="stat-card stat-card-info">
+          <div class="stat-icon">📊</div>
+          <div class="stat-content">
+            <div class="stat-value">{{ stats.attendanceRate?.toFixed(1) || 0 }}%</div>
+            <div class="stat-label">Attendance Rate</div>
+            <div class="stat-sublabel">of workdays</div>
           </div>
-          <p class="card-value">{{ stats.attendanceRate?.toFixed(1) || 0 }}%</p>
-          <p class="card-unit">of workdays</p>
         </div>
       </div>
-      
-      <!-- Attendance Table -->
-      <div class="table-container">
-        <div class="table-header">
-          <h2>Attendance Records</h2>
-          <div class="table-info">
-            <span class="record-count">{{ filteredAttendance.length }} records</span>
-            <span class="page-info">Page {{ currentPage }} of {{ totalPages }}</span>
+     
+      <!-- Filters Section -->
+      <div class="filters-card">
+        <div class="filters-grid">
+          <div class="filter-group">
+            <label class="filter-label">From Date</label>
+            <input 
+              v-model="dateFrom" 
+              type="date" 
+              @change="handleFilterChange" 
+              :max="today" 
+              class="filter-input" 
+            />
+          </div>
+          
+          <div class="filter-group">
+            <label class="filter-label">To Date</label>
+            <input 
+              v-model="dateTo" 
+              type="date" 
+              @change="handleFilterChange" 
+              :max="today" 
+              class="filter-input" 
+            />
+          </div>
+          
+          <div class="filter-group">
+            <label class="filter-label">Status</label>
+            <select v-model="statusFilter" @change="handleFilterChange" class="filter-select">
+              <option value="">All Statuses</option>
+              <option value="present">Present</option>
+              <option value="absent">Absent</option>
+              <option value="late">Late</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          
+          <div class="filter-actions">
+            <button @click="resetFilters" class="btn btn-secondary">
+              Reset Filters
+            </button>
+            <button @click="viewOvertimeSummary" class="btn btn-warning">
+              ⚡ Overtime Summary
+            </button>
           </div>
         </div>
-        
-        <div v-if="filteredAttendance.length === 0 && !loading" class="empty-state">
-          <div class="empty-icon"></div>
-          <h3>No Records Found</h3>
-          <p>No attendance records match your current filters.</p>
-          <button @click="resetFilters" class="btn-primary">Reset Filters</button>
+      </div>
+     
+      <!-- Attendance Table -->
+      <div class="table-card">
+        <div class="table-header">
+          <h2 class="table-title">Attendance Records</h2>
+          <div class="table-meta">
+            <span class="record-count">{{ filteredAttendance.length }} records</span>
+            <span class="page-indicator">Page {{ currentPage }} of {{ totalPages }}</span>
+          </div>
         </div>
-        
-        <div v-else-if="!loading" class="table-wrapper">
+       
+        <div v-if="filteredAttendance.length === 0 && !loading" class="empty-state">
+          <div class="empty-icon">📅</div>
+          <h3 class="empty-title">No Records Found</h3>
+          <p class="empty-description">No attendance records match your current filters.</p>
+          <button @click="resetFilters" class="btn btn-primary">Reset Filters</button>
+        </div>
+       
+        <div v-else-if="!loading" class="table-container">
           <table class="attendance-table">
             <thead>
               <tr>
@@ -163,17 +184,17 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="record in paginatedRecords" :key="record.id" class="table-row">
+              <tr v-for="record in paginatedRecords" :key="record.id">
                 <td>
                   <div class="date-cell">
-                    <span class="date-main">{{ formatDate(record.date) }}</span>
+                    <span class="date-text">{{ formatDate(record.date) }}</span>
                   </div>
                 </td>
                 <td>
-                  <span v-if="record.is_overtime_session" class="session-badge overtime">
+                  <span v-if="record.is_overtime_session" class="type-badge type-overtime">
                     ⚡ Overtime
                   </span>
-                  <span v-else class="session-badge regular">
+                  <span v-else class="type-badge type-regular">
                     Regular
                   </span>
                 </td>
@@ -198,64 +219,66 @@
                   </div>
                 </td>
                 <td>
-                  <div class="hours-cell overtime-hours">
+                  <div class="hours-cell hours-overtime">
                     {{ formatHours(record.overtime_hours) }}
                   </div>
                 </td>
                 <td>
-                  <div class="hours-cell total-hours">
-                    <strong>{{ formatHours(record.hoursWorked || record.total_hours) }}</strong>
+                  <div class="hours-cell hours-total">
+                    {{ formatHours(record.hoursWorked || record.total_hours) }}
                   </div>
                 </td>
                 <td>
-                  <span class="notes-cell">{{ record.notes || '-' }}</span>
+                  <span class="notes-text">{{ record.notes || '-' }}</span>
                 </td>
               </tr>
             </tbody>
           </table>
-          
+         
           <!-- Pagination Controls -->
-          <div class="pagination">
-            <button
-              @click="goToPage(1)"
-              :disabled="currentPage === 1"
-              class="pagination-btn prev-first"
-            >
-              First
-            </button>
-            <button
-              @click="goToPage(currentPage - 1)"
-              :disabled="currentPage === 1"
-              class="pagination-btn prev"
-            >
-              Previous
-            </button>
-            
-            <div class="pagination-numbers">
+          <div class="pagination-controls">
+            <div class="pagination-buttons">
               <button
-                v-for="page in visiblePages"
-                :key="page"
-                @click="goToPage(page)"
-                :class="['pagination-number', { active: page === currentPage }]"
+                @click="goToPage(1)"
+                :disabled="currentPage === 1"
+                class="pagination-btn"
               >
-                {{ page }}
+                First
+              </button>
+              <button
+                @click="goToPage(currentPage - 1)"
+                :disabled="currentPage === 1"
+                class="pagination-btn"
+              >
+                Previous
+              </button>
+             
+              <div class="pagination-numbers">
+                <button
+                  v-for="page in visiblePages"
+                  :key="page"
+                  @click="goToPage(page)"
+                  :class="['pagination-number', { active: page === currentPage }]"
+                >
+                  {{ page }}
+                </button>
+              </div>
+             
+              <button
+                @click="goToPage(currentPage + 1)"
+                :disabled="currentPage === totalPages"
+                class="pagination-btn"
+              >
+                Next
+              </button>
+              <button
+                @click="goToPage(totalPages)"
+                :disabled="currentPage === totalPages"
+                class="pagination-btn"
+              >
+                Last
               </button>
             </div>
-            
-            <button
-              @click="goToPage(currentPage + 1)"
-              :disabled="currentPage === totalPages"
-              class="pagination-btn next"
-            >
-              Next
-            </button>
-            <button
-              @click="goToPage(totalPages)"
-              :disabled="currentPage === totalPages"
-              class="pagination-btn next-last"
-            >
-              Last
-            </button>
             
             <select v-model="itemsPerPage" @change="handlePerPageChange" class="per-page-select">
               <option :value="10">10 per page</option>
@@ -266,18 +289,20 @@
           </div>
         </div>
       </div>
-      
+     
       <!-- Loading State -->
-      <div v-if="loading" class="loading">
+      <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
         <p>Loading attendance records...</p>
       </div>
-      
+     
       <!-- Error State -->
-      <div v-if="error" class="error-message">
-        <div class="error-icon"></div>
-        <p>{{ error }}</p>
-        <button @click="retryFetch" class="btn-primary">Retry</button>
+      <div v-if="error" class="error-alert">
+        <div class="error-icon">⚠️</div>
+        <div class="error-content">
+          <p>{{ error }}</p>
+          <button @click="retryFetch" class="btn btn-primary">Retry</button>
+        </div>
       </div>
     </div>
   </div>
@@ -290,16 +315,16 @@ import ActivityMonitor from '@/components/ActivityMonitor.vue';
 
 export default {
   name: 'EmployeeAttendance',
-  
+ 
   components: {
     ActivityMonitor
   },
-  
+ 
   setup() {
     const authStore = useAuthStore()
     return { authStore }
   },
-  
+ 
   data() {
     return {
       pageName: 'My Attendance',
@@ -335,7 +360,7 @@ export default {
       itemsPerPage: 25
     }
   },
-  
+ 
   computed: {
     filteredAttendance() {
       let filtered = [...this.attendance]
@@ -351,77 +376,76 @@ export default {
       return filtered.sort((a, b) => {
         const dateCompare = new Date(b.date) - new Date(a.date)
         if (dateCompare !== 0) return dateCompare
-        // Sort overtime sessions after regular on same day
         return (a.is_overtime_session ? 1 : 0) - (b.is_overtime_session ? 1 : 0)
       })
     },
-    
+   
     totalPages() {
       return Math.ceil(this.filteredAttendance.length / this.itemsPerPage)
     },
-    
+   
     paginatedRecords() {
       const start = (this.currentPage - 1) * this.itemsPerPage
       const end = start + this.itemsPerPage
       return this.filteredAttendance.slice(start, end)
     },
-    
+   
     visiblePages() {
       const pages = []
       const maxVisible = 5
       let startPage = Math.max(1, this.currentPage - Math.floor(maxVisible / 2))
       let endPage = Math.min(this.totalPages, startPage + maxVisible - 1)
-      
+     
       if (endPage - startPage < maxVisible - 1) {
         startPage = Math.max(1, endPage - maxVisible + 1)
       }
-      
+     
       for (let i = startPage; i <= endPage; i++) {
         pages.push(i)
       }
       return pages
     }
   },
-  
+ 
   mounted() {
     this.fetchAttendance()
     this.fetchTodayStatus()
   },
-  
+ 
   methods: {
     goToPage(page) {
       if (page >= 1 && page <= this.totalPages) {
         this.currentPage = page
       }
     },
-    
+   
     handlePerPageChange() {
       this.currentPage = 1
     },
-    
+   
     handleFilterChange() {
       this.currentPage = 1
       this.fetchAttendance()
     },
-    
+   
     async fetchAttendance(retry = false) {
       this.loading = true
       this.error = null
-      
+     
       try {
         const params = {
           ...(this.dateFrom && { from: this.dateFrom }),
           ...(this.dateTo && { to: this.dateTo }),
           ...(this.statusFilter && { status: this.statusFilter })
         }
-        
+       
         const [attendanceRes, statsRes] = await Promise.all([
           axios.get('/api/employee/attendance', { params }),
           axios.get('/api/employee/attendance/stats')
         ])
-        
+       
         this.attendance = attendanceRes.data.data || attendanceRes.data || []
-        
+       
         const statsData = statsRes.data.stats || statsRes.data || {}
         this.stats = {
           totalHours: statsData.totalHours || statsData.total_hours || 0,
@@ -441,7 +465,7 @@ export default {
     async fetchTodayStatus() {
       try {
         const response = await axios.get('/api/employee/attendance/today-status')
-        
+       
         this.todayStatus = response.data.status || 'absent'
         this.canClockIn = response.data.can_clock_in || false
         this.canClockOut = response.data.can_clock_out || false
@@ -449,8 +473,7 @@ export default {
         this.isInOvertimeSession = response.data.is_in_overtime_session || false
         this.shiftHasEnded = response.data.shift_has_ended || false
         this.currentShift = response.data.shift || null
-        
-        // Show reset button if stuck
+       
         if (this.todayStatus === 'present' && response.data.regular_attendance?.clock_out) {
           this.showResetButton = true
         }
@@ -466,22 +489,22 @@ export default {
         const response = await axios.post('/api/employee/attendance/clock-in')
         this.todayStatus = 'present'
         this.showResetButton = false
-        
+       
         this.$notify({
           type: 'success',
           title: 'Success',
           text: response.data.message || 'Clocked in successfully!'
         })
-        
+       
         await this.fetchAttendance()
         await this.fetchTodayStatus()
       } catch (err) {
         console.error('Clock-in error:', err)
-        
+       
         if (err.response?.status === 422) {
           this.showResetButton = true
         }
-        
+       
         this.$notify({
           type: 'error',
           title: 'Clock-in Failed',
@@ -491,28 +514,27 @@ export default {
         this.clockingIn = false
       }
     },
-    
+   
     async clockOut() {
       this.clockingOut = true
       try {
         const response = await axios.post('/api/employee/attendance/clock-out')
         this.todayStatus = 'completed'
         this.showResetButton = false
-        
-        // Check if there's overtime
+       
         const overtimeHours = response.data.attendance?.overtime_hours || 0
         let message = response.data.message || 'Clocked out successfully!'
-        
+       
         if (overtimeHours > 0) {
           message += ` You worked ${this.formatHours(overtimeHours)} of overtime.`
         }
-        
+       
         this.$notify({
           type: 'success',
           title: 'Success',
           text: message
         })
-        
+       
         await this.fetchAttendance()
         await this.fetchTodayStatus()
       } catch (err) {
@@ -526,25 +548,25 @@ export default {
         this.clockingOut = false
       }
     },
-    
+   
     async clockInOvertime() {
       if (!confirm('Start overtime session? This will be tracked separately from your regular hours.')) {
         return
       }
-      
+     
       this.clockingInOvertime = true
       try {
         const response = await axios.post('/api/attendance/clock-in-overtime')
         this.isInOvertimeSession = true
         this.canStartOvertime = false
         this.canClockOut = true
-        
+       
         this.$notify({
           type: 'success',
           title: 'Overtime Started',
           text: response.data.message || 'Clocked in for overtime successfully!'
         })
-        
+       
         await this.fetchAttendance()
         await this.fetchTodayStatus()
       } catch (err) {
@@ -558,23 +580,23 @@ export default {
         this.clockingInOvertime = false
       }
     },
-    
+   
     async forceResetStatus() {
       if (!confirm('This will auto-close any open attendance records. Continue?')) {
         return
       }
-      
+     
       this.resetting = true
       try {
         const response = await axios.post('/api/employee/attendance/force-reset')
         this.showResetButton = false
-        
+       
         this.$notify({
           type: 'success',
           title: 'Status Reset',
           text: response.data.message || 'Attendance status has been reset successfully.'
         })
-        
+       
         await this.fetchTodayStatus()
         await this.fetchAttendance()
       } catch (err) {
@@ -588,7 +610,7 @@ export default {
         this.resetting = false
       }
     },
-    
+   
     async viewOvertimeSummary() {
       try {
         const date = new Date()
@@ -598,17 +620,17 @@ export default {
             year: date.getFullYear()
           }
         })
-        
+       
         const summary = response.data.summary
         const message = `
           Overtime Summary for ${response.data.period.month_name}:
-          
+         
           Total Overtime Hours: ${summary.total_overtime_hours}h
           Overtime Sessions: ${summary.overtime_sessions_count}
           Days with Overtime: ${summary.days_with_overtime}
           Total Hours (All): ${summary.total_all_hours}h
         `
-        
+       
         alert(message)
       } catch (err) {
         this.$notify({
@@ -655,8 +677,20 @@ export default {
     },
    
     getStatusClass(status) {
-      if (!status) return 'present'
-      return status.toLowerCase()
+      if (!status) return 'status-present'
+      const statusMap = {
+        present: 'status-present',
+        completed: 'status-completed',
+        absent: 'status-absent',
+        late: 'status-late',
+        early_leave: 'status-early'
+      }
+      return statusMap[status] || 'status-present'
+    },
+   
+    getStatusBadgeClass(status) {
+      if (!status) return 'status-absent'
+      return `status-${status}`
     },
    
     formatTodayStatus(status) {
@@ -680,7 +714,7 @@ export default {
       }
       return statuses[status] || status
     },
-    
+   
     formatShiftType(type) {
       const types = {
         morning: 'Morning',
@@ -700,10 +734,10 @@ export default {
    
     formatTimeDisplay(time) {
       if (!time) return 'N/A'
-      
+     
       try {
         let timeStr = time
-        
+       
         if (timeStr.includes('T')) {
           const dateTime = new Date(timeStr)
           const hours = dateTime.getHours()
@@ -712,7 +746,7 @@ export default {
           const displayHours = hours % 12 || 12
           return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
         }
-        
+       
         if (timeStr.includes(':')) {
           const parts = timeStr.split(':')
           const hours = parseInt(parts[0])
@@ -721,7 +755,7 @@ export default {
           const displayHours = hours % 12 || 12
           return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
         }
-        
+       
         return time
       } catch (e) {
         console.error('Error formatting time:', e, time)
@@ -747,568 +781,582 @@ export default {
 </script>
 
 <style scoped>
-* {
-  box-sizing: border-box;
-}
-
 .attendance-view {
-  padding: 2rem;
-  max-width: 1600px;
-  margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f8f9fc;
+  background: #ffffff;
   min-height: 100vh;
+  padding-bottom: 2rem;
 }
 
-/* Header Styles */
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+/* Header Styles - Scrolls with content */
+.attendance-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 2rem;
-  border-radius: 20px;
-  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+  padding: 2rem 2.5rem;
   margin-bottom: 2rem;
-  color: white;
-  position: relative;
-  overflow: hidden;
-}
-
-.header::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-  animation: pulse 15s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  border-radius: 0;
 }
 
 .header-left {
-  z-index: 1;
+  margin-bottom: 1.5rem;
 }
 
-.title {
-  margin: 0 0 0.5rem 0;
-  font-size: 2.5rem;
+.page-title {
+  color: #ffffff;
+  font-size: 2rem;
   font-weight: 700;
+  margin: 0 0 0.5rem 0;
   letter-spacing: -0.5px;
 }
 
-.subtitle {
+.page-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
   margin: 0;
-  font-size: 1.1rem;
-  opacity: 0.9;
-  font-weight: 300;
 }
 
 .header-right {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
   gap: 1rem;
-  z-index: 1;
 }
 
 .clock-buttons {
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.clock-btn {
-  padding: 0.875rem 1.75rem;
+.btn {
+  padding: 0.75rem 1.5rem;
   border: none;
-  border-radius: 12px;
+  border-radius: 8px;
   font-weight: 600;
   font-size: 0.95rem;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.clock-btn.in {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-}
-
-.clock-btn.out {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  color: white;
-}
-
-.clock-btn.overtime {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-}
-
-.clock-btn.reset {
-  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
-  color: white;
-}
-
-.clock-btn:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-}
-
-.clock-btn:disabled {
-  opacity: 0.5;
+.btn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
-  transform: none;
+}
+
+.btn-success {
+  background: #10b981;
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.btn-warning {
+  background: #f59e0b;
+  color: white;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #d97706;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+.btn-outline-secondary {
+  background: transparent;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.btn-outline-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: white;
+}
+
+.btn-secondary {
+  background: #6b7280;
+  color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #4b5563;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.status-display {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .status-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
+  padding: 0.75rem 1.25rem;
   border-radius: 50px;
   font-weight: 600;
   font-size: 0.95rem;
   background: rgba(255, 255, 255, 0.2);
+  color: white;
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
+.status-badge.status-present {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+
+.status-badge.status-completed {
+  background: rgba(59, 130, 246, 0.3);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.status-badge.status-absent {
+  background: rgba(239, 68, 68, 0.3);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
 .status-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  animation: pulse-dot 2s ease-in-out infinite;
+  background: currentColor;
+  animation: pulse 2s infinite;
 }
 
-@keyframes pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.8; }
-}
-
-.status-badge.present .status-dot {
-  background: #10b981;
-  box-shadow: 0 0 10px #10b981;
-}
-
-.status-badge.completed .status-dot {
-  background: #3b82f6;
-  box-shadow: 0 0 10px #3b82f6;
-}
-
-
-
-.status-badge.absent .status-dot {
-  background: #ef4444;
-  box-shadow: 0 0 10px #ef4444;
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .overtime-indicator {
   margin-left: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(245, 158, 11, 0.2);
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  border-radius: 4px;
-  font-size: 0.75rem;
-  animation: pulse-gold 2s ease-in-out infinite;
+  font-weight: 700;
+  animation: blink 1.5s infinite;
 }
 
-@keyframes pulse-gold {
+@keyframes blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+  50% { opacity: 0.6; }
 }
 
 .shift-info-card {
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  padding: 0.75rem 1.25rem;
-  border-radius: 10px;
-  font-size: 0.9rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .shift-label {
-  font-weight: 600;
-}
-
-.shift-time {
-  background: rgba(255, 255, 255, 0.3);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
   font-weight: 500;
 }
 
-.shift-type {
-  font-style: italic;
-  opacity: 0.9;
+.shift-time {
+  color: white;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
-/* Filters Section */
-.filters-section {
+.shift-type-badge {
+  padding: 0.25rem 0.75rem;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Main Content */
+.attendance-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
   margin-bottom: 2rem;
 }
 
-.filters-container {
+.stat-card {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
   display: flex;
   gap: 1rem;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+}
+
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  flex-shrink: 0;
+}
+
+.stat-card-primary .stat-icon {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(102, 126, 234, 0.2));
+  color: #667eea;
+}
+
+.stat-card-success .stat-icon {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(16, 185, 129, 0.2));
+  color: #10b981;
+}
+
+.stat-card-warning .stat-icon {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.2));
+  color: #f59e0b;
+}
+
+.stat-card-info .stat-icon {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.2));
+  color: #3b82f6;
+}
+
+.stat-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 0.25rem;
+}
+
+.stat-sublabel {
+  font-size: 0.8rem;
+  color: #9ca3af;
+}
+
+/* Filters Card */
+.filters-card {
   background: white;
+  border-radius: 12px;
   padding: 1.5rem;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  flex-wrap: wrap;
-  align-items: flex-end;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  align-items: end;
 }
 
 .filter-group {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  min-width: 180px;
-  flex: 1;
 }
 
-.filter-group label {
+.filter-label {
   font-weight: 600;
   color: #374151;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
 }
 
-.filter-group input,
-.filter-group select {
-  padding: 0.75rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
+.filter-input,
+.filter-select {
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
   font-size: 0.95rem;
-  transition: all 0.2s;
-  background: #f9fafb;
+  color: #1a1a1a;
+  background: white;
+  transition: all 0.2s ease;
 }
 
-.filter-group input:focus,
-.filter-group select:focus {
+.filter-input:focus,
+.filter-select:focus {
   outline: none;
   border-color: #667eea;
-  background: white;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .filter-actions {
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
-.btn-secondary,
-.btn-overtime {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-size: 0.95rem;
-}
-
-.btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover {
-  background: #e5e7eb;
-  transform: translateY(-2px);
-}
-
-.btn-overtime {
-  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-  color: white;
-  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
-}
-
-.btn-overtime:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
-}
-
-/* Summary Cards */
-.summary-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.card {
+/* Table Card */
+.table-card {
   background: white;
-  padding: 1.75rem;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid #f0f0f0;
-}
-
-.card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.card-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.2rem;
-}
-
-.card-icon.blue {
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: white;
-}
-
-.card-icon.green {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: white;
-}
-
-.card-icon.orange {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  color: white;
-}
-
-.card-icon.purple {
-  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-  color: white;
-}
-
-.card-label {
-  font-size: 0.875rem;
-  color: #6b7280;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.card-value {
-  margin: 0 0 0.25rem 0;
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: #1f2937;
-  line-height: 1;
-}
-
-.card-unit {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #9ca3af;
-  font-weight: 400;
-}
-
-/* Table Container */
-.table-container {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
   overflow: hidden;
 }
 
 .table-header {
+  padding: 1.5rem;
+  border-bottom: 2px solid #f3f4f6;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem 2rem;
-  border-bottom: 1px solid #f0f0f0;
-  background: #fafbfc;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.table-header h2 {
+.table-title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1a1a1a;
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #1f2937;
 }
 
-.table-info {
+.table-meta {
   display: flex;
   gap: 1rem;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   color: #6b7280;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  color: #6b7280;
+.record-count {
+  font-weight: 600;
+  color: #374151;
 }
 
-.empty-icon {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: #f3f4f6;
-  margin: 0 auto 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.page-indicator {
+  color: #9ca3af;
 }
 
-.empty-state h3 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.25rem;
-  color: #1f2937;
-}
-
-.empty-state p {
-  margin: 0 0 2rem 0;
-  font-size: 1rem;
-}
-
-.table-wrapper {
-  position: relative;
+/* Table Container */
+.table-container {
+  overflow-x: auto;
 }
 
 .attendance-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.95rem;
 }
 
-.attendance-table th,
-.attendance-table td {
-  padding: 1.25rem 1rem;
-  text-align: left;
-  border-bottom: 1px solid #f0f0f0;
+.attendance-table thead {
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
 }
 
 .attendance-table th {
-  background: #fafbfc;
-  font-weight: 600;
+  padding: 1rem;
+  text-align: left;
+  font-weight: 700;
   color: #374151;
+  font-size: 0.85rem;
   text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #e5e7eb;
 }
 
-.attendance-table tr:hover {
-  background: #f9fafb;
+.attendance-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #f3f4f6;
+  color: #1a1a1a;
+  font-size: 0.95rem;
+}
+
+.attendance-table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.attendance-table tbody tr:hover {
+  background-color: #f9fafb;
 }
 
 .date-cell {
-  font-weight: 500;
-  color: #1f2937;
+  font-weight: 600;
+  color: #374151;
+}
+
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.type-overtime {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.type-regular {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.status-badge-table {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.375rem 0.875rem;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-present {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.status-completed {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.status-absent {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-late {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.status-early {
+  background: rgba(168, 85, 247, 0.1);
+  color: #a855f7;
+  border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
 .time-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  font-weight: 500;
   color: #4b5563;
+  font-family: 'Monaco', 'Courier New', monospace;
 }
 
 .hours-cell {
   font-weight: 600;
-  color: #1f2937;
+  color: #374151;
 }
 
-.overtime-hours {
-  color: #d97706;
+.hours-overtime {
+  color: #f59e0b;
 }
 
-.total-hours {
-  color: #1d4ed8;
+.hours-total {
+  color: #667eea;
+  font-size: 1.05rem;
 }
 
-.status-badge-table {
-  padding: 0.375rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.status-badge-table.present {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.status-badge-table.absent {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status-badge-table.late {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-badge-table.early_leave {
-  background: #cffafe;
-  color: #0e7490;
-}
-
-.session-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.session-badge.regular {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.session-badge.overtime {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.notes-cell {
+.notes-text {
   color: #6b7280;
-  font-style: italic;
+  font-size: 0.9rem;
 }
 
 /* Pagination */
-.pagination {
+.pagination-controls {
+  padding: 1.5rem;
+  border-top: 1px solid #f3f4f6;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 1.5rem 2rem;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
   background: #fafbfc;
-  border-top: 1px solid #f0f0f0;
+}
+
+.pagination-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .pagination-btn {
   padding: 0.5rem 1rem;
   border: 1px solid #d1d5db;
   background: white;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.875rem;
   color: #374151;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
 }
 
 .pagination-btn:hover:not(:disabled) {
   background: #f3f4f6;
-  border-color: #9ca3af;
-  transform: translateY(-1px);
+  border-color: #667eea;
+  color: #667eea;
 }
 
 .pagination-btn:disabled {
@@ -1322,173 +1370,219 @@ export default {
 }
 
 .pagination-number {
-  padding: 0.5rem 0.75rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid #d1d5db;
   background: white;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 0.875rem;
   color: #374151;
-  min-width: 40px;
-  text-align: center;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
 }
 
-.pagination-number:hover:not(.active) {
+.pagination-number:hover {
   background: #f3f4f6;
-  border-color: #9ca3af;
+  border-color: #667eea;
+  color: #667eea;
 }
 
 .pagination-number.active {
-  background: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-color: #667eea;
 }
 
 .per-page-select {
-  padding: 0.5rem;
+  padding: 0.5rem 1rem;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  font-size: 0.875rem;
   background: white;
+  color: #374151;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-/* Loading and Error States */
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
+.per-page-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Empty State */
+.empty-state {
   text-align: center;
+  padding: 4rem 2rem;
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 0.5rem;
+}
+
+.empty-description {
   color: #6b7280;
+  margin-bottom: 1.5rem;
+  font-size: 1rem;
+}
+
+/* Loading State */
+.loading-state {
+  text-align: center;
+  padding: 4rem 2rem;
 }
 
 .spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid #667eea;
+  width: 48px;
+  height: 48px;
+  border: 4px solid #f3f4f6;
+  border-top-color: #667eea;
   border-radius: 50%;
   animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
+  margin: 0 auto 1rem;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
 
-.error-message {
-  background: #fee2e2;
-  color: #991b1b;
-  padding: 2rem;
+/* Error State */
+.error-alert {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 12px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
+  padding: 1.5rem;
   margin: 2rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
 }
 
 .error-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: #fecaca;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
 }
 
-.btn-primary {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
+.error-content {
+  flex: 1;
 }
 
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+.error-content p {
+  color: #dc2626;
+  font-weight: 600;
+  margin-bottom: 1rem;
 }
 
 /* Responsive Design */
+@media (max-width: 1200px) {
+  .summary-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
-  .attendance-view {
-    padding: 1rem;
+  .attendance-header {
+    padding: 1.5rem;
   }
-
-  .header {
-    flex-direction: column;
-    gap: 1.5rem;
-    text-align: center;
+  
+  .page-title {
+    font-size: 1.5rem;
   }
-
+  
+  .attendance-content {
+    padding: 0 1rem;
+  }
+  
+  .summary-cards {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+  
   .clock-buttons {
     flex-direction: column;
-    width: 100%;
   }
-
-  .clock-btn {
+  
+  .btn {
     width: 100%;
     justify-content: center;
   }
-
-  .filters-container {
+  
+  .status-display {
     flex-direction: column;
-    padding: 1rem;
-  }
-
-  .filter-group {
-    min-width: auto;
-  }
-
-  .summary-cards {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-  }
-
-  .table-header {
-    flex-direction: column;
-    gap: 1rem;
     align-items: stretch;
   }
-
+  
+  .shift-info-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .table-container {
+    overflow-x: scroll;
+  }
+  
   .attendance-table {
-    font-size: 0.85rem;
+    min-width: 900px;
   }
-
-  .attendance-table th,
-  .attendance-table td {
-    padding: 0.75rem 0.5rem;
-  }
-
-  .pagination {
+  
+  .pagination-controls {
     flex-direction: column;
-    gap: 1rem;
-    align-items: stretch;
   }
-
-  .pagination-numbers {
+  
+  .pagination-buttons {
+    width: 100%;
     justify-content: center;
   }
 }
 
 @media (max-width: 480px) {
-  .summary-cards {
-    grid-template-columns: 1fr;
+  .page-title {
+    font-size: 1.25rem;
   }
-
-  .table-info {
-    flex-direction: column;
-    gap: 0.5rem;
-    align-items: center;
+  
+  .stat-card {
+    padding: 1rem;
+  }
+  
+  .stat-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 1.5rem;
+  }
+  
+  .stat-value {
+    font-size: 1.5rem;
+  }
+  
+  .table-header {
+    padding: 1rem;
+  }
+  
+  .table-title {
+    font-size: 1.1rem;
+  }
+  
+  .attendance-table th,
+  .attendance-table td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.85rem;
   }
 }
 </style>

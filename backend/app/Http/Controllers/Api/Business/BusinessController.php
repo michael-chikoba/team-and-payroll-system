@@ -55,7 +55,8 @@ class BusinessController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $businesses
+            'data' => $businesses,
+            'current_business_id' => $user->current_business_id
         ]);
     }
 
@@ -289,13 +290,11 @@ class BusinessController extends Controller
 
     public function destroy(Request $request, Business $business): JsonResponse
     {
-            // Add debug logging
-    Log::info('Delete request received', [
-        'user_id' => auth()->id(),
-        'user_roles' => auth()->user()->roles->pluck('name'),
-        'business_id' => $business->id,
-        'is_primary_admin' => $business->primary_admin_id === auth()->id()
-    ]);
+        Log::info('Delete request received', [
+            'user_id' => auth()->id(),
+            'business_id' => $business->id,
+        ]);
+        
         $user = $request->user();
         
         // Check owner access
@@ -366,35 +365,145 @@ class BusinessController extends Controller
         }
     }
 
+    /**
+     * Switch to a different business (SIMPLIFIED VERSION - NO PAGE RELOAD)
+     * Returns comprehensive business data for smooth transition
+     */
     public function switchBusiness(Request $request, Business $business): JsonResponse
     {
-        $user = $request->user();
-        
-        if (!$user->businesses()->where('businesses.id', $business->id)->exists()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You are not authorized to access this business'
-            ], 403);
-        }
-
         try {
-            $user->update(['current_business_id' => $business->id]);
+            Log::info('Business switch request received', [
+                'user_id' => $request->user()->id,
+                'business_id' => $business->id,
+                'business_name' => $business->name
+            ]);
+
+            $user = $request->user();
+            
+            // Check if user has access to this business
+            $hasAccess = $user->businesses()->where('businesses.id', $business->id)->exists();
+            
+            Log::info('Access check result', [
+                'user_id' => $user->id,
+                'business_id' => $business->id,
+                'has_access' => $hasAccess
+            ]);
+            
+            if (!$hasAccess) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not authorized to access this business'
+                ], 403);
+            }
+
+            // Update user's current business - SIMPLIFIED
+            try {
+                $user->current_business_id = $business->id;
+                $user->save();
+                
+                Log::info('User current_business_id updated', [
+                    'user_id' => $user->id,
+                    'new_business_id' => $business->id
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to update user current_business_id', [
+                    'error' => $e->getMessage(),
+                    'user_id' => $user->id,
+                    'business_id' => $business->id
+                ]);
+                throw $e;
+            }
+
+            // Load necessary relationships
+            $business->load(['country', 'admins']);
+
+            // Get basic stats (simplified to avoid errors)
+            $stats = [
+                'total_employees' => 0,
+                'active_employees' => 0,
+                'total_admins' => $business->admins()->count(),
+            ];
+
+            // Try to get employee counts if the relationship exists
+            try {
+                $stats['total_employees'] = $business->employees()->count();
+                $stats['active_employees'] = $business->employees()->where('is_active', true)->count();
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch employee stats', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            // Refresh user to get updated data
+            $user->refresh();
+
+            Log::info('Business switch successful', [
+                'user_id' => $user->id,
+                'business_id' => $business->id,
+                'business_name' => $business->name
+            ]);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Business switched successfully',
-                'data' => $business->load(['country', 'admins'])
+                'data' => [
+                    'business' => $business,
+                    'stats' => $stats,
+                    'user' => [
+                        'id' => $user->id,
+                        'current_business_id' => $user->current_business_id,
+                        'email' => $user->email,
+                        'first_name' => $user->first_name,
+                        'last_name' => $user->last_name,
+                        'role' => $user->role,
+                    ]
+                ]
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Business switch failed: ' . $e->getMessage());
+            Log::error('Business switch failed with exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()->id ?? 'unknown',
+                'business_id' => $business->id ?? 'unknown'
+            ]);
             
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to switch business',
-                'error' => $e->getMessage()
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
             ], 500);
         }
+    }
+
+    /**
+     * Get current business context
+     */
+    public function getCurrentBusiness(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        
+        if (!$user->current_business_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No current business set'
+            ], 404);
+        }
+
+        $business = Business::with(['country', 'admins'])
+            ->find($user->current_business_id);
+
+        if (!$business) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Current business not found'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $business
+        ]);
     }
 
     public function getCountries(): JsonResponse
@@ -412,7 +521,6 @@ class BusinessController extends Controller
     {
         $user = $request->user();
         
-        // Check admin access
         if (!$this->checkBusinessAdmin($user, $business)) {
             return response()->json([
                 'success' => false,
@@ -482,7 +590,6 @@ class BusinessController extends Controller
     {
         $user = $request->user();
         
-        // Check admin access
         if (!$this->checkBusinessAdmin($user, $business)) {
             return response()->json([
                 'success' => false,
@@ -526,7 +633,6 @@ class BusinessController extends Controller
     {
         $user = $request->user();
         
-        // Check admin access
         if (!$this->checkBusinessAdmin($user, $business)) {
             return response()->json([
                 'success' => false,
@@ -581,7 +687,6 @@ class BusinessController extends Controller
     {
         $user = $request->user();
         
-        // Check access
         if (!$this->checkBusinessAccess($user, $business)) {
             return response()->json([
                 'success' => false,
@@ -589,16 +694,40 @@ class BusinessController extends Controller
             ], 403);
         }
 
-        $stats = [
-            'total_employees' => $business->employees()->count(),
-            'active_employees' => $business->employees()->where('is_active', true)->count(),
-            'total_admins' => $business->admins()->count(),
-            'departments' => $business->employees()->distinct('department')->pluck('department'),
-        ];
+        try {
+            $stats = [
+                'total_employees' => 0,
+                'active_employees' => 0,
+                'total_admins' => $business->admins()->count(),
+                'departments' => [],
+            ];
 
-        return response()->json([
-            'success' => true,
-            'data' => $stats
-        ]);
+            // Try to get employee stats if relationship exists
+            try {
+                $stats['total_employees'] = $business->employees()->count();
+                $stats['active_employees'] = $business->employees()->where('is_active', true)->count();
+                $stats['departments'] = $business->employees()->distinct('department')->pluck('department');
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch employee stats', [
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $stats
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to get business stats', [
+                'error' => $e->getMessage(),
+                'business_id' => $business->id
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch business statistics',
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal server error'
+            ], 500);
+        }
     }
 }

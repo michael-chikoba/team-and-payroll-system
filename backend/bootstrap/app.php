@@ -20,7 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'superadmin' => \App\Http\Middleware\IsSuperAdmin::class,
             'role' => \App\Http\Middleware\CheckRole::class,
+            'business_group' => \App\Http\Middleware\CheckBusinessGroupAccess::class,
             'json-api' => \App\Http\Middleware\ValidateJsonApiDocument::class,
             'ensure.employee' => \App\Http\Middleware\EnsureUserHasEmployee::class,
             'dept' => \App\Http\Middleware\ValidateDepartment::class,

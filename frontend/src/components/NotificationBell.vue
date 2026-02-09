@@ -5,6 +5,7 @@
       class="notification-button"
       :class="{ 'has-unread': unreadCount > 0 }"
       title="Notifications"
+      ref="bellButton"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
@@ -15,20 +16,24 @@
       </span>
     </button>
     
-    <NotificationPanel 
-      v-if="showPanel"
-      :notifications="notifications"
-      :loading="loading"
-      @close="showPanel = false"
-      @mark-all-read="handleMarkAllRead"
-      @mark-as-read="handleMarkAsRead"
-      @delete-notification="handleDeleteNotification"
-    />
+    <!-- Teleport notification panel to body -->
+    <Teleport to="body">
+      <NotificationPanel 
+        v-if="showPanel"
+        :notifications="notifications"
+        :loading="loading"
+        :button-position="buttonPosition"
+        @close="showPanel = false"
+        @mark-all-read="handleMarkAllRead"
+        @mark-as-read="handleMarkAsRead"
+        @delete-notification="handleDeleteNotification"
+      />
+    </Teleport>
   </div>
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
 import NotificationPanel from './NotificationPanel.vue'
@@ -44,6 +49,9 @@ export default {
     
     const showPanel = ref(false)
     const loading = ref(false)
+    const bellButton = ref(null)
+    const buttonPosition = ref({ top: 0, right: 0 })
+    
     let pollInterval = null
     let isComponentActive = ref(true)
     
@@ -54,13 +62,26 @@ export default {
       return unreadCount.value > 99 ? '99+' : unreadCount.value
     })
     
+    const calculateButtonPosition = () => {
+      if (bellButton.value) {
+        const rect = bellButton.value.getBoundingClientRect()
+        buttonPosition.value = {
+          top: rect.bottom + 8,
+          right: window.innerWidth - rect.right
+        }
+      }
+    }
+    
     const togglePanel = async () => {
       if (!isComponentActive.value || authStore.isLoggingOut || !authStore.isAuthenticated) {
         return
       }
       
       showPanel.value = !showPanel.value
+      
       if (showPanel.value) {
+        await nextTick()
+        calculateButtonPosition()
         await fetchNotifications()
       }
     }
@@ -133,6 +154,12 @@ export default {
       }
     }
     
+    const handleResize = () => {
+      if (showPanel.value) {
+        calculateButtonPosition()
+      }
+    }
+    
     const cleanup = () => {
       console.log('🧹 Cleaning up NotificationBell component')
       isComponentActive.value = false
@@ -143,6 +170,8 @@ export default {
       }
       
       showPanel.value = false
+      window.removeEventListener('resize', handleResize)
+      window.removeEventListener('scroll', handleResize, true)
     }
     
     const handleLogout = () => {
@@ -150,18 +179,18 @@ export default {
     }
     
     const startPolling = () => {
-      if (!authStore.isAuthenticated) return
-      
-      // Initial fetch
+  if (!authStore.isAuthenticated) return
+  
+  // Initial fetch
+  fetchUnreadCount()
+  
+  // Poll every 15 seconds (reduced from 30)
+  pollInterval = setInterval(() => {
+    if (isComponentActive.value && authStore.isAuthenticated && !authStore.isLoggingOut) {
       fetchUnreadCount()
-      
-      // Poll every 30 seconds
-      pollInterval = setInterval(() => {
-        if (isComponentActive.value && authStore.isAuthenticated && !authStore.isLoggingOut) {
-          fetchUnreadCount()
-        }
-      }, 30000)
     }
+  }, 15000) // Changed from 30000 to 15000
+}
     
     onMounted(() => {
       console.log('📢 NotificationBell mounted')
@@ -169,6 +198,10 @@ export default {
       
       // Listen for logout event
       window.addEventListener('user-logging-out', handleLogout)
+      
+      // Listen for resize and scroll to reposition panel
+      window.addEventListener('resize', handleResize)
+      window.addEventListener('scroll', handleResize, true)
       
       startPolling()
     })
@@ -185,6 +218,8 @@ export default {
       unreadCount,
       displayCount,
       loading,
+      bellButton,
+      buttonPosition,
       togglePanel,
       handleMarkAllRead,
       handleMarkAsRead,
@@ -197,6 +232,7 @@ export default {
 <style scoped>
 .notification-bell-container {
   position: relative;
+  display: inline-block;
 }
 
 .notification-button {
@@ -238,23 +274,12 @@ export default {
   border: 2px solid white;
   padding: 0 4px;
   animation: pulse 1.5s infinite;
+  z-index: 1;
 }
 
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
-}
-
-/* Dropdown animation for panel */
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: all 0.2s ease;
-}
-
-.dropdown-enter-from,
-.dropdown-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
 }
 
 @media (max-width: 576px) {

@@ -36,10 +36,10 @@ export default [
         meta: { title: 'Ticket Management' }
       },
       {
-        path: 'productivity',
-        name: 'ProductivityMonitor',
-        component: () => import('../../views/manager/ProductivityMonitor.vue')
-      },
+  path: 'productivity',
+  name: 'ManagerProductivityMonitor',
+  component: () => import('@/views/common/ProductivityMonitor.vue')
+},
       {
         path: 'profile',
         name: 'ManagerProfile',

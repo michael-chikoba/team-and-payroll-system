@@ -1,20 +1,29 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
-    <header class="bg-white shadow-lg border-b border-gray-200 sticky top-0 z-10">
+  <div class="min-h-screen bg-gray-50">
+    <header class="bg-white shadow-md border-b border-gray-200 sticky top-0 z-20">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center py-4">
           <div>
             <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">
-              <span class="text-indigo-600">Business</span> Management
+              <span class="text-indigo-700">Business</span> Management
             </h1>
-            <p class="text-sm text-gray-500 mt-1">
+            <p class="text-sm text-gray-600 mt-1 font-medium">
               Centralized hub for managing your organizations and business entities.
             </p>
+            <!-- Show current business indicator -->
+            <div v-if="currentBusiness" class="mt-2 flex items-center">
+              <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                Active: {{ currentBusiness.name }}
+              </span>
+            </div>
           </div>
           <div class="flex items-center space-x-4">
             <button
               @click="goToDashboard"
-              class="inline-flex items-center px-5 py-2 border border-transparent text-sm font-medium rounded-xl shadow-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 transition transform hover:scale-[1.02] duration-200 ease-in-out"
+              class="inline-flex items-center px-5 py-2 border border-transparent text-sm font-bold rounded-xl shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 transition transform hover:scale-[1.02] duration-200 ease-in-out"
             >
               <svg class="w-5 h-5 mr-2 -ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
@@ -26,9 +35,9 @@
       </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 text-gray-900">
       <Transition name="fade" mode="out-in">
-        <div :key="currentView">
+        <div :key="currentView" class="bg-white rounded-lg shadow p-1 min-h-[400px]">
           <BusinessList
             v-if="currentView === 'list'"
             ref="businessList"
@@ -36,6 +45,7 @@
             @edit-business="editBusiness"
             @delete-business="confirmDeleteBusiness"
             @manage-admins="manageAdmins"
+            @business-switched="handleBusinessSwitched"
           />
 
           <BusinessRegistration
@@ -74,12 +84,15 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from 'axios'
 import BusinessList from '@/components/Business/BusinessList.vue'
 import BusinessRegistration from '@/components/Business/BusinessRegistration.vue'
 import BusinessEdit from '@/components/Business/BusinessEdit.vue'
 import AdminManagement from '@/components/Business/AdminManagement.vue'
 import DeleteConfirmationModal from '@/components/Business/DeleteConfirmationModal.vue'
+import { useBusinessStore } from '@/stores/business'
+import { useAuthStore } from '@/stores/auth'
+import { computed } from 'vue'
 
 export default {
   name: 'BusinessManagement',
@@ -89,6 +102,16 @@ export default {
     BusinessEdit,
     AdminManagement,
     DeleteConfirmationModal
+  },
+  setup() {
+    const businessStore = useBusinessStore()
+    const authStore = useAuthStore()
+    
+    return {
+      businessStore,
+      authStore,
+      currentBusiness: computed(() => businessStore.getCurrentBusiness)
+    }
   },
   data() {
     return {
@@ -133,9 +156,13 @@ export default {
           text: 'Business deleted successfully'
         })
         
+        // Update the store
+        this.businessStore.removeBusiness(this.businessToDelete.id)
+        
         this.showDeleteModal = false
         this.businessToDelete = null
         
+        // Refresh the list
         if (this.$refs.businessList) {
           this.$refs.businessList.fetchBusinesses()
         }
@@ -154,8 +181,10 @@ export default {
     },
     
     handleBusinessCreated(business) {
+      // Add to store
+      this.businessStore.addBusiness(business)
+      
       this.showBusinessList()
-      // Use $nextTick to ensure the ref exists before calling the method
       this.$nextTick(() => {
         if (this.$refs.businessList) {
           this.$refs.businessList.fetchBusinesses()
@@ -164,6 +193,9 @@ export default {
     },
     
     handleBusinessUpdated(business) {
+      // Update in store
+      this.businessStore.updateBusiness(business.id, business)
+      
       this.showBusinessList()
       this.$nextTick(() => {
         if (this.$refs.businessList) {
@@ -181,15 +213,25 @@ export default {
       })
     },
     
+    /**
+     * Handle business switch event from child component
+     */
+    handleBusinessSwitched(business) {
+      console.log('Business switched to:', business.name)
+      
+      // Optionally navigate to a different page or refresh certain data
+      // For example, you might want to refresh the dashboard
+      this.$notify({
+        type: 'info',
+        title: 'Context Updated',
+        text: `Now working in ${business.name}`
+      })
+    },
+    
     goToDashboard() {
       this.$router.push('/admin/dashboard')
     },
     
-    /**
-     * Search for a user by email
-     * @param {string} email - Email address to search for
-     * @returns {Promise<Object>} User data
-     */
     async searchUser(email) {
       try {
         const response = await axios.get('/api/admin/users/search', {
@@ -217,13 +259,6 @@ export default {
       }
     },
     
-    /**
-     * Add an admin to a business
-     * @param {number} businessId - ID of the business
-     * @param {number} userId - ID of the user to add as admin
-     * @param {string} role - Role to assign (admin, manager, owner)
-     * @returns {Promise<Object>} Updated business data
-     */
     async addAdmin(businessId, userId, role) {
       try {
         const response = await axios.post(`/api/admin/businesses/${businessId}/admins`, {
@@ -253,12 +288,6 @@ export default {
       }
     },
     
-    /**
-     * Remove an admin from a business
-     * @param {number} businessId - ID of the business
-     * @param {number} adminUserId - ID of the admin user to remove
-     * @returns {Promise<Object>} Response data
-     */
     async removeAdmin(businessId, adminUserId) {
       try {
         const response = await axios.delete(`/api/admin/businesses/${businessId}/admins/${adminUserId}`)

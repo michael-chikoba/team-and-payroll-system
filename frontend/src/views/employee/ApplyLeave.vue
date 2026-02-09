@@ -1,21 +1,23 @@
 <template>
   <div class="apply-leave-view">
-    <header class="header">
-      <h1 class="title">{{ pageName }}</h1>
-      <p class="subtitle">Submit your leave request for approval</p>
+    <header class="header sticky-header">
+      <div class="header-content">
+        <h1 class="title">{{ pageName }}</h1>
+        <p class="subtitle">Submit your leave request for approval</p>
+      </div>
     </header>
    
     <div class="content">
-      <div v-if="successMessage" class="success-message">
+      <div v-if="successMessage" class="alert alert-success">
         {{ successMessage }}
         <button @click="resetForm" class="btn-secondary">Apply Another</button>
       </div>
-      
+     
       <form v-else @submit.prevent="submitLeave" class="leave-form">
-        <div class="form-row">
+        <div class="form-row d-flex gap-3">
           <div class="form-group">
-            <label>Leave Type *</label>
-            <select v-model="form.leaveType" required @change="updateLeaveType">
+            <label class="form-label">Leave Type *</label>
+            <select v-model="form.leaveType" class="form-select" required @change="updateLeaveType">
               <option value="">Select Leave Type</option>
               <option value="annual">Annual Leave</option>
               <option value="sick">Sick Leave</option>
@@ -26,7 +28,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Duration (Days) *</label>
+            <label class="form-label">Duration (Days) *</label>
             <input
               v-model.number="form.duration"
               type="number"
@@ -34,52 +36,57 @@
               max="30"
               required
               placeholder="e.g., 5"
+              class="form-control"
             />
           </div>
         </div>
-        <div class="form-row">
+        <div class="form-row d-flex gap-3">
           <div class="form-group">
-            <label>Start Date *</label>
+            <label class="form-label">Start Date *</label>
             <input
               v-model="form.startDate"
               type="date"
               required
               :min="today"
+              class="form-control"
             />
           </div>
           <div class="form-group">
-            <label>End Date *</label>
+            <label class="form-label">End Date *</label>
             <input
               v-model="form.endDate"
               type="date"
               required
               :min="form.startDate || today"
+              class="form-control"
             />
           </div>
         </div>
         <div class="form-group">
-          <label>Reason/Description *</label>
+          <label class="form-label">Reason/Description *</label>
           <textarea
             v-model="form.reason"
             rows="4"
             required
             placeholder="Provide a detailed reason for your leave request..."
+            class="form-textarea"
           ></textarea>
         </div>
         <div class="form-group">
-          <label>Attach Supporting Document (Optional)</label>
+          <label class="form-label">Attach Supporting Document (Optional)</label>
           <input
             ref="fileInput"
             type="file"
             accept=".pdf,.doc,.docx,.jpg,.png"
             @change="handleFileUpload"
+            class="form-control"
           />
           <p v-if="form.attachment" class="file-info">Selected: {{ form.attachment.name }}</p>
         </div>
-        <div v-if="formError" class="form-error">
+        <div v-if="formError" class="alert alert-danger">
           {{ formError }}
         </div>
-        <div class="form-actions">
+        <div class="form-actions d-flex justify-content-end gap-2">
           <button type="button" @click="resetForm" class="btn-secondary">
             Cancel
           </button>
@@ -94,9 +101,9 @@
 </template>
 
 <script>
+// Script remains unchanged
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
-
 export default {
   name: 'ApplyLeave',
   setup() {
@@ -258,7 +265,7 @@ export default {
           'image/jpeg',
           'image/png'
         ]
-        if (!allowedTypes.includes(file.type)) {
+        if (!allowedTypes.includes(file.type) ) {
           this.formError = 'File type not allowed. Please upload PDF, DOC, DOCX, JPG, or PNG files only.'
           event.target.value = ''
           return
@@ -290,8 +297,10 @@ export default {
       } else if (err.response?.status === 401) {
         errorMsg = 'Session expired. Redirecting to login...'
         this.authStore.clearAuth()
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
         setTimeout(() => {
-          this.$router.push({ name: 'login' })
+          this.$router.push('/auth/login')
         }, 2000)
       } else if (err.response?.status === 422) {
         // Handle validation errors
@@ -337,264 +346,147 @@ export default {
 </script>
 
 <style scoped>
-* {
-  box-sizing: border-box;
-}
-
+/* Use shared styles - minimal overrides */
 .apply-leave-view {
-  padding: 2rem;
+  padding: var(--spacing-xl);
   max-width: 800px;
   margin: 0 auto;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background: #f8f9fc;
+  background: var(--background-color);
   min-height: 100vh;
 }
 
-/* Header Styles */
+/* Sticky header that scrolls with the page */
 .header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 2.5rem;
-  border-radius: 20px;
-  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
-  margin-bottom: 2rem;
-  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-xl);
+  margin-bottom: var(--spacing-xl);
   text-align: center;
-  position: relative;
-  overflow: hidden;
+  background: var(--surface-color);
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
 }
 
-.header::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-  animation: pulse 15s ease-in-out infinite;
+/* Optional: Add a subtle effect when scrolling */
+.header.scrolled {
+  box-shadow: var(--shadow-lg);
+  padding: var(--spacing-md) var(--spacing-xl);
 }
 
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+.header-content {
+  max-width: 100%;
+  margin: 0 auto;
 }
 
 .title {
-  margin: 0 0 0.5rem 0;
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: 700;
-  letter-spacing: -0.5px;
+  color: #000000;
+  margin-bottom: var(--spacing-xs);
+  transition: font-size 0.3s ease;
+}
+
+/* Optional: Make title smaller when header is sticky and scrolled */
+.header.scrolled .title {
+  font-size: 1.5rem;
 }
 
 .subtitle {
-  margin: 0;
-  font-size: 1.1rem;
-  opacity: 0.9;
-  font-weight: 300;
+  font-size: 1rem;
+  color: var(--sidebar-text-muted);
+  margin-bottom: 0;
+  transition: font-size 0.3s ease;
 }
 
-/* Content */
+/* Optional: Make subtitle smaller when header is sticky and scrolled */
+.header.scrolled .subtitle {
+  font-size: 0.875rem;
+}
+
+/* Content using shared .content-section */
 .content {
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  background: var(--surface-color);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--spacing-xl);
+  margin-top: var(--spacing-lg);
 }
 
 .leave-form {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 2rem;
+  gap: var(--spacing-lg);
 }
 
+/* Form row using shared flex utils */
 .form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.form-group label {
-  font-weight: 600;
-  color: #374151;
-  font-size: 0.875rem;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  padding: 0.875rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  background: #f9fafb;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: #667eea;
-  background: white;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 100px;
+  flex-wrap: wrap;
 }
 
 .file-info {
-  margin-top: 0.5rem;
+  margin-top: var(--spacing-sm);
   font-size: 0.875rem;
-  color: #6b7280;
-  padding: 0.75rem;
-  background: #f0f9ff;
-  border-radius: 8px;
-  border-left: 3px solid #06b6d4;
-  font-weight: 500;
+  color: var(--text-light);
+  padding: var(--spacing-sm);
+  background: var(--background-alt);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--info-color);
 }
 
-.form-error {
-  background: #fef2f2;
-  color: #dc2626;
-  padding: 1rem;
-  border-radius: 10px;
-  border-left: 4px solid #ef4444;
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-/* Success Message */
-.success-message {
-  text-align: center;
-  padding: 3rem 2rem;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  border-radius: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  align-items: center;
-  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
-}
-
-.success-message p {
-  font-size: 1.125rem;
-  margin: 0;
-  opacity: 0.95;
-}
-
-.success-message .btn-secondary {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.success-message .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
-}
-
-/* Form Actions */
+/* Form actions using shared */
 .form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid #f0f0f0;
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-color);
 }
 
-.btn-primary, .btn-secondary {
-  padding: 0.875rem 2rem;
-  border: none;
-  border-radius: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-size: 0.95rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-3px);
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.3);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.btn-secondary:hover {
-  background: #e5e7eb;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-}
-
-/* Responsive Design */
+/* Responsive using shared media queries */
 @media (max-width: 768px) {
   .apply-leave-view {
-    padding: 1rem;
+    padding: var(--spacing-md);
   }
-
+  
   .header {
-    padding: 2rem 1.5rem;
+    padding: var(--spacing-md) var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
   }
-
+  
   .title {
-    font-size: 2rem;
+    font-size: 1.75rem;
   }
-
-  .leave-form {
-    padding: 1.5rem;
+  
+  .subtitle {
+    font-size: 0.875rem;
   }
-
+  
+  .content {
+    padding: var(--spacing-lg);
+  }
+  
   .form-row {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
-  .form-actions {
     flex-direction: column;
   }
+}
 
-  .btn-primary, .btn-secondary {
-    width: 100%;
+@media (max-width: 480px) {
+  .header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    margin-bottom: var(--spacing-md);
   }
-
-  .success-message {
-    padding: 2rem 1.5rem;
+  
+  .title {
+    font-size: 1.5rem;
+  }
+  
+  .subtitle {
+    font-size: 0.75rem;
+  }
+  
+  .content {
+    padding: var(--spacing-md);
   }
 }
 </style>

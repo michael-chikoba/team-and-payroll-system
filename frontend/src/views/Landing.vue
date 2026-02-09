@@ -12,10 +12,10 @@
           <a href="#pricing" @click.prevent="scrollToSection('pricing')">Pricing</a>
           <a href="#testimonials" @click.prevent="scrollToSection('testimonials')">Testimonials</a>
           <a href="#contact" @click.prevent="scrollToSection('contact')">Contact</a>
-          <button @click="scrollToDemo" class="btn-primary">Request Demo</button>
+          <button @click="scrollToDemo" class="btn-primary desktop-demo-btn">Request Demo</button>
         </div>
         <!-- Mobile Menu Button -->
-        <button class="mobile-menu-btn" @click="mobileMenuOpen = !mobileMenuOpen">
+        <button class="mobile-menu-btn" @click="toggleMobileMenu" :aria-expanded="mobileMenuOpen">
           <span></span>
           <span></span>
           <span></span>
@@ -23,12 +23,14 @@
       </div>
       <!-- Mobile Menu -->
       <div class="mobile-menu" :class="{ open: mobileMenuOpen }">
-        <a href="#features" @click="closeMobileMenu">Features</a>
-        <a href="#solutions" @click="closeMobileMenu">Solutions</a>
-        <a href="#pricing" @click="closeMobileMenu">Pricing</a>
-        <a href="#testimonials" @click="closeMobileMenu">Testimonials</a>
-        <a href="#contact" @click="closeMobileMenu">Contact</a>
-        <button @click="scrollToDemo" class="btn-primary">Request Demo</button>
+        <div class="mobile-menu-container">
+          <a href="#features" @click="closeMobileMenu">Features</a>
+          <a href="#solutions" @click="closeMobileMenu">Solutions</a>
+          <a href="#pricing" @click="closeMobileMenu">Pricing</a>
+          <a href="#testimonials" @click="closeMobileMenu">Testimonials</a>
+          <a href="#contact" @click="closeMobileMenu">Contact</a>
+          <button @click="scrollToDemo" class="btn-primary mobile-demo-btn">Request Demo</button>
+        </div>
       </div>
     </nav>
 
@@ -111,7 +113,7 @@
         <div class="section-header">
           <h2 class="section-title">Everything You Need to Manage Payroll</h2>
           <p class="section-subtitle">
-            Comprehensive features designed to simplify every aspect of payroll management
+            All features available on every plan. Choose the plan that fits your team size.
           </p>
         </div>
         <div class="features-grid">
@@ -290,11 +292,11 @@
             <p>Simple, affordable payroll for growing teams</p>
             <ul>
               <li>1-50 employees</li>
-              <li>Basic payroll processing</li>
-              <li>Employee self-service</li>
-              <li>Email support</li>
+              <li>Standard support</li>
+              <li>All features included</li>
+              <li>Email & chat support</li>
             </ul>
-            <button class="btn-outline">Learn More</button>
+            <button class="btn-outline" @click="scrollToPricing">Learn More</button>
           </div>
 
           <div class="solution-card featured">
@@ -304,11 +306,11 @@
             <p>Complete payroll and HR for medium businesses</p>
             <ul>
               <li>50-500 employees</li>
-              <li>Advanced features</li>
-              <li>Multi-location support</li>
               <li>Priority support</li>
+              <li>Multi-location support</li>
+              <li>Dedicated account manager</li>
             </ul>
-            <button class="btn-primary">Learn More</button>
+            <button class="btn-primary" @click="scrollToPricing">Learn More</button>
           </div>
 
           <div class="solution-card">
@@ -318,10 +320,10 @@
             <ul>
               <li>500+ employees</li>
               <li>Custom workflows</li>
-              <li>Dedicated account manager</li>
-              <li>24/7 support</li>
+              <li>24/7 premium support</li>
+              <li>Custom SLAs</li>
             </ul>
-            <button class="btn-outline">Learn More</button>
+            <button class="btn-outline" @click="scrollToContact">Learn More</button>
           </div>
         </div>
       </div>
@@ -337,29 +339,29 @@
           <div class="benefit-item">
             <div class="benefit-number">01</div>
             <div class="benefit-content">
-              <h3>Save Time & Money</h3>
-              <p>Reduce payroll processing time by up to 70% and eliminate costly errors with automation.</p>
+              <h3>All Features Included</h3>
+              <p>Get access to every feature regardless of your plan. Only pay for the team size you need.</p>
             </div>
           </div>
           <div class="benefit-item">
             <div class="benefit-number">02</div>
             <div class="benefit-content">
-              <h3>Stay Compliant</h3>
-              <p>Automatic updates to tax rules and labor regulations ensure you're always compliant.</p>
+              <h3>Priority Support</h3>
+              <p>Higher plans include faster response times, dedicated account managers, and 24/7 premium support.</p>
             </div>
           </div>
           <div class="benefit-item">
             <div class="benefit-number">03</div>
             <div class="benefit-content">
-              <h3>Empower Employees</h3>
-              <p>Self-service portal allows employees to view payslips, request leave, and update information.</p>
+              <h3>Scale Effortlessly</h3>
+              <p>Upgrade your plan as you grow without losing features. All plans include our complete feature set.</p>
             </div>
           </div>
           <div class="benefit-item">
             <div class="benefit-number">04</div>
             <div class="benefit-content">
-              <h3>Scale Effortlessly</h3>
-              <p>Grow your business without worrying about payroll complexity or capacity limitations.</p>
+              <h3>Transparent Pricing</h3>
+              <p>No hidden fees. Pay only for the number of employees. All features included in every plan.</p>
             </div>
           </div>
         </div>
@@ -371,7 +373,14 @@
       <div class="container">
         <div class="section-header">
           <h2 class="section-title">Simple, Transparent Pricing</h2>
-          <p class="section-subtitle">No hidden fees. Cancel anytime.</p>
+          <p class="section-subtitle">All features included on every plan. Pay only for your team size.</p>
+          <div class="pricing-toggle">
+            <span :class="{ active: !annualBilling }" @click="annualBilling = false">Monthly</span>
+            <button class="toggle-switch" @click="annualBilling = !annualBilling">
+              <span class="toggle-slider" :class="{ annual: annualBilling }"></span>
+            </button>
+            <span :class="{ active: annualBilling }" @click="annualBilling = true">Annual (Save 20%)</span>
+          </div>
         </div>
         <div class="pricing-grid">
           <div class="pricing-card">
@@ -379,19 +388,24 @@
               <h3>Starter</h3>
               <div class="pricing-amount">
                 <span class="currency">$</span>
-                <span class="amount">29</span>
+                <span class="amount">{{ annualBilling ? '39' : '49' }}</span>
                 <span class="period">/month</span>
               </div>
-              <p>Perfect for small teams</p>
+              <p v-if="annualBilling" class="annual-savings">Billed annually ($468/year)</p>
+              <p v-else>Perfect for small teams</p>
+            </div>
+            <div class="employee-limit">
+              <span class="limit-label">Up to 10 employees</span>
             </div>
             <ul class="pricing-features">
-              <li>✓ Up to 10 employees</li>
+              <li>✓ All Features Included</li>
               <li>✓ Automated payroll</li>
               <li>✓ Employee self-service</li>
-              <li>✓ Basic reports</li>
-              <li>✓ Email support</li>
+              <li>✓ Time & attendance</li>
+              <li>✓ Leave management</li>
+              <li>✓ Standard support</li>
             </ul>
-            <button class="btn-outline btn-block">Start Free Trial</button>
+            <button class="btn-outline btn-block" @click="scrollToDemo">Start Free Trial</button>
           </div>
 
           <div class="pricing-card featured">
@@ -400,20 +414,24 @@
               <h3>Professional</h3>
               <div class="pricing-amount">
                 <span class="currency">$</span>
-                <span class="amount">79</span>
+                <span class="amount">{{ annualBilling ? '89' : '109' }}</span>
                 <span class="period">/month</span>
               </div>
-              <p>For growing businesses</p>
+              <p v-if="annualBilling" class="annual-savings">Billed annually ($1,068/year)</p>
+              <p v-else>For growing businesses</p>
+            </div>
+            <div class="employee-limit">
+              <span class="limit-label">Up to 100 employees</span>
             </div>
             <ul class="pricing-features">
-              <li>✓ Up to 100 employees</li>
-              <li>✓ All Starter features</li>
-              <li>✓ Time & attendance</li>
-              <li>✓ Leave management</li>
-              <li>✓ Advanced reports</li>
+              <li>✓ All Features Included</li>
+              <li>✓ Everything in Starter</li>
+              <li>✓ Multi-country support</li>
+              <li>✓ Advanced analytics</li>
+              <li>✓ API access</li>
               <li>✓ Priority support</li>
             </ul>
-            <button class="btn-primary btn-block">Start Free Trial</button>
+            <button class="btn-primary btn-block" @click="scrollToDemo">Start Free Trial</button>
           </div>
 
           <div class="pricing-card">
@@ -424,16 +442,22 @@
               </div>
               <p>For large organizations</p>
             </div>
+            <div class="employee-limit">
+              <span class="limit-label">Unlimited employees</span>
+            </div>
             <ul class="pricing-features">
-              <li>✓ Unlimited employees</li>
-              <li>✓ All Professional features</li>
-              <li>✓ Multi-country support</li>
+              <li>✓ All Features Included</li>
+              <li>✓ Everything in Professional</li>
               <li>✓ Custom integrations</li>
               <li>✓ Dedicated account manager</li>
-              <li>✓ 24/7 support</li>
+              <li>✓ Custom SLAs</li>
+              <li>✓ 24/7 premium support</li>
             </ul>
-            <button class="btn-outline btn-block">Contact Sales</button>
+            <button class="btn-outline btn-block" @click="scrollToContact">Contact Sales</button>
           </div>
+        </div>
+        <div class="pricing-note">
+          <p>All plans include a 14-day free trial with full access to features. No credit card required. Higher plans include priority support.</p>
         </div>
       </div>
     </section>
@@ -449,13 +473,13 @@
           <div class="testimonial-card">
             <div class="testimonial-rating">⭐⭐⭐⭐⭐</div>
             <p class="testimonial-text">
-              "Archangel Payroll has transformed how we manage payroll. What used to take days now takes hours. The automation and accuracy are incredible."
+              "Archangel Payroll has completely transformed our HR operations. The multi-country support handles our Zambian, Kenyan, and South African payroll seamlessly. What used to take weeks now takes hours!"
             </p>
             <div class="testimonial-author">
-              <div class="author-avatar">JD</div>
+              <div class="author-avatar">NN</div>
               <div class="author-info">
-                <div class="author-name">Jane Doe</div>
-                <div class="author-title">HR Director, TechCorp</div>
+                <div class="author-name">Mr. Nawa Nawa</div>
+                <div class="author-title">HR Director, EaglePay</div>
               </div>
             </div>
           </div>
@@ -463,13 +487,13 @@
           <div class="testimonial-card">
             <div class="testimonial-rating">⭐⭐⭐⭐⭐</div>
             <p class="testimonial-text">
-              "The multi-country support is a game-changer for our global team. We can now manage payroll for all our offices from one platform."
+              "As Managing Director of Castlebet, I need reliability and accuracy. Archangel Payroll delivers both. The compliance features ensure we're always up-to-date with regulations, and the support team is exceptional."
             </p>
             <div class="testimonial-author">
-              <div class="author-avatar">MS</div>
+              <div class="author-avatar">MM</div>
               <div class="author-info">
-                <div class="author-name">Michael Smith</div>
-                <div class="author-title">CFO, Global Solutions Inc</div>
+                <div class="author-name">Margret Mwale</div>
+                <div class="author-title">Managing Director, Castlebet</div>
               </div>
             </div>
           </div>
@@ -477,13 +501,13 @@
           <div class="testimonial-card">
             <div class="testimonial-rating">⭐⭐⭐⭐⭐</div>
             <p class="testimonial-text">
-              "Outstanding customer support and incredibly intuitive interface. Our employees love the self-service portal."
+              "We switched to Archangel Payroll last year and haven't looked back. The platform scales perfectly with our growing team across Africa. The priority support on the Professional plan gives us peace of mind."
             </p>
             <div class="testimonial-author">
-              <div class="author-avatar">SK</div>
+              <div class="author-avatar">AZ</div>
               <div class="author-info">
-                <div class="author-name">Sarah Kim</div>
-                <div class="author-title">Operations Manager, StartupXYZ</div>
+                <div class="author-name">Andrew Zulu</div>
+                <div class="author-title">Founder, Zambezi Solutions</div>
               </div>
             </div>
           </div>
@@ -602,22 +626,22 @@
             <div class="contact-card">
               <div class="contact-card-icon">📞</div>
               <h3>Call Us</h3>
-              <p>Sales: +1 (555) 123-4567</p>
-              <p>Support: +1 (555) 123-4568</p>
+              <p>Sales: +260 211 123 4567</p>
+              <p>Support: +260 211 123 4568</p>
             </div>
 
             <div class="contact-card">
               <div class="contact-card-icon">🕒</div>
               <h3>Business Hours</h3>
               <p>Monday - Friday</p>
-              <p>9:00 AM - 6:00 PM EST</p>
+              <p>8:00 AM - 6:00 PM CAT</p>
             </div>
 
             <div class="contact-card">
               <div class="contact-card-icon">💬</div>
               <h3>Live Chat</h3>
               <p>Available 24/7</p>
-              <button class="btn-outline btn-sm">Start Chat</button>
+              <button class="btn-outline btn-sm" @click="startLiveChat">Start Chat</button>
             </div>
           </div>
 
@@ -655,13 +679,13 @@
               </div>
               <div class="form-group">
                 <label for="contact_message">Message *</label>
-                <textarea
-                  id="contact_message"
-                  v-model="contactForm.message"
-                  rows="5"
-                  required
-                  placeholder="Your message..."
-                ></textarea>
+              <textarea
+                id="contact_message"
+                v-model="contactForm.message"
+                rows="5"
+                required
+                placeholder="Your message..."
+              ></textarea>
               </div>
               <button type="submit" class="btn-primary btn-lg btn-block" :disabled="isContactSubmitting">
                 {{ isContactSubmitting ? 'Sending...' : 'Send Message' }}
@@ -777,11 +801,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import axios from 'axios'
+import { ref, onMounted, onUnmounted } from 'vue'
 
 const mobileMenuOpen = ref(false)
 const activeFaq = ref(null)
+const annualBilling = ref(false)
 
 const demoForm = ref({
   company_name: '',
@@ -810,6 +834,14 @@ const contactMessageType = ref('')
 
 const faqs = [
   {
+    question: 'Do all plans include all features?',
+    answer: 'Yes! All plans include access to every feature. You only pay for the number of employees. Higher plans include priority support and additional services.'
+  },
+  {
+    question: 'What support is included with each plan?',
+    answer: 'Starter includes standard email and chat support. Professional includes priority support with faster response times. Enterprise includes 24/7 premium support with dedicated account managers and custom SLAs.'
+  },
+  {
     question: 'How long does it take to set up?',
     answer: 'Most companies are up and running within 24-48 hours. Our onboarding team will guide you through the entire process.'
   },
@@ -824,14 +856,6 @@ const faqs = [
   {
     question: 'Is my data secure?',
     answer: 'Absolutely. We use bank-level 256-bit encryption, are SOC 2 compliant, and perform daily backups. Your data is stored in secure, geo-redundant data centers.'
-  },
-  {
-    question: 'Do you offer customer support?',
-    answer: 'Yes! We offer email support for all plans, priority support for Professional plans, and 24/7 dedicated support for Enterprise customers.'
-  },
-  {
-    question: 'Can I cancel anytime?',
-    answer: 'Yes, you can cancel your subscription at any time with no penalties. We also offer a 14-day free trial with no credit card required.'
   }
 ]
 
@@ -851,6 +875,14 @@ const scrollToContact = () => {
   scrollToSection('contact')
 }
 
+const scrollToPricing = () => {
+  scrollToSection('pricing')
+}
+
+const toggleMobileMenu = () => {
+  mobileMenuOpen.value = !mobileMenuOpen.value
+}
+
 const closeMobileMenu = () => {
   mobileMenuOpen.value = false
 }
@@ -864,7 +896,8 @@ const submitDemoRequest = async () => {
   demoMessage.value = ''
   
   try {
-    await axios.post('/api/demo-requests', demoForm.value)
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1500))
     demoMessage.value = 'Thank you! We\'ll contact you shortly to schedule your demo.'
     demoMessageType.value = 'success'
     
@@ -892,7 +925,8 @@ const submitContactForm = async () => {
   contactMessage.value = ''
   
   try {
-    await axios.post('/api/contact', contactForm.value)
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1500))
     contactMessage.value = 'Message sent successfully! We\'ll get back to you soon.'
     contactMessageType.value = 'success'
     
@@ -911,130 +945,76 @@ const submitContactForm = async () => {
     isContactSubmitting.value = false
   }
 }
+
+const startLiveChat = () => {
+  alert('Live chat feature would open here. This is a demo.')
+}
+
+// Close mobile menu when clicking outside
+const handleClickOutside = (event) => {
+  const nav = document.querySelector('.navbar')
+  if (mobileMenuOpen.value && nav && !nav.contains(event.target)) {
+    closeMobileMenu()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>
-/* General Styles */
+/* ===== Base Styles & CSS Reset ===== */
 .landing-page {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   color: #1a1a1a;
   line-height: 1.6;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
 }
 
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== Container ===== */
 .container {
+  width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 20px;
+  padding: 0 16px;
 }
 
+/* ===== Section Styles ===== */
 .section-header {
   text-align: center;
-  margin-bottom: 4rem;
+  margin-bottom: 3rem;
 }
 
 .section-title {
-  font-size: 2.5rem;
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
   font-weight: 700;
   margin-bottom: 1rem;
   color: #1a1a1a;
+  line-height: 1.2;
 }
 
 .section-subtitle {
-  font-size: 1.25rem;
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
   color: #666;
   max-width: 600px;
   margin: 0 auto;
+  line-height: 1.6;
 }
 
-/* Navbar */
-.navbar {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  padding: 1rem 0;
-}
-
-.navbar .container {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.nav-brand {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.nav-brand h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin: 0;
-}
-
-.nav-links {
-  display: flex;
-  gap: 2rem;
-  align-items: center;
-}
-
-.nav-links a {
-  text-decoration: none;
-  color: #666;
-  font-weight: 500;
-  transition: color 0.3s;
-  position: relative;
-}
-
-.nav-links a::after {
-  content: '';
-  position: absolute;
-  bottom: -5px;
-  left: 0;
-  width: 0;
-  height: 2px;
-  background: #667eea;
-  transition: width 0.3s;
-}
-
-.nav-links a:hover {
-  color: #667eea;
-}
-
-.nav-links a:hover::after {
-  width: 100%;
-}
-
-.mobile-menu-btn {
-  display: none;
-  flex-direction: column;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0.5rem;
-}
-
-.mobile-menu-btn span {
-  width: 24px;
-  height: 2px;
-  background: #333;
-  transition: all 0.3s;
-}
-
-.mobile-menu {
-  display: none;
-}
-
-/* Buttons */
+/* ===== Button Styles ===== */
 .btn-primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -1045,6 +1025,7 @@ const submitContactForm = async () => {
   cursor: pointer;
   transition: all 0.3s;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+  white-space: nowrap;
 }
 
 .btn-primary:hover {
@@ -1093,7 +1074,7 @@ const submitContactForm = async () => {
 
 .btn-lg {
   padding: 1rem 2rem;
-  font-size: 1.1rem;
+  font-size: clamp(1rem, 2vw, 1.1rem);
 }
 
 .btn-sm {
@@ -1105,32 +1086,179 @@ const submitContactForm = async () => {
   width: 100%;
 }
 
-/* Hero Section */
+/* ===== Navigation ===== */
+.navbar {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 1rem 0;
+}
+
+.navbar .container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nav-brand h1 {
+  font-size: clamp(1.25rem, 3vw, 1.5rem);
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
+}
+
+.nav-links {
+  display: flex;
+  gap: clamp(1rem, 2vw, 2rem);
+  align-items: center;
+}
+
+.nav-links a {
+  text-decoration: none;
+  color: #666;
+  font-weight: 500;
+  transition: color 0.3s;
+  position: relative;
+  font-size: clamp(0.9rem, 1vw, 1rem);
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: #667eea;
+  transition: width 0.3s;
+}
+
+.nav-links a:hover {
+  color: #667eea;
+}
+
+.nav-links a:hover::after {
+  width: 100%;
+}
+
+.desktop-demo-btn {
+  display: block;
+}
+
+.mobile-menu-btn {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem;
+  z-index: 1001;
+}
+
+.mobile-menu-btn span {
+  width: 24px;
+  height: 2px;
+  background: #333;
+  transition: all 0.3s;
+}
+
+.mobile-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.4s ease-out;
+}
+
+.mobile-menu.open {
+  max-height: 500px;
+}
+
+.mobile-menu-container {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mobile-menu a {
+  text-decoration: none;
+  color: #666;
+  font-weight: 500;
+  padding: 0.75rem 0;
+  font-size: 1.1rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.mobile-menu a:last-child {
+  border-bottom: none;
+}
+
+.mobile-demo-btn {
+  margin-top: 1rem;
+  width: 100%;
+}
+
+/* ===== Hero Section ===== */
 .hero {
-  padding: 6rem 0 4rem;
+  padding: clamp(3rem, 8vw, 6rem) 0 clamp(2rem, 6vw, 4rem);
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   position: relative;
   overflow: hidden;
 }
 
-.hero::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: url('data:image/svg+xml,<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="2" fill="white" opacity="0.1"/></svg>');
-  opacity: 0.3;
+.hero .container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3rem;
+  align-items: center;
 }
 
-.hero .container {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-  align-items: center;
+@media (min-width: 992px) {
+  .hero .container {
+    grid-template-columns: 1fr 1fr;
+    gap: 4rem;
+  }
+}
+
+.hero-content {
+  order: 2;
+}
+
+@media (min-width: 992px) {
+  .hero-content {
+    order: 1;
+  }
+}
+
+.hero-image {
+  order: 1;
+}
+
+@media (min-width: 992px) {
+  .hero-image {
+    order: 2;
+  }
 }
 
 .hero-badge {
@@ -1138,20 +1266,20 @@ const submitContactForm = async () => {
   background: rgba(255, 255, 255, 0.2);
   padding: 0.5rem 1rem;
   border-radius: 50px;
-  font-size: 0.9rem;
+  font-size: clamp(0.85rem, 2vw, 0.9rem);
   margin-bottom: 1.5rem;
   backdrop-filter: blur(10px);
 }
 
 .hero-title {
-  font-size: 3.5rem;
+  font-size: clamp(2rem, 6vw, 3.5rem);
   font-weight: 800;
   margin-bottom: 1.5rem;
   line-height: 1.2;
 }
 
 .hero-subtitle {
-  font-size: 1.35rem;
+  font-size: clamp(1.1rem, 3vw, 1.35rem);
   margin-bottom: 2rem;
   opacity: 0.95;
   line-height: 1.6;
@@ -1160,12 +1288,20 @@ const submitContactForm = async () => {
 .hero-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
+  gap: 1rem;
   margin-bottom: 2rem;
-  padding: 2rem;
+  padding: 1.5rem;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   backdrop-filter: blur(10px);
+}
+
+@media (max-width: 640px) {
+  .hero-stats {
+    grid-template-columns: 1fr;
+    text-align: center;
+    gap: 1.5rem;
+  }
 }
 
 .stat-item {
@@ -1173,24 +1309,31 @@ const submitContactForm = async () => {
 }
 
 .stat-number {
-  font-size: 2.5rem;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
   font-weight: 800;
   margin-bottom: 0.5rem;
 }
 
 .stat-label {
-  font-size: 0.9rem;
+  font-size: clamp(0.85rem, 2vw, 0.9rem);
   opacity: 0.9;
 }
 
 .hero-actions {
   display: flex;
+  flex-direction: column;
   gap: 1rem;
   margin-bottom: 2rem;
 }
 
+@media (min-width: 768px) {
+  .hero-actions {
+    flex-direction: row;
+  }
+}
+
 .hero-trust {
-  font-size: 0.9rem;
+  font-size: clamp(0.85rem, 2vw, 0.9rem);
   opacity: 0.8;
 }
 
@@ -1198,8 +1341,10 @@ const submitContactForm = async () => {
   background: white;
   border-radius: 16px;
   padding: 1.5rem;
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   color: #333;
+  max-width: 500px;
+  margin: 0 auto;
 }
 
 .preview-header {
@@ -1226,6 +1371,7 @@ const submitContactForm = async () => {
 .preview-title {
   font-weight: 600;
   color: #1a1a1a;
+  font-size: clamp(1rem, 2vw, 1.1rem);
 }
 
 .preview-content {
@@ -1243,39 +1389,40 @@ const submitContactForm = async () => {
 }
 
 .card-icon {
-  font-size: 2rem;
+  font-size: clamp(1.5rem, 3vw, 2rem);
 }
 
 .card-label {
-  font-size: 0.85rem;
+  font-size: clamp(0.8rem, 1.5vw, 0.85rem);
   color: #666;
 }
 
 .card-value {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   font-weight: 700;
   color: #1a1a1a;
 }
 
-/* Features Section */
+/* ===== Features Section ===== */
 .features {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: #f9fafb;
 }
 
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 350px), 1fr));
+  gap: clamp(1.5rem, 3vw, 2rem);
 }
 
 .feature-card {
   background: white;
-  padding: 2rem;
+  padding: clamp(1.5rem, 3vw, 2rem);
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   transition: all 0.3s;
   border: 1px solid #e5e7eb;
+  height: 100%;
 }
 
 .feature-card:hover {
@@ -1285,21 +1432,23 @@ const submitContactForm = async () => {
 }
 
 .feature-icon {
-  font-size: 3rem;
+  font-size: clamp(2.5rem, 4vw, 3rem);
   margin-bottom: 1rem;
   display: block;
 }
 
 .feature-card h3 {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   margin-bottom: 1rem;
   color: #1a1a1a;
+  line-height: 1.3;
 }
 
 .feature-card > p {
   color: #666;
   margin-bottom: 1.5rem;
   line-height: 1.7;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
 }
 
 .feature-list {
@@ -1314,6 +1463,7 @@ const submitContactForm = async () => {
   padding-left: 1.5rem;
   position: relative;
   line-height: 1.6;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .feature-list li::before {
@@ -1324,26 +1474,30 @@ const submitContactForm = async () => {
   font-weight: bold;
 }
 
-/* Solutions Section */
+/* ===== Solutions Section ===== */
 .solutions {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: white;
 }
 
 .solutions-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: clamp(1.5rem, 3vw, 2rem);
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
 .solution-card {
   background: white;
-  padding: 2.5rem;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
   border-radius: 12px;
   border: 2px solid #e5e7eb;
   text-align: center;
   transition: all 0.3s;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .solution-card:hover {
@@ -1366,24 +1520,28 @@ const submitContactForm = async () => {
   color: white;
   padding: 0.5rem 1rem;
   border-radius: 50px;
-  font-size: 0.85rem;
+  font-size: clamp(0.8rem, 1.5vw, 0.85rem);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .solution-icon {
-  font-size: 3.5rem;
+  font-size: clamp(2.5rem, 4vw, 3.5rem);
   margin-bottom: 1rem;
 }
 
 .solution-card h3 {
-  font-size: 1.75rem;
+  font-size: clamp(1.5rem, 2.5vw, 1.75rem);
   margin-bottom: 0.5rem;
   color: #1a1a1a;
+  line-height: 1.3;
 }
 
 .solution-card > p {
   color: #666;
   margin-bottom: 2rem;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
+  line-height: 1.6;
 }
 
 .solution-card ul {
@@ -1391,38 +1549,46 @@ const submitContactForm = async () => {
   padding: 0;
   margin-bottom: 2rem;
   text-align: left;
+  flex-grow: 1;
 }
 
 .solution-card li {
   padding: 0.75rem 0;
   border-bottom: 1px solid #e5e7eb;
   color: #555;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .solution-card li:last-child {
   border-bottom: none;
 }
 
-/* Benefits Section */
+.solution-card button {
+  margin-top: auto;
+}
+
+/* ===== Benefits Section ===== */
 .benefits {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: white;
 }
 
 .benefits-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 3rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: clamp(2rem, 4vw, 3rem);
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .benefit-item {
   display: flex;
-  gap: 2rem;
+  gap: clamp(1rem, 2vw, 2rem);
   align-items: flex-start;
 }
 
 .benefit-number {
-  font-size: 3.5rem;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
   font-weight: 800;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
@@ -1430,40 +1596,100 @@ const submitContactForm = async () => {
   background-clip: text;
   line-height: 1;
   flex-shrink: 0;
+  min-width: 3rem;
 }
 
 .benefit-content h3 {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   margin-bottom: 0.75rem;
   color: #1a1a1a;
+  line-height: 1.3;
 }
 
 .benefit-content p {
   color: #666;
   line-height: 1.7;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
 }
 
-/* Pricing Section */
+/* ===== Pricing Section ===== */
 .pricing {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: #f9fafb;
+}
+
+.pricing-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.pricing-toggle span {
+  color: #666;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.3s;
+  font-size: clamp(0.9rem, 1.5vw, 1rem);
+  white-space: nowrap;
+}
+
+.pricing-toggle span.active {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.toggle-switch {
+  width: 60px;
+  height: 32px;
+  background: #e5e7eb;
+  border-radius: 50px;
+  border: none;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+  flex-shrink: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 24px;
+  height: 24px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-slider.annual {
+  transform: translateX(28px);
+}
+
+.toggle-switch:hover {
+  background: #d1d5db;
 }
 
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: clamp(1.5rem, 3vw, 2rem);
   max-width: 1000px;
-  margin: 0 auto;
+  margin: 3rem auto 0;
 }
 
 .pricing-card {
   background: white;
-  padding: 2.5rem;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
   border-radius: 12px;
   border: 2px solid #e5e7eb;
   transition: all 0.3s;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .pricing-card:hover {
@@ -1484,7 +1710,7 @@ const submitContactForm = async () => {
 }
 
 .pricing-header h3 {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   margin-bottom: 1rem;
   color: #1a1a1a;
 }
@@ -1494,85 +1720,123 @@ const submitContactForm = async () => {
   align-items: baseline;
   justify-content: center;
   margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .currency {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   font-weight: 600;
   color: #666;
 }
 
 .amount {
-  font-size: 4rem;
+  font-size: clamp(3rem, 6vw, 4rem);
   font-weight: 800;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  line-height: 1;
 }
 
 .period {
-  font-size: 1rem;
+  font-size: clamp(0.9rem, 1.5vw, 1rem);
   color: #666;
-  margin-left: 0.5rem;
+}
+
+.annual-savings {
+  color: #10b981;
+  font-weight: 600;
+  font-size: clamp(0.85rem, 1.5vw, 0.9rem);
 }
 
 .pricing-header p {
   color: #666;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
+}
+
+.employee-limit {
+  text-align: center;
+  margin: 1.5rem 0;
+  padding: 0.75rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border-radius: 8px;
+}
+
+.limit-label {
+  font-weight: 600;
+  color: #667eea;
+  font-size: clamp(1rem, 1.5vw, 1.1rem);
 }
 
 .pricing-features {
   list-style: none;
   padding: 0;
   margin-bottom: 2rem;
+  flex-grow: 1;
 }
 
 .pricing-features li {
   padding: 0.75rem 0;
   color: #555;
   border-bottom: 1px solid #f3f4f6;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .pricing-features li:last-child {
   border-bottom: none;
 }
 
-/* Testimonials Section */
+.pricing-note {
+  text-align: center;
+  margin-top: 3rem;
+  color: #666;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
+  line-height: 1.6;
+}
+
+/* ===== Testimonials Section ===== */
 .testimonials {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: white;
 }
 
 .testimonials-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: clamp(1.5rem, 3vw, 2rem);
 }
 
 .testimonial-card {
   background: #f9fafb;
-  padding: 2rem;
+  padding: clamp(1.5rem, 3vw, 2rem);
   border-radius: 12px;
   border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .testimonial-rating {
-  font-size: 1.25rem;
+  font-size: clamp(1.1rem, 2vw, 1.25rem);
   margin-bottom: 1rem;
 }
 
 .testimonial-text {
   color: #333;
-  font-size: 1.1rem;
+  font-size: clamp(1rem, 1.5vw, 1.1rem);
   line-height: 1.7;
   margin-bottom: 1.5rem;
   font-style: italic;
+  flex-grow: 1;
 }
 
 .testimonial-author {
   display: flex;
   align-items: center;
   gap: 1rem;
+  margin-top: auto;
 }
 
 .author-avatar {
@@ -1586,33 +1850,42 @@ const submitContactForm = async () => {
   color: white;
   font-weight: 700;
   flex-shrink: 0;
+  font-size: clamp(0.9rem, 1.5vw, 1rem);
 }
 
 .author-name {
   font-weight: 600;
   color: #1a1a1a;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
 }
 
 .author-title {
-  font-size: 0.9rem;
+  font-size: clamp(0.85rem, 1.5vw, 0.9rem);
   color: #666;
 }
 
-/* Demo Section */
+/* ===== Demo Section ===== */
 .demo-section {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
 }
 
 .demo-content {
   text-align: center;
-  margin-bottom: 3rem;
+  margin-bottom: clamp(2rem, 5vw, 3rem);
 }
 
 .demo-content h2 {
-  font-size: 2.5rem;
+  font-size: clamp(1.75rem, 5vw, 2.5rem);
   margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.demo-content p {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  opacity: 0.95;
+  line-height: 1.6;
 }
 
 .demo-form-wrapper {
@@ -1622,69 +1895,88 @@ const submitContactForm = async () => {
 
 .demo-form {
   background: white;
-  padding: 3rem;
+  padding: clamp(1.5rem, 4vw, 3rem);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
-/* Contact Section */
+/* ===== Contact Section ===== */
 .contact-section {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: #f9fafb;
 }
 
 .contact-grid {
   display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: 4rem;
+  grid-template-columns: 1fr;
+  gap: clamp(2rem, 4vw, 4rem);
+}
+
+@media (min-width: 992px) {
+  .contact-grid {
+    grid-template-columns: 1fr 1.5fr;
+  }
 }
 
 .contact-info {
   display: grid;
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  gap: clamp(1rem, 2vw, 1.5rem);
 }
 
 .contact-card {
   background: white;
-  padding: 1.5rem;
+  padding: clamp(1.25rem, 2vw, 1.5rem);
   border-radius: 12px;
   border: 1px solid #e5e7eb;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .contact-card-icon {
-  font-size: 2.5rem;
+  font-size: clamp(2rem, 3vw, 2.5rem);
   margin-bottom: 1rem;
 }
 
 .contact-card h3 {
-  font-size: 1.25rem;
+  font-size: clamp(1.1rem, 2vw, 1.25rem);
   margin-bottom: 0.75rem;
   color: #1a1a1a;
+  line-height: 1.3;
 }
 
 .contact-card p {
   color: #666;
   margin: 0.25rem 0;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
+  line-height: 1.5;
 }
 
 .contact-form-wrapper {
   background: white;
-  padding: 2.5rem;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   border: 1px solid #e5e7eb;
 }
 
-/* Form Styles */
+/* ===== Form Styles ===== */
 .form-group {
   margin-bottom: 1.5rem;
 }
 
 .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .form-row {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .form-group label {
@@ -1692,6 +1984,7 @@ const submitContactForm = async () => {
   margin-bottom: 0.5rem;
   font-weight: 600;
   color: #333;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .demo-form label,
@@ -1706,9 +1999,17 @@ const submitContactForm = async () => {
   padding: 0.875rem;
   border: 2px solid #e5e7eb;
   border-radius: 8px;
-  font-size: 1rem;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
   transition: all 0.3s;
   font-family: inherit;
+  color: #1a1a1a !important;
+  background-color: white !important;
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder,
+.form-group select {
+  color: #9ca3af;
 }
 
 .form-group input:focus,
@@ -1719,12 +2020,21 @@ const submitContactForm = async () => {
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
+/* Specific fix for demo form inputs */
+.demo-form input,
+.demo-form select,
+.demo-form textarea {
+  color: #1a1a1a !important;
+  background-color: white !important;
+}
+
 .form-message {
   margin-top: 1rem;
   padding: 1rem;
   border-radius: 8px;
   text-align: center;
   font-weight: 500;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .form-message.success {
@@ -1737,9 +2047,9 @@ const submitContactForm = async () => {
   color: #991b1b;
 }
 
-/* FAQ Section */
+/* ===== FAQ Section ===== */
 .faq {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: white;
 }
 
@@ -1756,13 +2066,14 @@ const submitContactForm = async () => {
 }
 
 .faq-question {
-  padding: 1.5rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
   background: white;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
   transition: background 0.3s;
+  gap: 1rem;
 }
 
 .faq-question:hover {
@@ -1771,14 +2082,17 @@ const submitContactForm = async () => {
 
 .faq-question h4 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: clamp(1rem, 1.5vw, 1.1rem);
   color: #1a1a1a;
+  line-height: 1.4;
+  flex: 1;
 }
 
 .faq-icon {
-  font-size: 1.5rem;
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
   color: #667eea;
   font-weight: 300;
+  flex-shrink: 0;
 }
 
 .faq-answer {
@@ -1790,64 +2104,81 @@ const submitContactForm = async () => {
 
 .faq-answer.active {
   max-height: 500px;
-  padding: 1.5rem;
+  padding: clamp(1rem, 2vw, 1.5rem);
 }
 
 .faq-answer p {
   margin: 0;
   color: #666;
   line-height: 1.7;
+  font-size: clamp(0.95rem, 1.5vw, 1rem);
 }
 
-/* CTA Section */
+/* ===== CTA Section ===== */
 .cta {
-  padding: 6rem 0;
+  padding: clamp(3rem, 8vw, 6rem) 0;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   text-align: center;
 }
 
 .cta-content h2 {
-  font-size: 3rem;
+  font-size: clamp(2rem, 6vw, 3rem);
   margin-bottom: 1rem;
+  line-height: 1.2;
 }
 
 .cta-content p {
-  font-size: 1.25rem;
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
   margin-bottom: 2rem;
   opacity: 0.95;
+  line-height: 1.6;
 }
 
 .cta-actions {
   display: flex;
+  flex-direction: column;
   gap: 1rem;
   justify-content: center;
+  align-items: center;
 }
 
-/* Footer */
+@media (min-width: 768px) {
+  .cta-actions {
+    flex-direction: row;
+  }
+}
+
+/* ===== Footer ===== */
 .footer {
   background: #1a1a1a;
   color: white;
-  padding: 4rem 0 2rem;
+  padding: clamp(2rem, 5vw, 4rem) 0 clamp(1.5rem, 3vw, 2rem);
 }
 
 .footer-content {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
-  gap: 2rem;
-  margin-bottom: 3rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: clamp(1.5rem, 3vw, 2rem);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
 }
 
 .footer-section h3,
 .footer-section h4 {
   margin-bottom: 1rem;
   color: white;
+  font-size: clamp(1rem, 1.5vw, 1.1rem);
+}
+
+.footer-section h3 {
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
 }
 
 .footer-section p {
   color: #9ca3af;
   line-height: 1.7;
   margin-bottom: 1rem;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .footer-section ul {
@@ -1864,6 +2195,7 @@ const submitContactForm = async () => {
   color: #9ca3af;
   text-decoration: none;
   transition: color 0.3s;
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .footer-section a:hover {
@@ -1873,6 +2205,7 @@ const submitContactForm = async () => {
 .social-links {
   display: flex;
   gap: 1rem;
+  margin-top: 1rem;
 }
 
 .social-links a {
@@ -1884,6 +2217,8 @@ const submitContactForm = async () => {
   align-items: center;
   justify-content: center;
   transition: all 0.3s;
+  text-decoration: none;
+  font-size: 1rem;
 }
 
 .social-links a:hover {
@@ -1893,146 +2228,303 @@ const submitContactForm = async () => {
 
 .footer-bottom {
   border-top: 1px solid #374151;
-  padding-top: 2rem;
+  padding-top: clamp(1.5rem, 3vw, 2rem);
   display: flex;
+  flex-direction: column;
+  gap: 1rem;
   justify-content: space-between;
   align-items: center;
   color: #9ca3af;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .footer-bottom {
+    flex-direction: row;
+    text-align: left;
+  }
+}
+
+.footer-bottom p {
+  font-size: clamp(0.9rem, 1.5vw, 0.95rem);
 }
 
 .footer-badges {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .footer-badges {
+    justify-content: flex-end;
+  }
 }
 
 .badge {
   background: rgba(255, 255, 255, 0.1);
   padding: 0.5rem 1rem;
   border-radius: 50px;
-  font-size: 0.85rem;
+  font-size: clamp(0.8rem, 1.5vw, 0.85rem);
+  white-space: nowrap;
 }
 
-/* Responsive Design */
-@media (max-width: 1024px) {
+/* ===== Responsive Breakpoints ===== */
+
+/* Large Desktop (1200px and up) */
+@media (min-width: 1200px) {
+  .container {
+    padding: 0 20px;
+  }
+}
+
+/* Tablet Landscape (992px to 1199px) */
+@media (max-width: 1199px) and (min-width: 992px) {
+  .container {
+    padding: 0 24px;
+  }
+  
+  .nav-links {
+    gap: 1.5rem;
+  }
+  
   .hero .container {
-    grid-template-columns: 1fr;
-  }
-
-  .contact-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .footer-content {
-    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
   }
 }
 
-@media (max-width: 768px) {
+/* Tablet Portrait (768px to 991px) */
+@media (max-width: 991px) and (min-width: 768px) {
+  .container {
+    padding: 0 20px;
+  }
+  
   .nav-links {
     display: none;
   }
-
+  
   .mobile-menu-btn {
     display: flex;
   }
-
-  .mobile-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    padding: 1rem;
-    background: white;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s, padding 0.3s;
-  }
-
-  .mobile-menu.open {
-    max-height: 500px;
-    padding: 1rem;
-  }
-
-  .mobile-menu a {
-    text-decoration: none;
-    color: #666;
-    font-weight: 500;
-  }
-
-  .hero-title {
-    font-size: 2.5rem;
-  }
-
-  .hero-stats {
+  
+  .hero .container {
     grid-template-columns: 1fr;
   }
-
-  .hero-actions {
-    flex-direction: column;
-  }
-
-  .section-title {
-    font-size: 2rem;
-  }
-
-  .features-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .benefits-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .solutions-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .pricing-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .testimonials-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .footer-content {
-    grid-template-columns: 1fr;
-  }
-
-  .footer-bottom {
-    flex-direction: column;
-    gap: 1rem;
+  
+  .hero-content {
     text-align: center;
   }
-
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-
-  .cta-content h2 {
-    font-size: 2rem;
-  }
-
-  .cta-actions {
-    flex-direction: column;
+  
+  .hero-stats {
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 
-@media (max-width: 480px) {
+/* Mobile Landscape (576px to 767px) */
+@media (max-width: 767px) and (min-width: 576px) {
+  .nav-links {
+    display: none;
+  }
+  
+  .mobile-menu-btn {
+    display: flex;
+  }
+  
+  .hero-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .hero-actions button {
+    flex: 1;
+    min-width: 200px;
+  }
+  
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Mobile Portrait (up to 575px) */
+@media (max-width: 575px) {
+  .container {
+    padding: 0 16px;
+  }
+  
+  .nav-links {
+    display: none;
+  }
+  
+  .mobile-menu-btn {
+    display: flex;
+  }
+  
   .hero-title {
     font-size: 2rem;
   }
-
+  
+  .hero-subtitle {
+    font-size: 1.1rem;
+  }
+  
+  .hero-actions {
+    flex-direction: column;
+  }
+  
+  .hero-actions button {
+    width: 100%;
+  }
+  
   .section-title {
     font-size: 1.75rem;
   }
-
-  .benefit-item {
-    flex-direction: column;
+  
+  .section-subtitle {
+    font-size: 1rem;
   }
+  
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .solutions-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .pricing-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .testimonials-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .demo-form,
+  .contact-form-wrapper {
+    padding: 1.5rem;
+  }
+  
+  .footer-content {
+    grid-template-columns: 1fr;
+    text-align: center;
+  }
+  
+  .social-links {
+    justify-content: center;
+  }
+  
+  .footer-bottom {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .footer-badges {
+    justify-content: center;
+  }
+}
 
-  .benefit-number {
-    font-size: 2.5rem;
+/* Small Mobile (up to 375px) */
+@media (max-width: 375px) {
+  .hero-title {
+    font-size: 1.75rem;
+  }
+  
+  .section-title {
+    font-size: 1.5rem;
+  }
+  
+  .btn-lg {
+    padding: 0.875rem 1.5rem;
+  }
+  
+  .dashboard-preview {
+    padding: 1rem;
+  }
+  
+  .feature-card,
+  .solution-card,
+  .pricing-card {
+    padding: 1.25rem;
+  }
+}
+
+/* Touch Device Optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .nav-links a::after,
+  .feature-card:hover,
+  .solution-card:hover,
+  .pricing-card:hover,
+  .btn-primary:hover,
+  .btn-secondary:hover,
+  .btn-outline:hover,
+  .social-links a:hover {
+    transform: none;
+  }
+  
+  .feature-card,
+  .solution-card,
+  .pricing-card {
+    transition: none;
+  }
+  
+  button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  input,
+  select,
+  textarea {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+  }
+}
+
+/* Print Styles */
+@media print {
+  .navbar,
+  .hero-actions,
+  .demo-section,
+  .contact-section,
+  .cta,
+  .footer {
+    display: none;
+  }
+  
+  .landing-page {
+    color: #000;
+  }
+  
+  .container {
+    max-width: none;
+    padding: 0;
+  }
+  
+  .hero {
+    background: none;
+    color: #000;
+    padding: 2rem 0;
+  }
+  
+  .hero-stats {
+    background: none;
+    border: 1px solid #000;
+  }
+  
+  .dashboard-preview {
+    box-shadow: none;
+    border: 1px solid #000;
+  }
+  
+  a {
+    color: #000;
+    text-decoration: underline;
   }
 }
 </style>

@@ -14,6 +14,15 @@ export default [
       public: true // Mark as public route
     }
   },
+  // In router/index.js
+{
+  path: '/invitations',
+  name: 'Invitations',
+  component: () => import('@/components/BusinessGroups/InvitationsDashboard.vue'),
+  meta: {
+    requiresAuth: true
+  }
+},
 
   // Auth routes (guest only)
   ...authRoutes,

@@ -55,6 +55,7 @@
           </span>
         </button>
       </form>
+      <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
       <div class="login-footer">
         <p class="signup-link">
           Don't have an account?
@@ -79,83 +80,46 @@ const form = ref({
 })
 
 const loading = ref(false)
+const errorMessage = ref(null)
 
 const handleLogin = async () => {
   loading.value = true
-  
-  
-  
+  errorMessage.value = null
+
   try {
-  //  console.log('📤 Calling authStore.login()...')
-    
     const response = await authStore.login(form.value)
-    
-  
-    
-    // Log user details
-    if (response.data?.user) {
-    
-    }
-    
-   
-   
+
     // Redirect based on user role
     const role = authStore.user?.role || 'employee'
-   
-    
+
     switch (role) {
       case 'admin':
-       // console.log('🔀 Navigating to /admin/dashboard')
         await router.push('/admin/dashboard')
         break
       case 'manager':
-       // console.log('🔀 Navigating to /manager/dashboard')
         await router.push('/manager/dashboard')
         break
       default:
-        //console.log('🔀 Navigating to /employee/dashboard')
         await router.push('/employee/dashboard')
     }
-    
-  
-    
   } catch (error) {
-    console.log('=== LOGIN ERROR ===')
-    console.error('❌ Error Type:', error.constructor.name)
-    console.error('❌ Error Message:', error.message)
-    console.error('❌ Full Error:', error)
-    
-    // Log error response if available
-    if (error.response) {
-     
-    }
-    
-    // Log request details if available
-    if (error.config) {
-     
-    }
-    
-    // Show user-friendly error message
-    let errorMessage = 'Login failed. Please check your credentials and try again.'
-    
+    let msg = 'Login failed. Please check your credentials and try again.'
+
     if (error.response?.status === 401) {
-      errorMessage = 'Invalid email or password. Please try again.'
+      msg = 'Invalid email or password. Please try again.'
     } else if (error.response?.status === 500) {
-      errorMessage = 'Server error. Please try again later or contact support.'
+      msg = 'Server error. Please try again later or contact support.'
     } else if (error.response?.status === 422) {
-      errorMessage = error.response.data?.message || 'Validation error. Please check your input.'
+      msg = error.response.data?.message || 'Validation error. Please check your input.'
     } else if (error.response?.data?.message) {
-      errorMessage = error.response.data.message
+      msg = error.response.data.message
     } else if (!navigator.onLine) {
-      errorMessage = 'No internet connection. Please check your network.'
+      msg = 'No internet connection. Please check your network.'
     }
-    
-    console.error('🚨 Showing error to user:', errorMessage)
-    alert(errorMessage)
-    
+
+    errorMessage.value = msg
   } finally {
     loading.value = false
-    
   }
 }
 </script>
@@ -166,7 +130,7 @@ const handleLogin = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #0a0a0a;
+  background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
   padding: 1rem;
   position: relative;
   overflow: hidden;
@@ -175,35 +139,44 @@ const handleLogin = async () => {
 .blob {
   position: absolute;
   border-radius: 50%;
-  filter: blur(1px);
+  filter: blur(40px);
+  opacity: 0.6;
+  animation: blob-move 20s infinite ease-in-out;
 }
 
 .blob1 {
-  top: 10%;
-  right: 10%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, rgba(147, 51, 234, 0.3), transparent);
+  top: -10%;
+  right: -10%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(147, 51, 234, 0.4), transparent);
 }
 
 .blob2 {
-  bottom: 20%;
-  left: 10%;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.2), transparent);
+  bottom: -20%;
+  left: -10%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.3), transparent);
+}
+
+@keyframes blob-move {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -20px) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
 }
 
 .login-container {
-  background: #1a1a2e;
-  padding: 3rem 2.5rem;
-  border-radius: 20px;
+  background: rgba(26, 26, 46, 0.9);
+  padding: 2.5rem;
+  border-radius: 16px;
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   z-index: 10;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
 }
 
 .login-header {
@@ -215,18 +188,18 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  margin-bottom: 1rem;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
 }
 
 .logo-icon {
-  font-size: 2rem;
+  font-size: 1.75rem;
   color: #3b82f6;
 }
 
 .title {
   color: #ffffff;
-  font-size: 2rem;
+  font-size: 1.875rem;
   font-weight: 700;
   margin: 0;
   background: linear-gradient(135deg, #3b82f6, #8b5cf6);
@@ -236,25 +209,25 @@ const handleLogin = async () => {
 }
 
 .subtitle {
-  color: #a1a1aa;
-  font-size: 1rem;
+  color: #9ca3af;
+  font-size: 0.875rem;
   margin: 0;
   font-weight: 400;
 }
 
 .login-form {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .form-group {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .label {
   display: block;
-  margin-bottom: 0.75rem;
-  font-weight: 600;
-  color: #e4e4e7;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #d1d5db;
   font-size: 0.875rem;
 }
 
@@ -267,52 +240,54 @@ const handleLogin = async () => {
 .input-icon {
   position: absolute;
   left: 1rem;
-  font-size: 1.125rem;
-  color: #71717a;
+  font-size: 1rem;
+  color: #6b7280;
   z-index: 1;
 }
 
 .form-input {
   width: 100%;
-  padding: 1rem 1rem 1rem 3rem;
-  border: 1px solid #404040;
-  border-radius: 12px;
-  font-size: 1rem;
-  background: #1a1a2e;
+  padding: 0.875rem 1rem 0.875rem 3rem;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  background: #111827;
   color: #ffffff;
-  transition: border-color 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-input:focus {
   outline: none;
   border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 .form-input::placeholder {
-  color: #71717a;
+  color: #6b7280;
 }
 
 .login-btn {
   width: 100%;
-  padding: 1rem;
+  padding: 0.875rem;
   background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
   color: white;
   border: none;
-  border-radius: 12px;
-  font-size: 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
 .login-btn:hover:not(:disabled) {
-  opacity: 0.9;
+  opacity: 0.95;
+  transform: translateY(-1px);
 }
 
 .login-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
@@ -324,27 +299,27 @@ const handleLogin = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .btn-icon {
-  font-size: 1rem;
+  font-size: 0.875rem;
 }
 
 .btn-loading {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top: 2px solid white;
   border-radius: 50%;
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
@@ -352,12 +327,22 @@ const handleLogin = async () => {
   100% { transform: rotate(360deg); }
 }
 
+.error-message {
+  color: #ef4444;
+  font-size: 0.875rem;
+  text-align: center;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: 8px;
+}
+
 .login-footer {
   text-align: center;
 }
 
 .signup-link {
-  color: #a1a1aa;
+  color: #9ca3af;
   margin: 0;
   font-size: 0.875rem;
 }
@@ -365,8 +350,8 @@ const handleLogin = async () => {
 .link {
   color: #3b82f6;
   text-decoration: none;
-  font-weight: 600;
-  transition: color 0.3s ease;
+  font-weight: 500;
+  transition: color 0.2s ease;
 }
 
 .link:hover {
@@ -377,17 +362,15 @@ const handleLogin = async () => {
 /* Responsive design */
 @media (max-width: 480px) {
   .login-container {
-    padding: 2rem 2rem;
+    padding: 2rem;
     margin: 1rem;
-    border-radius: 16px;
+    border-radius: 12px;
   }
-
   .title {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
   }
-
   .logo-icon {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
   }
 }
 </style>

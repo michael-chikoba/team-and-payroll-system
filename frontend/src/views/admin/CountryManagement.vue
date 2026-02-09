@@ -809,6 +809,10 @@ export default {
 </script>
 
 <style scoped>
+/* ============================================
+   IMPROVED FORM INPUT VISIBILITY STYLES
+   ============================================ */
+
 /* Add error styles */
 .error {
   border-color: #ef4444 !important;
@@ -820,6 +824,7 @@ export default {
   font-size: 0.875rem;
   margin-top: 0.25rem;
   display: block;
+  font-weight: 500;
 }
 
 .error-state {
@@ -843,15 +848,6 @@ export default {
 .error-state p {
   color: #64748b;
   margin-bottom: 2rem;
-}
-
-/* Rest of your existing styles remain the same */
-.country-management {
-  padding: 2rem;
-  max-width: 1500px;
-  margin: 0 auto;
-  background: #f9fafb;
-  min-height: 100vh;
 }
 
 .country-management {
@@ -1191,7 +1187,9 @@ export default {
   max-height: calc(90vh - 140px);
 }
 
-/* Form */
+/* ============================================
+   IMPROVED FORM STYLES FOR BETTER VISIBILITY
+   ============================================ */
 .form-section {
   margin-bottom: 2.5rem;
 }
@@ -1201,6 +1199,7 @@ export default {
   border-bottom: 2px solid #e2e8f0;
   color: #1e293b;
   font-size: 1.25rem;
+  font-weight: 700;
 }
 .form-grid {
   display: grid;
@@ -1214,27 +1213,64 @@ export default {
 .form-group.full-width {
   grid-column: 1 / -1;
 }
+
+/* CRITICAL: Enhanced label visibility */
 .form-group label {
-  margin-bottom: 0.5rem;
-  color: #374151;
-  font-weight: 600;
-  font-size: 0.95rem;
+  margin-bottom: 0.6rem;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
 }
+
+/* CRITICAL: Enhanced input visibility and contrast */
 .form-group input,
 .form-group select {
   padding: 0.875rem 1rem;
-  border: 1px solid #d1d5db;
+  border: 2px solid #cbd5e0;
   border-radius: 10px;
-  background: white;
-  font-size: 1rem;
+  background: #ffffff;
+  font-size: 1.05rem;
   transition: all 0.2s;
+  color: #1a202c;
+  font-weight: 500;
+  line-height: 1.5;
 }
+
+/* CRITICAL: Placeholder visibility */
+.form-group input::placeholder {
+  color: #718096;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* CRITICAL: Focus state for better visibility */
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
   border-color: #4299e1;
-  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
+  box-shadow: 0 0 0 4px rgba(66, 153, 225, 0.2);
+  background: #ffffff;
 }
+
+/* CRITICAL: Select dropdown visibility */
+.form-group select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath fill='%231a202c' d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.form-group select option {
+  background: white;
+  color: #1a202c;
+  padding: 0.5rem;
+  font-weight: 500;
+}
+
+/* Flag input wrapper */
 .flag-input-wrapper {
   display: flex;
   gap: 1rem;
@@ -1246,31 +1282,38 @@ export default {
 .flag-preview {
   width: 110px;
   height: 80px;
-  border: 1px solid #e2e8f0;
+  border: 2px solid #e2e8f0;
   border-radius: 10px;
   overflow: hidden;
   background: #f8fafc;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .preview-flag {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
+
+/* Help text visibility */
 .help-text {
   margin-top: 0.5rem;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: #64748b;
+  font-weight: 500;
 }
 .help-text a {
   color: #4299e1;
   text-decoration: none;
+  font-weight: 600;
 }
 .help-text a:hover {
   text-decoration: underline;
 }
+
+/* Checkbox group */
 .checkbox-group {
   flex-direction: row;
   align-items: center;
@@ -1282,8 +1325,16 @@ export default {
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
-  font-weight: 500;
-  font-size: 0.95rem;
+  font-weight: 600;
+  font-size: 1rem;
+  color: #1e293b;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #4299e1;
 }
 
 /* Modal Footer */
@@ -1305,6 +1356,7 @@ export default {
   align-items: center;
   gap: 0.6rem;
   transition: all 0.2s;
+  font-size: 1rem;
 }
 .btn-primary {
   background: #4299e1;

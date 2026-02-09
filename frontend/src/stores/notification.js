@@ -22,6 +22,7 @@ export const useNotificationStore = defineStore('notification', () => {
       updateUnreadCount()
       
       console.log('✅ Notifications fetched:', notifications.value.length)
+      console.log('📋 Notifications data:', notifications.value)
       return notifications.value
     } catch (error) {
       console.error('❌ Failed to fetch notifications:', error.response?.data || error.message)
@@ -40,7 +41,10 @@ export const useNotificationStore = defineStore('notification', () => {
       console.log('✅ Unread count:', unreadCount.value)
       return unreadCount.value
     } catch (error) {
-      console.error('❌ Failed to fetch unread count:', error.response?.data || error.message)
+      // Don't log errors for 401 (user not authenticated)
+      if (error.response?.status !== 401) {
+        console.error('❌ Failed to fetch unread count:', error.response?.data || error.message)
+      }
       unreadCount.value = 0
     }
   }
@@ -65,6 +69,7 @@ export const useNotificationStore = defineStore('notification', () => {
     const notification = notifications.value.find(n => n.id === id)
     if (notification && !notification.is_read) {
       try {
+        // ✅ FIXED: Changed from template literal to parentheses
         await api.post(`/notifications/${id}/read`)
         notification.is_read = true
         notification.read_at = new Date().toISOString()
@@ -95,6 +100,18 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
   
+  // Delete notification
+  async function deleteNotification(id) {
+    try {
+      await api.delete(`/notifications/${id}`)
+      removeNotification(id)
+      console.log('✅ Notification deleted:', id)
+    } catch (error) {
+      console.error('❌ Failed to delete notification:', error.response?.data || error.message)
+      throw error
+    }
+  }
+  
   // Remove notification from local state
   function removeNotification(id) {
     const index = notifications.value.findIndex(n => n.id === id)
@@ -103,7 +120,7 @@ export const useNotificationStore = defineStore('notification', () => {
         unreadCount.value = Math.max(0, unreadCount.value - 1)
       }
       notifications.value.splice(index, 1)
-      console.log('✅ Notification removed:', id)
+      console.log('✅ Notification removed locally:', id)
     }
   }
   
@@ -122,6 +139,7 @@ export const useNotificationStore = defineStore('notification', () => {
     fetchUnreadCount,
     addNotification,
     removeNotification,
+    deleteNotification,
     markAsRead,
     markAllAsRead,
     clearAll,

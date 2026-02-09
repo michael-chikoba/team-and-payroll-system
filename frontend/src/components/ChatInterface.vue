@@ -186,32 +186,103 @@
       </template>
     </div>
     
-    <!-- Modals (simplified) -->
+    <!-- Channel Browser Modal -->
     <div v-if="showChannelBrowser" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="showChannelBrowser = false">
-      <div class="bg-white rounded-lg p-6 max-w-2xl w-full" @click.stop>
+      <div class="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] flex flex-col" @click.stop>
         <h2 class="text-2xl font-bold mb-4">Browse Channels</h2>
-        <input v-model="channelSearchQuery" placeholder="Search..." class="w-full p-2 border rounded mb-4" />
-        <div class="space-y-2">
-          <div v-for="channel in filteredBrowsableChannels" :key="channel.id" class="flex justify-between items-center p-4 border rounded">
+        <input v-model="channelSearchQuery" placeholder="Search channels..." class="w-full p-2 border rounded mb-4" />
+        <div class="overflow-y-auto flex-1 space-y-2">
+          <div v-for="channel in filteredBrowsableChannels" :key="channel.id" class="flex justify-between items-center p-4 border rounded hover:bg-gray-50">
             <div>
               <div class="font-semibold">{{ channel.name }}</div>
               <div class="text-sm text-gray-500">{{ channel.description }}</div>
             </div>
-            <button @click="joinChannel(channel)" class="px-4 py-2 bg-blue-600 text-white rounded">Join</button>
+            <button @click="joinChannel(channel)" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Join</button>
           </div>
         </div>
       </div>
     </div>
     
+    <!-- New Direct Message Modal - IMPROVED -->
     <div v-if="showNewDM" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" @click="showNewDM = false">
-      <div class="bg-white rounded-lg p-6 max-w-2xl w-full" @click.stop>
-        <h2 class="text-2xl font-bold mb-4">New Direct Message</h2>
-        <input v-model="userSearchQuery" placeholder="Search users..." class="w-full p-2 border rounded mb-4" />
-        <div class="space-y-2">
-          <div v-for="user in filteredAvailableUsers" :key="user.id" @click="startDM(user)" class="p-4 border rounded hover:bg-gray-50 cursor-pointer">
-            <div class="font-semibold">{{ getUserDisplayName(user) }}</div>
-            <div class="text-sm text-gray-500">{{ user.email }}</div>
+      <div class="bg-white rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col shadow-xl" @click.stop>
+        <!-- Modal Header -->
+        <div class="px-6 py-4 border-b border-gray-200">
+          <div class="flex items-center justify-between">
+            <h2 class="text-2xl font-bold text-gray-900">New Direct Message</h2>
+            <button @click="showNewDM = false" class="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
+        </div>
+        
+        <!-- Search Input -->
+        <div class="px-6 py-4 border-b border-gray-200">
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input 
+              v-model="userSearchQuery" 
+              ref="userSearchInput"
+              type="text"
+              placeholder="Search by name or email..." 
+              class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          <div v-if="filteredAvailableUsers.length > 0" class="mt-2 text-sm text-gray-500">
+            {{ filteredAvailableUsers.length }} user{{ filteredAvailableUsers.length !== 1 ? 's' : '' }} found
+          </div>
+        </div>
+        
+        <!-- Users List - Scrollable -->
+        <div class="flex-1 overflow-y-auto px-6 py-2">
+          <div v-if="filteredAvailableUsers.length === 0" class="py-12 text-center text-gray-500">
+            <svg class="mx-auto mb-3 text-gray-300" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            <p class="font-medium">No users found</p>
+            <p class="text-sm mt-1">Try a different search term</p>
+          </div>
+          
+          <div v-else class="space-y-1">
+            <div 
+              v-for="user in filteredAvailableUsers" 
+              :key="user.id" 
+              @click="startDM(user)" 
+              class="flex items-center gap-3 p-3 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors border border-transparent hover:border-blue-200"
+            >
+              <!-- User Avatar -->
+              <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center font-semibold text-white text-sm flex-shrink-0">
+                {{ getUserInitialsFromUser(user) }}
+              </div>
+              
+              <!-- User Info -->
+              <div class="flex-1 min-w-0">
+                <div class="font-semibold text-gray-900 truncate">{{ getUserDisplayName(user) }}</div>
+                <div class="text-sm text-gray-500 truncate">{{ user.email }}</div>
+              </div>
+              
+              <!-- Arrow Icon -->
+              <svg class="text-gray-400 flex-shrink-0" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
+          <p class="text-sm text-gray-600">
+            Select a user to start a direct message conversation
+          </p>
         </div>
       </div>
     </div>
@@ -276,7 +347,11 @@ export default {
     filteredAvailableUsers() {
       if (!this.userSearchQuery) return this.availableUsers;
       const q = this.userSearchQuery.toLowerCase();
-      return this.availableUsers.filter(u => this.getUserDisplayName(u).toLowerCase().includes(q));
+      return this.availableUsers.filter(u => {
+        const displayName = this.getUserDisplayName(u).toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        return displayName.includes(q) || email.includes(q);
+      });
     },
     filteredNonMembers() {
       return this.availableUsers.filter(u => !this.currentMembers.some(m => m.id === u.id));
@@ -301,7 +376,15 @@ export default {
   },
   watch: {
     showChannelBrowser(val) { if (val) this.fetchBrowsableChannels(); },
-    showNewDM(val) { if (val) this.fetchAvailableUsers(); }
+    showNewDM(val) { 
+      if (val) {
+        this.fetchAvailableUsers();
+        this.userSearchQuery = '';
+        this.$nextTick(() => {
+          this.$refs.userSearchInput?.focus();
+        });
+      }
+    }
   },
   methods: {
     async initializeApp() {
@@ -320,6 +403,15 @@ export default {
       if (fullName) return fullName;
       if (user.email) return user.email;
       return `User ${user.id}`;
+    },
+    
+    getUserInitialsFromUser(user) {
+      const name = this.getUserDisplayName(user);
+      const parts = name.split(' ');
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return name.substring(0, 2).toUpperCase();
     },
     
     getChatDisplayName(chat) {
@@ -557,6 +649,7 @@ export default {
 </script>
 
 <style>
+/* Existing styles remain the same... */
 /* CSS Reset & Variables */
 :root {
   --slack-aubergine: #3F0E40;
@@ -594,837 +687,5 @@ body {
 }
 .custom-scrollbar:hover::-webkit-scrollbar-thumb {
   background: rgba(0,0,0,0.3);
-}
-.slack-chat {
-  display: flex;
-  height: 100vh;
-  width: 100vw;
-  overflow: hidden;
-  background: white;
-}
-/* ========================================= */
-/* SIDEBAR STYLES */
-/* ========================================= */
-.sidebar {
-  width: 260px;
-  background: var(--slack-aubergine);
-  color: #cfc3cf;
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  border-right: 1px solid rgba(255,255,255,0.1);
-  transition: width 0.2s;
-}
-.workspace-header {
-  height: 49px;
-  padding: 0 16px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-.workspace-name {
-  font-size: 18px;
-  font-weight: 900;
-  color: white;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.workspace-info {
-  display: flex;
-  width: 100%;
-  justify-content: space-between;
-  align-items: center;
-}
-.settings-btn {
-  background: white;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--slack-aubergine);
-  border: none;
-  cursor: pointer;
-  opacity: 0.8;
-}
-.sidebar-actions {
-  padding: 8px 16px;
-}
-.browse-channels-btn {
-  background: rgba(0,0,0,0.2);
-  border: none;
-  color: #cfc3cf;
-  width: 100%;
-  text-align: left;
-  padding: 6px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-.browse-channels-btn:hover {
-  background: rgba(255,255,255,0.1);
-  color: white;
-}
-.channels-container {
-  flex: 1;
-  overflow-y: auto;
-  padding-bottom: 20px;
-}
-/* Chat Section Component Styles */
-.chat-section {
-  margin-top: 16px;
-}
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 4px 16px;
-  color: #cfc3cf;
-  cursor: pointer;
-}
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  opacity: 0.8;
-}
-.section-title:hover {
-  opacity: 1;
-}
-.dropdown-arrow {
-  font-size: 8px;
-}
-.add-btn {
-  background: none;
-  border: none;
-  color: #cfc3cf;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 0 4px;
-}
-.add-btn:hover {
-  background: rgba(255,255,255,0.1);
-  border-radius: 4px;
-}
-.chat-list-item {
-  padding: 4px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 28px;
-  margin: 1px 0;
-}
-.chat-list-item:hover {
-  background: var(--slack-aubergine-dark);
-}
-.chat-list-item.active {
-  background: var(--slack-blue);
-  color: white;
-}
-.chat-list-item.active .item-icon {
-  opacity: 1;
-}
-.chat-list-item.unread .item-name {
-  font-weight: 700;
-  color: white;
-}
-.item-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  overflow: hidden;
-}
-.item-icon {
-  opacity: 0.6;
-  font-size: 14px;
-  min-width: 14px;
-}
-.item-icon.dot {
-  font-size: 10px;
-  color: var(--slack-green);
-  opacity: 1;
-}
-.item-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 15px;
-}
-.unread-badge {
-  background: #cd2553;
-  color: white;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
-  min-width: 20px;
-  text-align: center;
-}
-/* User Profile */
-.user-profile {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(0,0,0,0.15);
-  cursor: pointer;
-}
-.user-profile:hover {
-  background: rgba(0,0,0,0.25);
-}
-.user-avatar-small {
-  width: 36px;
-  height: 36px;
-  background: #e0e0e0;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #333;
-  font-weight: bold;
-  margin-right: 10px;
-}
-.user-details {
-  overflow: hidden;
-}
-.user-name {
-  color: white;
-  font-weight: 700;
-  font-size: 14px;
-}
-.user-status {
-  font-size: 12px;
-  color: #cfc3cf;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.status-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--slack-green);
-  border-radius: 50%;
-  display: inline-block;
-}
-/* ========================================= */
-/* MAIN CHAT AREA */
-/* ========================================= */
-.chat-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: white;
-}
-/* Header */
-.chat-header {
-  height: 49px;
-  border-bottom: 1px solid var(--border-light);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px 0 20px;
-  flex-shrink: 0;
-}
-.chat-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.chat-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 900;
-  color: var(--text-main);
-  display: flex;
-  align-items: center;
-}
-.chat-title .hash-icon {
-  color: var(--text-secondary);
-  font-size: 16px;
-  margin-right: 2px;
-}
-.favorite-toggle {
-  background: none;
-  border: none;
-  color: #d1d5db;
-  cursor: pointer;
-  padding: 4px;
-}
-.favorite-toggle.is-active {
-  color: #F2C744;
-}
-.favorite-toggle:hover {
-  color: #F2C744;
-}
-.chat-header-right {
-  display: flex;
-  align-items: center;
-}
-.members-pill {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-.members-pill:hover {
-  background: var(--bg-hover);
-}
-.avatars-stack {
-  display: flex;
-  margin-right: 6px;
-}
-.stack-avatar {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  background: #ddd;
-  border: 2px solid white;
-  margin-left: -6px;
-}
-.stack-avatar:first-child {
-  margin-left: 0;
-}
-.members-pill .count {
-  font-size: 13px;
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-.header-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--border-light);
-  margin: 0 12px;
-}
-.header-icon-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-}
-.header-icon-btn:hover {
-  background: var(--bg-hover);
-}
-/* Messages Area */
-.messages-area {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 0;
-  display: flex;
-  flex-direction: column;
-}
-.loading-messages {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 20px;
-  color: var(--text-secondary);
-}
-.empty-messages {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  padding: 0 20px 20px 20px;
-}
-.empty-channel-intro {
-  margin-bottom: 20px;
-}
-.intro-icon {
-  width: 70px;
-  height: 70px;
-  background: #f8f8f8;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 40px;
-  color: var(--text-main);
-  margin-bottom: 12px;
-}
-.empty-channel-intro h1 {
-  margin: 0 0 8px 0;
-  font-size: 28px;
-}
-.empty-channel-intro p {
-  color: var(--text-secondary);
-  font-size: 16px;
-}
-.highlight {
-  background: rgba(29, 155, 209, 0.1);
-  color: var(--slack-blue);
-  padding: 0 4px;
-  border-radius: 2px;
-}
-/* Individual Message Row */
-.messages-list {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-.message-row {
-  display: flex;
-  padding: 8px 20px;
-  position: relative;
-  gap: 12px;
-}
-.message-row:hover {
-  background: var(--bg-hover);
-}
-.message-row:hover .message-actions-hover {
-  opacity: 1;
-  pointer-events: auto;
-}
-.message-avatar {
-  width: 36px;
-  height: 36px;
-  background-color: var(--slack-blue); /* Default user color */
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
-  font-size: 14px;
-}
-.message-content {
-  flex: 1;
-  min-width: 0;
-}
-.message-header {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 2px;
-}
-.message-user {
-  font-weight: 900;
-  color: var(--text-main);
-  cursor: pointer;
-}
-.message-user:hover {
-  text-decoration: underline;
-}
-.message-time {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.message-text {
-  color: var(--text-main);
-  font-size: 15px;
-  line-height: 1.46668;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-/* Reply Quote */
-.message-reply-quote {
-  display: flex;
-  align-items: center;
-  margin-bottom: 4px;
-  font-size: 13px;
-  gap: 6px;
-}
-.quote-bar {
-  width: 3px;
-  height: 14px;
-  background: #ddd;
-  border-radius: 2px;
-}
-.quote-user {
-  font-weight: bold;
-  color: var(--text-secondary);
-}
-.quote-text {
-  color: #888;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 300px;
-}
-/* Reactions */
-.message-reactions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-.reaction-pill {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(29, 28, 29, 0.04);
-  border: 1px solid transparent;
-  border-radius: 12px;
-  padding: 2px 6px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.reaction-pill:hover {
-  background: white;
-  border-color: #bab8b9;
-}
-.reaction-pill.reacted {
-  background: rgba(29, 155, 209, 0.1);
-  border-color: rgba(29, 155, 209, 0.3);
-}
-.reaction-pill .count {
-  font-weight: 600;
-  color: var(--slack-blue);
-}
-/* Hover Actions Menu */
-.message-actions-hover {
-  position: absolute;
-  top: -12px;
-  right: 20px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.1s;
-}
-.actions-group {
-  background: white;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  display: flex;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  padding: 2px;
-}
-.action-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  color: #555;
-  cursor: pointer;
-  border-radius: 4px;
-}
-.action-icon:hover {
-  background: #f0f0f0;
-}
-/* Input Area */
-.message-input-container {
-  padding: 0 20px 20px 20px;
-  flex-shrink: 0;
-}
-.input-box-wrapper {
-  border: 1px solid #868686;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  transition: border-color 0.2s;
-  background: white;
-}
-.input-box-wrapper:focus-within {
-  box-shadow: var(--focus-ring);
-  border-color: transparent;
-}
-/* Replying Banner */
-.replying-banner {
-  display: flex;
-  align-items: center;
-  padding: 8px 12px;
-  background: #f8f8f8;
-  border-top-left-radius: 7px;
-  border-top-right-radius: 7px;
-  border-bottom: 1px solid var(--border-light);
-  gap: 8px;
-}
-.reply-line {
-  width: 2px;
-  height: 20px;
-  background: var(--text-secondary);
-}
-.replying-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  font-size: 13px;
-}
-.replying-label {
-  color: var(--text-secondary);
-}
-.replying-text {
-  color: #888;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 400px;
-}
-.close-reply {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #666;
-}
-/* File Preview */
-.file-preview-banner {
-  padding: 8px;
-  border-bottom: 1px solid var(--border-light);
-}
-.file-chip {
-  display: inline-flex;
-  align-items: center;
-  background: white;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  padding: 4px;
-  gap: 8px;
-  max-width: 300px;
-}
-.file-icon {
-  width: 32px;
-  height: 32px;
-  background: #eee;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #666;
-}
-.file-details {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
-.file-name {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
-}
-.file-size {
-  font-size: 11px;
-  color: #888;
-}
-.remove-file-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #888;
-}
-/* Main Text Input */
-.input-editor {
-  padding: 8px 10px;
-  min-height: 44px;
-}
-.bare-input {
-  width: 100%;
-  border: none;
-  outline: none;
-  font-size: 15px;
-  resize: none;
-  font-family: inherit;
-}
-/* Toolbar */
-.input-toolbar {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 8px 8px 8px;
-  align-items: center;
-}
-.toolbar-left {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-}
-.tool-btn {
-  background: none;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 4px;
-  color: #616061;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.tool-btn:hover {
-  background: #f2f2f2;
-}
-.divider {
-  width: 1px;
-  height: 20px;
-  background: #ddd;
-  margin: 0 4px;
-}
-.send-btn-primary {
-  background: white;
-  color: #ddd;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  cursor: default;
-}
-.send-btn-primary.ready {
-  background: #007a5a;
-  color: white;
-  cursor: pointer;
-}
-.send-btn-primary.ready:hover {
-  background: #148567;
-}
-.typing-hint {
-  font-size: 11px;
-  color: #888;
-  margin-top: 4px;
-  text-align: right;
-  padding-right: 4px;
-}
-/* Empty/No Chat Selected */
-.no-chat-selected {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: white;
-  color: var(--text-main);
-}
-.empty-state-content {
-  text-align: center;
-  max-width: 400px;
-}
-.empty-icon {
-  background: #f8f8f8;
-  width: 100px;
-  height: 100px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px;
-  color: var(--text-secondary);
-}
-/* Modal Styles */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.modal {
-  background: white;
-  border-radius: 8px;
-  width: 600px;
-  max-width: 90%;
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 0 0 1px rgba(29, 28, 29, 0.13), 0 18px 48px 0 rgba(0, 0, 0, 0.35);
-}
-.modal-header {
-  padding: 20px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.modal-header h2 {
-  margin: 0;
-  font-size: 22px;
-  font-weight: 900;
-}
-.close-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 4px;
-}
-.close-btn:hover {
-  background: #f2f2f2;
-}
-.modal-body {
-  padding: 0 24px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow: hidden;
-}
-.search-container {
-  position: relative;
-  width: 100%;
-}
-.search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #666;
-}
-.search-input {
-  width: 100%;
-  padding: 10px 10px 10px 36px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 15px;
-}
-.search-input:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(29, 155, 209, 0.3);
-  border-color: var(--slack-blue);
-}
-.browsable-channels {
-  overflow-y: auto;
-  max-height: 400px;
-  border: 1px solid #eee;
-  border-radius: 6px;
-}
-.channel-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid #f2f2f2;
-}
-.channel-row:hover {
-  background: #f8f8f8;
-}
-.channel-row-name {
-  font-weight: 700;
-  font-size: 15px;
-  margin-bottom: 4px;
-}
-.channel-row-meta {
-  font-size: 13px;
-  color: #616061;
-}
-.join-btn {
-  padding: 6px 16px;
-  border: 1px solid #ddd;
-  background: white;
-  border-radius: 4px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.join-btn:hover {
-  background: #f8f8f8;
-  border-color: #999;
 }
 </style>

@@ -8,6 +8,9 @@ import ChatInterface from './components/ChatInterface.vue'
 import IntegrationsModal from './components/IntegrationsModal.vue'
 import './assets/styles/main.css'
 import '@/assets/css/landing.css'
+// main.js
+import './assets/base.css'
+import '@/assets/css/shared-layout-styles.css'
 
 // Set base URL for API requests
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'

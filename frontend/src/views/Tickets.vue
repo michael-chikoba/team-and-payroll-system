@@ -22,18 +22,28 @@
             <div class="hidden md:flex items-center gap-3 bg-gray-100/50 p-1.5 rounded-xl border border-gray-200/60">
               <div class="px-3 py-1.5 rounded-lg flex items-center gap-2 bg-white shadow-sm border border-gray-100">
                 <div class="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse"></div>
-                <span class="text-xs font-semibold text-gray-600">{{ ticketStats.issues || 0 }} Issues</span>
+                <span class="text-xs font-semibold text-gray-600">{{ computedTicketStats.issues }} Issues</span>
               </div>
               <div class="px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white hover:shadow-sm transition-all cursor-default">
                 <div class="h-1.5 w-1.5 rounded-full bg-emerald-500"></div>
-                <span class="text-xs font-medium text-gray-500">{{ ticketStats.requests || 0 }} Requests</span>
+                <span class="text-xs font-medium text-gray-500">{{ computedTicketStats.requests }} Requests</span>
               </div>
               <div class="px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-white hover:shadow-sm transition-all cursor-default">
                 <div class="h-1.5 w-1.5 rounded-full bg-purple-500"></div>
-                <span class="text-xs font-medium text-gray-500">{{ ticketStats.change_requests || 0 }} Changes</span>
+                <span class="text-xs font-medium text-gray-500">{{ computedTicketStats.change_requests }} Changes</span>
               </div>
             </div>
             <div class="h-8 w-px bg-gray-200 hidden md:block"></div>
+            
+            <!-- Refresh Button -->
+            <button
+              @click="refreshData"
+              class="relative inline-flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-gray-700 transition-all duration-200 bg-white border-2 border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 shadow-sm hover:shadow active:scale-95"
+              title="Refresh Data"
+            >
+              <ArrowPathIcon class="w-5 h-5 mr-2 -ml-1" :class="{ 'animate-spin': isRefreshing }" />
+              Refresh
+            </button>
             
             <!-- Slack Integration Button (Admin Only) -->
             <button
@@ -71,7 +81,7 @@
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Tickets</p>
-                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.total || 0 }}</h3>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ computedStatistics.total }}</h3>
                 <div class="flex items-center mt-2 gap-1">
                   <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                     All Types
@@ -83,13 +93,14 @@
               </div>
             </div>
           </div>
+          
           <!-- Pending Review -->
           <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
             <div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Pending Review</p>
-                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.pending || 0 }}</h3>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ computedStatistics.pending }}</h3>
                 <div class="flex items-center mt-2 gap-1">
                   <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                     Any admin can approve
@@ -101,13 +112,14 @@
               </div>
             </div>
           </div>
+          
           <!-- In Progress -->
           <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
             <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">In Progress</p>
-                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.in_progress || 0 }}</h3>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ computedStatistics.in_progress }}</h3>
                 <div class="flex items-center mt-2 gap-1">
                   <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                     Active work
@@ -119,13 +131,14 @@
               </div>
             </div>
           </div>
+          
           <!-- Overdue -->
           <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
             <div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Overdue</p>
-                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.overdue || 0 }}</h3>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ computedStatistics.overdue }}</h3>
                 <div class="flex items-center mt-2 gap-1">
                   <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
                     Needs attention
@@ -137,16 +150,17 @@
               </div>
             </div>
           </div>
+          
           <!-- SLA Compliance -->
           <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
             <div class="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">SLA Compliance</p>
-                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ statistics.sla_compliance?.percentage || 0 }}%</h3>
+                <h3 class="mt-2 text-3xl font-bold text-slate-900 tracking-tight">{{ computedStatistics.sla_percentage }}%</h3>
                 <div class="flex items-center mt-2 gap-1">
                   <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    {{ statistics.sla_compliance?.compliant || 0 }}/{{ statistics.sla_compliance?.total || 0 }}
+                    {{ computedStatistics.sla_compliant }}/{{ computedStatistics.sla_total }}
                   </span>
                 </div>
               </div>
@@ -157,6 +171,7 @@
           </div>
         </div>
       </section>
+      
       <!-- Enhanced Filters & Toolbar -->
       <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-1">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 p-3">
@@ -195,6 +210,7 @@
                 <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
               </div>
             </div>
+            
             <!-- Status Filter -->
             <div class="relative">
               <select
@@ -216,6 +232,7 @@
                 <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
               </div>
             </div>
+            
             <!-- Priority Filter -->
             <div class="relative">
               <select
@@ -232,6 +249,7 @@
                 <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
               </div>
             </div>
+            
             <!-- Category Filter -->
             <div class="relative">
               <select
@@ -247,8 +265,26 @@
                 <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
               </div>
             </div>
+            
+            <!-- Assigned Filter -->
+            <div class="relative">
+              <select
+                v-model="filters.assigned"
+                class="appearance-none block w-36 pl-3 pr-8 py-2 text-sm border border-slate-200 bg-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-shadow cursor-pointer hover:border-slate-300"
+                @change="handleAssignedFilterChange"
+              >
+                <option value="">All Tickets</option>
+                <option value="assigned_to_me">Assigned to Me</option>
+                <option value="created_by_me">Created by Me</option>
+                <option value="unassigned">Unassigned</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
+                <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+              </div>
+            </div>
            
             <div class="h-8 w-px bg-slate-200 mx-1"></div>
+            
             <!-- Clear Filters Button -->
             <button
               @click="clearFilters"
@@ -257,6 +293,7 @@
             >
               <XMarkIcon class="w-5 h-5" />
             </button>
+            
             <!-- Refresh Button -->
             <button
               @click="refreshData"
@@ -268,6 +305,7 @@
           </div>
         </div>
       </section>
+      
       <!-- Main Data Table -->
       <section class="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden relative min-h-[400px]">
         <!-- Loading Overlay -->
@@ -362,6 +400,7 @@
                     </div>
                   </div>
                 </td>
+                
                 <!-- Category -->
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex flex-col">
@@ -369,6 +408,7 @@
                     <span v-if="ticket.subcategory" class="text-xs text-slate-500">{{ ticket.subcategory }}</span>
                   </div>
                 </td>
+                
                 <!-- Status -->
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex flex-col gap-1">
@@ -381,6 +421,7 @@
                     </div>
                   </div>
                 </td>
+                
                 <!-- Priority -->
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex items-center gap-2">
@@ -396,6 +437,7 @@
                     </button>
                   </div>
                 </td>
+                
                 <!-- Assigned To (Multiple Users) -->
                 <td class="px-6 py-4">
                   <div class="flex flex-col gap-2">
@@ -446,6 +488,7 @@
                     <div v-else class="text-xs text-slate-400 italic">Not assigned</div>
                   </div>
                 </td>
+                
                 <!-- Date with SLA indicator -->
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="flex flex-col">
@@ -466,6 +509,7 @@
                     </div>
                   </div>
                 </td>
+                
                 <!-- Actions -->
                 <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div class="flex items-center justify-end space-x-2">
@@ -603,6 +647,7 @@
           <Pagination :meta="tickets.meta" @page-change="changePage" />
         </div>
       </section>
+      
       <!-- Modals -->
       <CreateTicketModal
         v-if="showCreateModal"
@@ -654,6 +699,7 @@
         @close="closeStatusModal"
         @status-updated="handleStatusUpdated"
       />
+      
       <!-- Assign Users Modal -->
       <AssignUsersModal
         v-if="showAssignModal"
@@ -674,6 +720,7 @@
     </main>
   </div>
 </template>
+
 <script setup>
 import { ref, onMounted, watch, computed, onUnmounted } from 'vue'
 import axios from 'axios'
@@ -696,6 +743,7 @@ import {
   DocumentTextIcon,
   UserGroupIcon
 } from '@heroicons/vue/24/outline'
+
 import StatusBadge from '@/components/StatusBadge.vue'
 import PriorityBadge from '@/components/PriorityBadge.vue'
 import Pagination from '@/components/Pagination.vue'
@@ -707,10 +755,10 @@ import ReassignTicketModal from '@/components/Tickets/ReassignTicketModal.vue'
 import StatusUpdateModal from '@/components/Tickets/StatusUpdateModal.vue'
 import AssignUsersModal from '@/components/Tickets/AssignUsersModal.vue'
 import SlackConfigModal from '@/components/Tickets/SlackConfigModal.vue'
+
 // ===== Reactive State =====
 const tickets = ref({ data: [], meta: {} })
 const statistics = ref({})
-const ticketStats = ref({})
 const approvers = ref([])
 const assignableUsers = ref([])
 const filters = ref({
@@ -718,11 +766,13 @@ const filters = ref({
   status: '',
   priority: '',
   category: '',
+  assigned: '', // New filter for assigned tickets
   search: '',
   page: 1,
   sort_by: 'created_at',
   sort_order: 'desc'
 })
+
 const isLoading = ref(false)
 const isRefreshing = ref(false)
 const showCreateModal = ref(false)
@@ -736,13 +786,111 @@ const showSlackConfigModal = ref(false)
 const selectedTicket = ref(null)
 const currentUser = ref(null)
 const showQuickActions = ref(null)
+
 // ===== Computed Properties =====
+
+/**
+ * Computed statistics with fallback values
+ * This ensures we always have valid numbers even if the backend returns null/undefined
+ */
+const computedStatistics = computed(() => {
+  const stats = statistics.value || {}
+  
+  // Calculate total from by_type if not provided directly
+  let total = stats.total || 0
+  if (!total && stats.by_type) {
+    const issueCount = Array.isArray(stats.by_type.issue) 
+      ? stats.by_type.issue.reduce((sum, item) => sum + (item.count || 0), 0) 
+      : 0
+    const requestCount = Array.isArray(stats.by_type.request) 
+      ? stats.by_type.request.reduce((sum, item) => sum + (item.count || 0), 0) 
+      : 0
+    const changeCount = Array.isArray(stats.by_type.change_request) 
+      ? stats.by_type.change_request.reduce((sum, item) => sum + (item.count || 0), 0) 
+      : 0
+    total = issueCount + requestCount + changeCount
+  }
+  
+  // Calculate SLA compliance
+  const slaCompliant = stats.sla_compliance?.compliant || 0
+  const slaTotal = stats.sla_compliance?.total || total
+  const slaPercentage = slaTotal > 0 
+    ? Math.round((slaCompliant / slaTotal) * 100) 
+    : stats.sla_compliance?.percentage || 0
+  
+  return {
+    // Total tickets
+    total: total,
+    
+    // Pending review count
+    pending: stats.pending || 0,
+    
+    // In progress count
+    in_progress: stats.in_progress || 0,
+    
+    // Overdue count
+    overdue: stats.overdue || 0,
+    
+    // SLA compliance - handle nested object
+    sla_compliant: slaCompliant,
+    sla_total: slaTotal,
+    sla_percentage: slaPercentage
+  }
+})
+
+/**
+ * Computed ticket stats by type
+ * Processes backend data to show counts for each ticket type
+ */
+const computedTicketStats = computed(() => {
+  const stats = statistics.value || {}
+  
+  // If backend provides by_type breakdown
+  if (stats.by_type) {
+    return {
+      issues: calculateTypeCount(stats.by_type.issue),
+      requests: calculateTypeCount(stats.by_type.request),
+      change_requests: calculateTypeCount(stats.by_type.change_request)
+    }
+  }
+  
+  // Fallback: calculate from tickets array if needed
+  if (tickets.value.data && tickets.value.data.length > 0) {
+    return {
+      issues: tickets.value.data.filter(t => t.type === 'issue').length,
+      requests: tickets.value.data.filter(t => t.type === 'request').length,
+      change_requests: tickets.value.data.filter(t => t.type === 'change_request').length
+    }
+  }
+  
+  // Default fallback
+  return {
+    issues: 0,
+    requests: 0,
+    change_requests: 0
+  }
+})
+
+/**
+ * Helper function to calculate count from type data
+ */
+const calculateTypeCount = (typeData) => {
+  if (!typeData) return 0
+  
+  if (Array.isArray(typeData)) {
+    return typeData.reduce((sum, item) => sum + (item.count || 0), 0)
+  }
+  
+  return typeData.count || 0
+}
+
 const filteredApprovers = computed(() => {
   if (!selectedTicket.value || !approvers.value.length) return []
   return approvers.value.filter(approver =>
     approver.id !== selectedTicket.value.approver_id
   )
 })
+
 const uniqueCategories = computed(() => {
   const categories = new Set()
   tickets.value.data.forEach(ticket => {
@@ -752,6 +900,7 @@ const uniqueCategories = computed(() => {
   })
   return Array.from(categories).sort()
 })
+
 // ===== Helper Functions for Initials =====
 const getInitials = (name) => {
   if (!name) return '??'
@@ -762,12 +911,15 @@ const getInitials = (name) => {
     .toUpperCase()
     .slice(0, 2)
 }
+
 const getUserInitials = (user) => {
   return getInitials(getUserName(user))
 }
+
 const getApproverInitials = (ticket) => {
   return getInitials(getApproverName(ticket))
 }
+
 // ===== Ticket Type Helpers =====
 const getTypeIcon = (type) => {
   switch(type) {
@@ -781,6 +933,7 @@ const getTypeIcon = (type) => {
       return TicketIcon
   }
 }
+
 const getTypeLabel = (type) => {
   switch(type) {
     case 'issue':
@@ -793,6 +946,7 @@ const getTypeLabel = (type) => {
       return type
   }
 }
+
 const getTypeBadgeClass = (type) => {
   switch(type) {
     case 'issue':
@@ -805,6 +959,7 @@ const getTypeBadgeClass = (type) => {
       return 'bg-slate-100 text-slate-800'
   }
 }
+
 const getSlaBadgeClass = (slaStatus) => {
   switch(slaStatus) {
     case 'on_track':
@@ -819,6 +974,7 @@ const getSlaBadgeClass = (slaStatus) => {
       return 'bg-slate-100 text-slate-800'
   }
 }
+
 const getSlaLabel = (slaStatus) => {
   switch(slaStatus) {
     case 'on_track':
@@ -833,6 +989,7 @@ const getSlaLabel = (slaStatus) => {
       return slaStatus
   }
 }
+
 // ===== API Fetchers =====
 const fetchTickets = async () => {
   isLoading.value = true
@@ -840,17 +997,30 @@ const fetchTickets = async () => {
     const params = { ...filters.value }
     Object.keys(params).forEach(key => !params[key] && delete params[key])
     
-    const response = await axios.get('/api/tickets', { params })
-    console.log('Tickets response:', response.data)
-    
-    if (response.data) {
-      tickets.value = {
-        data: Array.isArray(response.data.data) ? response.data.data : [],
-        meta: response.data.meta || {}
-      }
+    // Use the assigned-to-me endpoint if filter is set
+    if (params.assigned === 'assigned_to_me') {
+      const response = await axios.get('/api/tickets/assigned-to-me')
+      console.log('Assigned to me response:', response.data)
       
-      updateTicketStats()
+      if (response.data) {
+        tickets.value = {
+          data: Array.isArray(response.data.data) ? response.data.data : response.data,
+          meta: response.data.meta || {}
+        }
+      }
+    } else {
+      // Use the regular tickets endpoint
+      const response = await axios.get('/api/tickets', { params })
+      console.log('Tickets response:', response.data)
+      
+      if (response.data) {
+        tickets.value = {
+          data: Array.isArray(response.data.data) ? response.data.data : [],
+          meta: response.data.meta || {}
+        }
+      }
     }
+
   } catch (error) {
     console.error('Error fetching tickets:', error)
     tickets.value = { data: [], meta: {} }
@@ -858,29 +1028,20 @@ const fetchTickets = async () => {
     setTimeout(() => isLoading.value = false, 300)
   }
 }
+
 const fetchStatistics = async () => {
   try {
     const response = await axios.get('/api/tickets/statistics')
     statistics.value = response.data || {}
-    
-    if (response.data.by_type) {
-      ticketStats.value = {
-        issues: response.data.by_type.issue?.reduce((sum, item) => sum + (item.count || 0), 0) || 0,
-        requests: response.data.by_type.request?.reduce((sum, item) => sum + (item.count || 0), 0) || 0,
-        change_requests: response.data.by_type.change_request?.reduce((sum, item) => sum + (item.count || 0), 0) || 0
-      }
-    }
   } catch (error) {
-    console.error('Failed to load stats:', error)
+    console.error('Failed to load statistics:', error)
     statistics.value = {}
-    ticketStats.value = {}
   }
 }
+
 const fetchAssignableUsers = async () => {
   try {
-    console.log('Fetching assignable users from /api/tickets/assignable-users')
     const response = await axios.get('/api/tickets/assignable-users')
-    console.log('Assignable users response:', response.data)
     
     if (response.data) {
       if (response.data.assignable_users && response.data.approvers) {
@@ -900,11 +1061,7 @@ const fetchAssignableUsers = async () => {
           business_id: approver.business_id,
           position: approver.position || 'Admin'
         }))
-       
-        console.log('Parsed assignableUsers:', assignableUsers.value)
-        console.log('Parsed approvers:', approvers.value)
       } else if (Array.isArray(response.data)) {
-        console.log('Using old format (just approvers array)')
         approvers.value = response.data.map(approver => ({
           id: approver.id,
           name: approver.name || `${approver.first_name || ''} ${approver.last_name || ''}`.trim(),
@@ -929,6 +1086,7 @@ const fetchAssignableUsers = async () => {
     approvers.value = []
   }
 }
+
 const fetchUserWithRoles = async () => {
   try {
     const response = await axios.get('/api/user')
@@ -946,28 +1104,31 @@ const fetchUserWithRoles = async () => {
     }
   }
 }
+
 // ===== Helper Functions =====
-const updateTicketStats = () => {
-  const stats = { issues: 0, requests: 0, change_requests: 0 }
-  tickets.value.data.forEach(ticket => {
-    if (ticket.type === 'issue') stats.issues++
-    else if (ticket.type === 'request') stats.requests++
-    else if (ticket.type === 'change_request') stats.change_requests++
-  })
-  ticketStats.value = stats
-}
 const clearFilters = () => {
   filters.value = {
     type: '',
     status: '',
     priority: '',
     category: '',
+    assigned: '', // Clear assigned filter too
     search: '',
     page: 1,
     sort_by: 'created_at',
     sort_order: 'desc'
   }
 }
+
+// Handle assigned filter change
+const handleAssignedFilterChange = () => {
+  // When selecting "Assigned to Me", we want to fetch from a different endpoint
+  // Reset other filters that might conflict
+  if (filters.value.assigned === 'assigned_to_me') {
+    filters.value.page = 1
+  }
+}
+
 // ===== Lifecycle =====
 onMounted(() => {
   fetchUserWithRoles()
@@ -977,24 +1138,25 @@ onMounted(() => {
  
   document.addEventListener('click', closeQuickActions)
 })
+
 onUnmounted(() => {
   document.removeEventListener('click', closeQuickActions)
 })
+
 // ===== Watchers =====
 watch(filters, () => {
   fetchTickets()
 }, { deep: true })
-// ===== Permission Check Functions - UPDATED FOR MULTI-ADMIN APPROVAL =====
+
+// ===== Permission Check Functions =====
 const canApproveTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
   const isPending = ticket.status === 'pending'
   
-  // ANY admin from the same business can approve, not just the assigned approver
   return isAdmin && isPending
 }
 
-// Helper to get approve button title
 const getApproveButtonTitle = (ticket) => {
   if (!currentUser.value || !ticket) return 'Approve'
   
@@ -1005,45 +1167,48 @@ const getApproveButtonTitle = (ticket) => {
     return 'Approve ticket (as business admin)'
   }
 }
+
 const canEditTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   return ticket.user_id === currentUser.value.id && ['draft', 'pending'].includes(ticket.status)
 }
+
 const canDeleteTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   return ticket.user_id === currentUser.value.id && ['draft', 'pending', 'rejected'].includes(ticket.status)
 }
+
 const canEditPriority = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
   const isEditableStatus = ['pending', 'approved', 'in_progress'].includes(ticket.status)
   
-  // ANY admin from the same business can edit priority
   return isAdmin && isEditableStatus
 }
+
 const canReassignTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
   const isReassignableStatus = ['pending', 'approved'].includes(ticket.status)
   
-  // ANY admin from the same business can reassign
   return isAdmin && isReassignableStatus
 }
+
 const canTakeQuickActions = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
   
-  // ANY admin from the same business can take quick actions
   return isAdmin
 }
+
 const canUpdateStatus = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
   const isUpdatable = !['completed', 'closed'].includes(ticket.status)
   
-  // ANY admin from the same business can update status
   return isAdmin && isUpdatable
 }
+
 const canResolveTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
@@ -1051,14 +1216,15 @@ const canResolveTicket = (ticket) => {
   const canResolve = ['in_progress', 'on_hold'].includes(ticket.status)
   return (isAdmin || isAssigned) && canResolve
 }
+
 const canReopenTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
   const isAdmin = currentUser.value.role === 'admin'
   const canReopen = ['resolved', 'closed'].includes(ticket.status)
   
-  // ANY admin from the same business can reopen
   return isAdmin && canReopen
 }
+
 const getApproverName = (ticket) => {
   const approver = ticket?.approver
   if (!approver) return 'Unassigned'
@@ -1068,6 +1234,7 @@ const getApproverName = (ticket) => {
   }
   return approver.email || 'Unassigned'
 }
+
 const getUserName = (user) => {
   if (!user) return 'Unknown User'
   if (user.name) return user.name
@@ -1076,24 +1243,23 @@ const getUserName = (user) => {
   }
   return user.email || 'Unknown User'
 }
+
 // ===== Actions =====
 const openCreateModal = async () => {
-  console.log('Opening create modal, assignableUsers:', assignableUsers.value)
-  console.log('Approvers:', approvers.value)
- 
   if (assignableUsers.value.length === 0 || approvers.value.length === 0) {
-    console.log('Refetching assignable users...')
     await fetchAssignableUsers()
   }
   showCreateModal.value = true
 }
+
 const closeCreateModal = () => {
   showCreateModal.value = false
 }
+
 const editTicket = (ticket) => {
-  console.log('Edit ticket', ticket.id)
   closeQuickActions()
 }
+
 const deleteTicket = async (ticket) => {
   closeQuickActions()
   if (confirm(`Are you sure you want to delete ticket #${ticket.id}? This action cannot be undone.`)) {
@@ -1107,55 +1273,67 @@ const deleteTicket = async (ticket) => {
     }
   }
 }
+
 const viewTicket = (ticket) => {
   selectedTicket.value = ticket
   showViewModal.value = true
 }
+
 const closeViewModal = () => {
   showViewModal.value = false
   selectedTicket.value = null
 }
+
 const openApprovalModal = (ticket) => {
   selectedTicket.value = ticket
   showApprovalModal.value = true
   closeQuickActions()
 }
+
 const closeApprovalModal = () => {
   showApprovalModal.value = false
   selectedTicket.value = null
 }
+
 const openPriorityModal = (ticket) => {
   selectedTicket.value = ticket
   showPriorityModal.value = true
   closeQuickActions()
 }
+
 const closePriorityModal = () => {
   showPriorityModal.value = false
   selectedTicket.value = null
 }
+
 const openReassignModal = (ticket) => {
   selectedTicket.value = ticket
   showReassignModal.value = true
   closeQuickActions()
 }
+
 const closeReassignModal = () => {
   showReassignModal.value = false
   selectedTicket.value = null
 }
+
 const openStatusModal = (ticket) => {
   selectedTicket.value = ticket
   showStatusModal.value = true
   closeQuickActions()
 }
+
 const closeStatusModal = () => {
   showStatusModal.value = false
   selectedTicket.value = null
 }
+
 const openAssignModal = (ticket) => {
   selectedTicket.value = ticket
   showAssignModal.value = true
   closeQuickActions()
 }
+
 const closeAssignModal = () => {
   showAssignModal.value = false
   selectedTicket.value = null
@@ -1171,7 +1349,6 @@ const closeSlackConfigModal = () => {
 
 const handleSlackConfigSaved = () => {
   closeSlackConfigModal()
-  // Optionally refresh data or show success message
   console.log('Slack configuration saved successfully')
 }
 
@@ -1190,6 +1367,7 @@ const resolveTicket = async (ticket) => {
     }
   }
 }
+
 const reopenTicket = async (ticket) => {
   closeQuickActions()
   if (confirm(`Reopen ticket #${ticket.id}?`)) {
@@ -1205,6 +1383,7 @@ const reopenTicket = async (ticket) => {
     }
   }
 }
+
 const handleActionClick = (actionType, ticket) => {
   closeQuickActions()
   switch(actionType) {
@@ -1222,6 +1401,7 @@ const handleActionClick = (actionType, ticket) => {
       break
   }
 }
+
 const toggleQuickActions = (ticketId) => {
   if (showQuickActions.value === ticketId) {
     showQuickActions.value = null
@@ -1229,12 +1409,15 @@ const toggleQuickActions = (ticketId) => {
     showQuickActions.value = ticketId
   }
 }
+
 const closeQuickActions = () => {
   showQuickActions.value = null
 }
+
 const changePage = (page) => {
   filters.value.page = page
 }
+
 const refreshData = async () => {
   isRefreshing.value = true
   await Promise.all([
@@ -1244,12 +1427,14 @@ const refreshData = async () => {
   ])
   isRefreshing.value = false
 }
+
 const handleTicketCreated = () => {
   closeCreateModal()
   filters.value.status = ''
   fetchTickets()
   fetchStatistics()
 }
+
 const handleStatusUpdated = () => {
   closeViewModal()
   closeApprovalModal()
@@ -1258,24 +1443,28 @@ const handleStatusUpdated = () => {
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
+
 const handlePriorityUpdated = () => {
   closePriorityModal()
   fetchTickets()
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
+
 const handleTicketReassigned = () => {
   closeReassignModal()
   fetchTickets()
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
+
 const handleUsersAssigned = () => {
   closeAssignModal()
   fetchTickets()
   fetchStatistics()
   window.dispatchEvent(new CustomEvent('ticket-updated'))
 }
+
 const formatDate = (date) => {
   if (!date) return 'N/A'
   try {
@@ -1289,6 +1478,7 @@ const formatDate = (date) => {
   }
 }
 </script>
+
 <style scoped>
 /* Scrollbar Styling */
 .scrollbar-hide::-webkit-scrollbar {
@@ -1298,28 +1488,35 @@ const formatDate = (date) => {
     -ms-overflow-style: none;
     scrollbar-width: none;
 }
+
 .overflow-x-auto::-webkit-scrollbar {
   height: 6px;
 }
+
 .overflow-x-auto::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .overflow-x-auto::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 3px;
 }
+
 .overflow-x-auto::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
 /* Transitions */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
 }
+
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
+
 /* Line clamp utility */
 .line-clamp-1 {
   overflow: hidden;

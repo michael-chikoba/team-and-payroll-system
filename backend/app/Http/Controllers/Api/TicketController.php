@@ -37,53 +37,133 @@ public function __construct(TicketNotificationService $notificationService)
     /**
      * Get list of tickets with filtering (BACKWARD COMPATIBLE)
      */
-    public function index(Request $request)
-    {
-        $user = $request->user();
-        
-        // Use the new index method if we have new features enabled
-        if ($request->has('type') || $request->has('category') || $request->has('department_id')) {
-            return $this->indexEnhanced($request);
-        }
-        
-        $query = Ticket::with(['user', 'approver']);
-        
-        // Role-based filtering
-        if ($user->hasRole('admin')) {
-            // Admins see tickets from their business only
-            $employee = $user->employee;
-            if ($employee) {
-                $query->whereHas('user.employee', function ($q) use ($employee) {
-                    $q->where('business_id', $employee->business_id);
-                });
-            }
-        } else {
-            // Regular users only see their own tickets
-            $query->where('user_id', $user->id);
-        }
-        
-        // Status filter
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-        
-        // Priority filter
-        if ($request->has('priority')) {
-            $query->where('priority', $request->priority);
-        }
-        
-        // Search filter
-        if ($request->has('search') && !empty($request->search)) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%")
-                  ->orWhere('id', 'like', "%{$search}%");
-            });
-        }
-        
-        return response()->json($query->latest()->paginate(10));
+   /**
+ * Get list of tickets with filtering (BACKWARD COMPATIBLE)
+ */
+public function index(Request $request)
+{
+    $user = $request->user();
+    
+    // Add detailed request logging
+    Log::info('TICKETS INDEX: Request received', [
+        'user_id' => $user->id,
+        'user_name' => $user->name ?? ($user->first_name . ' ' . $user->last_name),
+        'has_role_admin' => $user->hasRole('admin') ? 'yes' : 'no',
+        'employee_exists' => $user->employee ? 'yes' : 'no',
+        'business_id' => $user->employee ? $user->employee->business_id : 'none',
+        'request_params' => $request->all(),
+        'url' => $request->fullUrl(),
+        'ip' => $request->ip()
+    ]);
+    
+    // Use the new index method if we have new features enabled
+    if ($request->has('type') || $request->has('category') || $request->has('department_id')) {
+        Log::info('TICKETS INDEX: Using enhanced index method');
+        return $this->indexEnhanced($request);
     }
+    
+    $query = Ticket::with(['user', 'approver', 'assignedUsers']);
+    
+    // Role-based filtering - APPLIED FIRST
+    if ($user->hasRole('admin')) {
+        // Admins see tickets from their business only
+        $employee = $user->employee;
+        if ($employee) {
+            $query->whereHas('user.employee', function ($q) use ($employee) {
+                $q->where('business_id', $employee->business_id);
+            });
+            
+            Log::info('TICKETS INDEX: Admin filtering applied', [
+                'business_id' => $employee->business_id,
+                'employee_id' => $employee->id,
+                'ticket_count_before_filter' => Ticket::count()
+            ]);
+        } else {
+            Log::warning('TICKETS INDEX: Admin user has no employee profile', [
+                'user_id' => $user->id
+            ]);
+            return response()->json(['data' => [], 'message' => 'No employee profile found'], 200);
+        }
+    } else {
+        // Regular users only see their own tickets
+        $query->where('user_id', $user->id);
+        
+        Log::info('TICKETS INDEX: Regular user filtering applied', [
+            'user_id' => $user->id,
+            'ticket_count_before_filter' => Ticket::count()
+        ]);
+    }
+    
+    // 🔍 DEBUG LOG - MOVED HERE: Show filtered results BEFORE additional filters
+    Log::info('TICKETS INDEX: Tickets after role filtering', [
+        'count' => $query->count(),
+        'first_ticket_id' => $query->first()?->id,
+        'first_ticket_user_id' => $query->first()?->user_id,
+        'first_ticket_assigned_users' => $query->first()?->assignedUsers?->pluck('id')->toArray(),
+        'user_role' => $user->hasRole('admin') ? 'admin' : 'regular'
+    ]);
+    
+    // Status filter
+    if ($request->has('status')) {
+        $query->where('status', $request->status);
+        
+        Log::info('TICKETS INDEX: Status filter applied', [
+            'status' => $request->status
+        ]);
+    }
+    
+    // Priority filter
+    if ($request->has('priority')) {
+        $query->where('priority', $request->priority);
+        
+        Log::info('TICKETS INDEX: Priority filter applied', [
+            'priority' => $request->priority
+        ]);
+    }
+    
+    // Search filter
+    if ($request->has('search') && !empty($request->search)) {
+        $search = $request->search;
+        $query->where(function ($q) use ($search) {
+            $q->where('title', 'like', "%{$search}%")
+              ->orWhere('description', 'like', "%{$search}%")
+              ->orWhere('id', 'like', "%{$search}%");
+        });
+        
+        Log::info('TICKETS INDEX: Search filter applied', [
+            'search_term' => $search
+        ]);
+    }
+    
+    // Get final results before pagination
+    $finalCount = $query->count();
+    $firstTicket = $query->first();
+    
+    // 🔍 FINAL DEBUG LOG
+    Log::info('TICKETS INDEX: Returning filtered tickets', [
+        'final_count' => $finalCount,
+        'first_ticket_id' => $firstTicket?->id,
+        'first_ticket_title' => $firstTicket?->title,
+        'first_ticket_status' => $firstTicket?->status,
+        'first_ticket_user_id' => $firstTicket?->user_id,
+        'first_ticket_assigned_users' => $firstTicket?->assignedUsers?->pluck('id')->toArray(),
+        'user_id' => $user->id,
+        'is_admin' => $user->hasRole('admin') ? 'yes' : 'no',
+        'applied_filters' => [
+            'status' => $request->has('status') ? $request->status : 'none',
+            'priority' => $request->has('priority') ? $request->priority : 'none',
+            'search' => $request->has('search') && !empty($request->search) ? 'yes' : 'no'
+        ]
+    ]);
+    
+    // Apply pagination
+    $perPage = $request->get('per_page', 10);
+    $page = $request->get('page', 1);
+    
+    $paginatedTickets = $query->latest()->paginate($perPage, ['*'], 'page', $page);
+    
+    return response()->json($paginatedTickets);
+}
 
     /**
      * Enhanced index method with new features
@@ -378,186 +458,302 @@ public function __construct(TicketNotificationService $notificationService)
     }
 
     /**
-     * Create a new ticket with type support
-     */
-    public function storeWithType(Request $request)
-    {
-        Log::info('Ticket creation request received', [
-            'user_id' => Auth::id(),
-            'data' => $request->all()
-        ]);
+ * Create a new ticket with type support - ENHANCED with better data handling
+ */
+public function storeWithType(Request $request)
+{
+    Log::info('Ticket creation request received', [
+        'user_id' => Auth::id(),
+        'data' => $request->all(),
+        'has_assigned_to' => $request->has('assigned_to'),
+        'assigned_to_type' => gettype($request->input('assigned_to')),
+        'assigned_to_value' => $request->input('assigned_to')
+    ]);
 
-        $validator = Validator::make($request->all(), [
-            'type' => 'required|in:issue,request,change_request',
-            'title' => 'required|string|max:255',
-            'description' => 'required|string',
-            'category' => 'required|string|max:100',
-            'subcategory' => 'nullable|string|max:100',
-            'approver_id' => 'nullable|exists:users,id',
-            'priority' => 'required|in:low,medium,high,critical',
-            'due_date' => 'nullable|date|after_or_equal:today',
-            'estimated_hours' => 'nullable|numeric|min:0|max:1000',
-            'assigned_to' => 'nullable|array',
-            'assigned_to.*' => 'exists:users,id',
-        ]);
+    // Handle different formats of assigned_to
+    $assignedToInput = $request->input('assigned_to');
+    $assignedToArray = [];
+    
+    if ($assignedToInput) {
+        if (is_array($assignedToInput)) {
+            $assignedToArray = $assignedToInput;
+        } elseif (is_string($assignedToInput)) {
+            // Handle comma-separated string or JSON string
+            if (Str::contains($assignedToInput, ',')) {
+                $assignedToArray = explode(',', $assignedToInput);
+            } elseif (Str::startsWith($assignedToInput, '[') && Str::endsWith($assignedToInput, ']')) {
+                $assignedToArray = json_decode($assignedToInput, true);
+            } else {
+                $assignedToArray = [$assignedToInput];
+            }
+        } elseif (is_numeric($assignedToInput)) {
+            $assignedToArray = [$assignedToInput];
+        }
+        
+        // Clean and validate the array
+        $assignedToArray = array_filter($assignedToArray, function($item) {
+            return !empty($item) && is_numeric($item);
+        });
+        $assignedToArray = array_values(array_unique($assignedToArray));
+    }
 
-        // Manual validation for approver_id when required
-        if (in_array($request->type, ['request', 'change_request']) && !$request->approver_id) {
-            $validator->after(function ($validator) {
-                $validator->errors()->add('approver_id', 'Approver is required for this ticket type.');
-            });
+    Log::info('Processed assigned_to array', [
+        'original' => $assignedToInput,
+        'processed' => $assignedToArray,
+        'count' => count($assignedToArray)
+    ]);
+
+    $validator = Validator::make($request->all(), [
+        'type' => 'required|in:issue,request,change_request',
+        'title' => 'required|string|max:255',
+        'description' => 'required|string',
+        'category' => 'required|string|max:100',
+        'subcategory' => 'nullable|string|max:100',
+        'approver_id' => 'nullable|exists:users,id',
+        'priority' => 'required|in:low,medium,high,critical',
+        'due_date' => 'nullable|date|after_or_equal:today',
+        'estimated_hours' => 'nullable|numeric|min:0|max:1000',
+        'assigned_to' => 'nullable', // Changed from array validation
+        'assigned_to.*' => 'exists:users,id', // Still validate each ID
+    ]);
+
+    // Manual validation for approver_id when required
+    if (in_array($request->type, ['request', 'change_request']) && !$request->approver_id) {
+        $validator->after(function ($validator) {
+            $validator->errors()->add('approver_id', 'Approver is required for this ticket type.');
+        });
+    }
+
+    if ($validator->fails()) {
+        Log::error('Ticket validation failed', [
+            'errors' => $validator->errors()->toArray(),
+            'request' => $request->all()
+        ]);
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    try {
+        DB::beginTransaction();
+        
+        $user = Auth::user();
+        $employee = $user->employee;
+        
+        if (!$employee) {
+            return response()->json([
+                'message' => 'Employee profile not found.'
+            ], 403);
         }
 
-        if ($validator->fails()) {
-            Log::error('Ticket validation failed', [
-                'errors' => $validator->errors()->toArray(),
-                'request' => $request->all()
-            ]);
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
+        // Determine initial status based on type
+        $requiresApproval = in_array($request->type, ['request', 'change_request']);
+        $initialStatus = $requiresApproval ? 'pending' : 'in_progress';
 
-        try {
-            DB::beginTransaction();
+        // Validate approver for request types
+        if ($requiresApproval && $request->approver_id) {
+            $approver = User::with('employee')->find($request->approver_id);
             
-            $user = Auth::user();
-            $employee = $user->employee;
-            
-            if (!$employee) {
+            if (!$approver || !$approver->hasRole('admin')) {
                 return response()->json([
-                    'message' => 'Employee profile not found.'
-                ], 403);
+                    'message' => 'Selected approver must be an admin.'
+                ], 422);
             }
-
-            // Determine initial status based on type
-            $requiresApproval = in_array($request->type, ['request', 'change_request']);
-            $initialStatus = $requiresApproval ? 'pending' : 'in_progress';
-
-            // Validate approver for request types
-            if ($requiresApproval && $request->approver_id) {
-                $approver = User::with('employee')->find($request->approver_id);
-                
-                if (!$approver || !$approver->hasRole('admin')) {
-                    return response()->json([
-                        'message' => 'Selected approver must be an admin.'
-                    ], 422);
-                }
-                
-                $approverEmployee = $approver->employee;
-                if (!$approverEmployee || $approverEmployee->business_id !== $employee->business_id) {
-                    return response()->json([
-                        'message' => 'Selected approver must be from your business.'
-                    ], 422);
-                }
-            }
-
-            $ticketData = [
-                'type' => $request->type,
-                'title' => $request->title,
-                'description' => $request->description,
-                'user_id' => $user->id,
-                'category' => $request->category,
-                'subcategory' => $request->subcategory,
-                'approver_id' => $requiresApproval ? $request->approver_id : null,
-                'priority' => $request->priority,
-                'due_date' => $request->due_date ?: null,
-                'estimated_hours' => $request->estimated_hours,
-                'status' => $initialStatus,
-            ];
-
-            $ticket = Ticket::create($ticketData);
             
-            // Assign users to the ticket
-            if ($request->has('assigned_to')) {
-                $assignedTo = $request->input('assigned_to');
-                
-                if (is_array($assignedTo)) {
-                    foreach ($assignedTo as $assignedUserId) {
-                        if ($assignedUserId) {
-                            $ticket->assignedUsers()->attach($assignedUserId, [
-                                'role' => 'assignee',
-                                'assigned_at' => now()
-                            ]);
-                            
-                            // Send assignment notification
-                            try {
-                                $assignedUser = User::find($assignedUserId);
-                                if ($assignedUser) {
-                                    Mail::to($assignedUser->email)->send(new TicketAssigned($ticket, $assignedUser));
-                                }
-                            } catch (\Exception $e) {
-                                Log::error('Failed to send assignment email', [
-                                    'ticket_id' => $ticket->id,
-                                    'assigned_user' => $assignedUserId,
-                                    'error' => $e->getMessage()
-                                ]);
-                            }
-                        }
-                    }
-                } elseif (!empty($assignedTo)) {
-                    $ticket->assignedUsers()->attach($assignedTo, [
-                        'role' => 'assignee',
-                        'assigned_at' => now()
+            $approverEmployee = $approver->employee;
+            if (!$approverEmployee || $approverEmployee->business_id !== $employee->business_id) {
+                return response()->json([
+                    'message' => 'Selected approver must be from your business.'
+                ], 422);
+            }
+        }
+
+        $ticketData = [
+            'type' => $request->type,
+            'title' => $request->title,
+            'description' => $request->description,
+            'user_id' => $user->id,
+            'category' => $request->category,
+            'subcategory' => $request->subcategory,
+            'approver_id' => $requiresApproval ? $request->approver_id : null,
+            'priority' => $request->priority,
+            'due_date' => $request->due_date ?: null,
+            'estimated_hours' => $request->estimated_hours,
+            'status' => $initialStatus,
+        ];
+
+        $ticket = Ticket::create($ticketData);
+        
+        // 🔥 ENHANCED ASSIGNMENT LOGIC with better data handling
+        $assignmentLog = [];
+        $assignedUsers = [];
+        
+        // If specific users are assigned
+        if (!empty($assignedToArray)) {
+            Log::info('Processing manual assignments', [
+                'ticket_id' => $ticket->id,
+                'assigned_to_array' => $assignedToArray,
+                'count' => count($assignedToArray)
+            ]);
+            
+            foreach ($assignedToArray as $assignedUserId) {
+                if ($assignedUserId) {
+                    $this->assignUserToTicket($ticket, $assignedUserId, 'assignee');
+                    $assignedUsers[] = $assignedUserId;
+                    $assignmentLog[] = "Assigned to user $assignedUserId as assignee";
+                }
+            }
+        } 
+        // AUTO-ASSIGNMENT LOGIC if no assignment provided
+        else {
+            Log::info('No manual assignments, using auto-assignment logic');
+            
+            // For issues: auto-assign to creator if no one assigned
+            if ($request->type === 'issue') {
+                $this->assignUserToTicket($ticket, $user->id, 'assignee');
+                $assignedUsers[] = $user->id;
+                $assignmentLog[] = "Auto-assigned to creator (user $user->id) as assignee";
+            }
+            // For requests/change requests: auto-assign to approver as reviewer
+            elseif ($requiresApproval && $request->approver_id) {
+                $this->assignUserToTicket($ticket, $request->approver_id, 'reviewer');
+                $assignedUsers[] = $request->approver_id;
+                $assignmentLog[] = "Auto-assigned to approver (user $request->approver_id) as reviewer";
+            }
+            // Fallback: assign to creator
+            else {
+                $this->assignUserToTicket($ticket, $user->id, 'assignee');
+                $assignedUsers[] = $user->id;
+                $assignmentLog[] = "Fallback assigned to creator (user $user->id) as assignee";
+            }
+        }
+
+        // Load relationships
+        $ticket->load(['user', 'approver', 'assignedUsers']);
+        
+        // Send notification
+        $this->notificationService->notifyTicketCreated($ticket);
+
+        // Send notifications to ALL business admins if approval is required
+        $emailsSent = 0;
+        $adminsNotified = 0;
+        
+        if ($requiresApproval) {
+            $businessAdmins = $this->getBusinessAdmins($employee->business_id);
+            $adminsNotified = count($businessAdmins);
+            
+            foreach ($businessAdmins as $admin) {
+                try {
+                    Mail::to($admin->email)->send(new TicketApprovalRequest($ticket));
+                    $emailsSent++;
+                } catch (\Exception $e) {
+                    Log::error('Failed to send approval email to admin', [
+                        'ticket_id' => $ticket->id,
+                        'admin_id' => $admin->id,
+                        'error' => $e->getMessage()
                     ]);
                 }
             }
+        }
 
-            // Load relationships
-            $ticket->load(['user', 'approver', 'assignedUsers']);
-        $this->notificationService->notifyTicketCreated($ticket);
-
-            // Send notifications to ALL business admins if approval is required
-            $emailsSent = 0;
-            $adminsNotified = 0;
+        DB::commit();
+        
+        Log::info('Ticket created successfully', [
+            'ticket_id' => $ticket->id,
+            'user_id' => $user->id,
+            'emails_sent' => $emailsSent,
+            'admins_notified' => $adminsNotified,
+            'assignments' => $assignmentLog,
+            'assigned_users' => $assignedUsers,
+            'assigned_users_count' => count($assignedUsers)
+        ]);
+        
+        return response()->json([
+            'message' => 'Ticket created successfully',
+            'ticket' => $ticket,
+            'emails_sent' => $emailsSent,
+            'admins_notified' => $adminsNotified,
+            'assignments' => $assignmentLog,
+            'assigned_users' => $assignedUsers,
+            'assigned_users_count' => count($assignedUsers)
+        ], 201);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        Log::error('Failed to create ticket', [
+            'user_id' => Auth::id(),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        
+        return response()->json([
+            'message' => 'Failed to create ticket',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+/**
+ * Helper method to assign user to ticket with notifications
+ */
+private function assignUserToTicket(Ticket $ticket, $userId, $role = 'assignee')
+{
+    try {
+        // Check if already assigned to avoid duplicates
+        $alreadyAssigned = $ticket->assignedUsers()
+            ->where('user_id', $userId)
+            ->exists();
+        
+        if (!$alreadyAssigned) {
+            $ticket->assignedUsers()->attach($userId, [
+                'role' => $role,
+                'assigned_at' => now()
+            ]);
             
-            if ($requiresApproval) {
-                $businessAdmins = $this->getBusinessAdmins($employee->business_id);
-                $adminsNotified = count($businessAdmins);
-                
-                foreach ($businessAdmins as $admin) {
-                    try {
-                        Mail::to($admin->email)->send(new TicketApprovalRequest($ticket));
-                        $emailsSent++;
-                    } catch (\Exception $e) {
-                        Log::error('Failed to send approval email to admin', [
-                            'ticket_id' => $ticket->id,
-                            'admin_id' => $admin->id,
-                            'error' => $e->getMessage()
-                        ]);
-                    }
+            Log::info('User assigned to ticket', [
+                'ticket_id' => $ticket->id,
+                'user_id' => $userId,
+                'role' => $role,
+                'assigned_at' => now()->toDateTimeString()
+            ]);
+            
+            // Send assignment notification
+            $assignedUser = User::find($userId);
+            if ($assignedUser) {
+                try {
+                    Mail::to($assignedUser->email)->send(new TicketAssigned($ticket, $assignedUser, $role));
+                    Log::info('Assignment email sent', [
+                        'ticket_id' => $ticket->id,
+                        'assigned_user_id' => $userId,
+                        'email' => $assignedUser->email
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to send assignment email', [
+                        'ticket_id' => $ticket->id,
+                        'assigned_user' => $userId,
+                        'error' => $e->getMessage()
+                    ]);
                 }
             }
-
-            DB::commit();
             
-            Log::info('Ticket created successfully', [
-                'ticket_id' => $ticket->id,
-                'user_id' => $user->id,
-                'emails_sent' => $emailsSent,
-                'admins_notified' => $adminsNotified
-            ]);
-            
-            return response()->json([
-                'message' => 'Ticket created successfully',
-                'ticket' => $ticket,
-                'emails_sent' => $emailsSent,
-                'admins_notified' => $adminsNotified
-            ], 201);
-            
-        } catch (\Exception $e) {
-            DB::rollBack();
-            
-            Log::error('Failed to create ticket', [
-                'user_id' => Auth::id(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            
-            return response()->json([
-                'message' => 'Failed to create ticket',
-                'error' => $e->getMessage()
-            ], 500);
+            return true;
         }
+        
+        Log::warning('User already assigned to ticket', [
+            'ticket_id' => $ticket->id,
+            'user_id' => $userId
+        ]);
+        
+        return false;
+        
+    } catch (\Exception $e) {
+        Log::error('Failed to assign user to ticket', [
+            'ticket_id' => $ticket->id,
+            'user_id' => $userId,
+            'error' => $e->getMessage()
+        ]);
+        
+        throw $e;
     }
+}
    
     /**
      * Update ticket status with workflow validation
@@ -708,127 +904,298 @@ public function __construct(TicketNotificationService $notificationService)
      * Assign ticket to users
      * UPDATED: Any admin from the same business can assign tickets
      */
-    public function assignTicket(Request $request, Ticket $ticket)
-    {
-        $user = Auth::user();
+   /**
+ * Assign ticket to users - ENHANCED with better validation
+ */
+public function assignTicket(Request $request, Ticket $ticket)
+{
+    $user = Auth::user();
+    
+    // Check if user can assign tickets - UPDATED LOGIC
+    $canAssign = false;
+    
+    if ($user->hasRole('admin')) {
+        $adminEmployee = $user->employee;
+        $ticketUserEmployee = $ticket->user->employee;
         
-        // Check if user can assign tickets - UPDATED LOGIC
-        $canAssign = false;
+        if ($adminEmployee && $ticketUserEmployee && 
+            $adminEmployee->business_id === $ticketUserEmployee->business_id) {
+            $canAssign = true;
+        }
+    }
+    // Allow ticket creator to assign users too
+    elseif ($ticket->user_id === $user->id) {
+        $canAssign = true;
+    }
+    
+    if (!$canAssign) {
+        return response()->json(['message' => 'Unauthorized to assign this ticket'], 403);
+    }
+
+    $validator = Validator::make($request->all(), [
+        'assigned_to' => 'required|array|min:1',
+        'assigned_to.*' => 'exists:users,id',
+        'role' => 'required|in:assignee,reviewer,implementer',
+        'clear_existing' => 'nullable|boolean',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    try {
+        DB::beginTransaction();
         
-        if ($user->hasRole('admin')) {
-            $adminEmployee = $user->employee;
-            $ticketUserEmployee = $ticket->user->employee;
-            
-            if ($adminEmployee && $ticketUserEmployee && 
-                $adminEmployee->business_id === $ticketUserEmployee->business_id) {
-                $canAssign = true;
+        $assignmentLog = [];
+        $newAssignments = [];
+        
+        // Clear existing assignments if requested
+        if ($request->filled('clear_existing') && $request->clear_existing) {
+            $ticket->assignedUsers()->detach();
+            $assignmentLog[] = 'Cleared existing assignments';
+        }
+        
+        // Assign new users
+        foreach ($request->assigned_to as $assignedUserId) {
+            $assigned = $this->assignUserToTicket($ticket, $assignedUserId, $request->role);
+            if ($assigned) {
+                $newAssignments[] = $assignedUserId;
+                $assignmentLog[] = "Assigned user $assignedUserId as {$request->role}";
             }
         }
-        
-        if (!$canAssign) {
-            return response()->json(['message' => 'Unauthorized to assign this ticket'], 403);
-        }
-
-        $validator = Validator::make($request->all(), [
-            'assigned_to' => 'required|array',
-            'assigned_to.*' => 'exists:users,id',
-            'role' => 'required|in:assignee,reviewer,implementer',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $ticket->assignedUsers()->sync(
-            collect($request->assigned_to)->mapWithKeys(function ($userId) use ($request) {
-                return [$userId => ['role' => $request->role, 'assigned_at' => now()]];
-            })
-        );
 
         // Log activity
-        $this->logActivity($ticket, 'assigned', "Ticket assigned to " . count($request->assigned_to) . " user(s)", $user);
+        $this->logActivity($ticket, 'assigned', 
+            "Ticket assigned to " . count($newAssignments) . " user(s): " . implode(', ', $newAssignments), 
+            $user
+        );
 
-        // Send notifications to assigned users
-        foreach ($request->assigned_to as $assignedUserId) {
-            try {
-                $assignedUser = User::find($assignedUserId);
-                Mail::to($assignedUser->email)->send(new TicketAssigned($ticket, $assignedUser, $request->role));
-            } catch (\Exception $e) {
-                Log::error('Failed to send assignment email', [
-                    'ticket_id' => $ticket->id,
-                    'assigned_user' => $assignedUserId,
-                    'error' => $e->getMessage()
-                ]);
-            }
-        }
+        DB::commit();
+
+        Log::info('Ticket assignment completed', [
+            'ticket_id' => $ticket->id,
+            'assigned_by' => $user->id,
+            'new_assignments' => $newAssignments,
+            'role' => $request->role,
+            'assignment_log' => $assignmentLog
+        ]);
 
         return response()->json([
             'message' => 'Ticket assigned successfully',
             'ticket' => $ticket->load('assignedUsers'),
+            'assignments' => $assignmentLog,
+            'new_assignments' => $newAssignments
         ]);
+        
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        Log::error('Failed to assign ticket', [
+            'ticket_id' => $ticket->id,
+            'assigned_by' => $user->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'message' => 'Failed to assign ticket: ' . $e->getMessage()
+        ], 500);
     }
+}
+
+/**
+ * Get tickets assigned to current user
+ */
+public function assignedTickets(Request $request)
+{
+    $user = Auth::user();
+    
+    Log::info('ASSIGNED TICKETS: Request received', [
+        'user_id' => $user->id,
+        'user_name' => $user->name ?? ($user->first_name . ' ' . $user->last_name),
+        'request_params' => $request->all()
+    ]);
+    
+    $query = Ticket::with(['user', 'approver', 'assignedUsers'])
+        ->whereHas('assignedUsers', function ($q) use ($user) {
+            $q->where('user_id', $user->id);
+        });
+    
+    // Status filter
+    if ($request->has('status')) {
+        $query->where('status', $request->status);
+    }
+    
+    // Priority filter
+    if ($request->has('priority')) {
+        $query->where('priority', $request->priority);
+    }
+    
+    // Type filter
+    if ($request->has('type')) {
+        $query->where('type', $request->type);
+    }
+    
+    // Search filter
+    if ($request->has('search') && !empty($request->search)) {
+        $search = $request->search;
+        $query->where(function ($q) use ($search) {
+            $q->where('title', 'like', "%{$search}%")
+              ->orWhere('description', 'like', "%{$search}%")
+              ->orWhere('id', 'like', "%{$search}%");
+        });
+    }
+    
+    $assignedCount = $query->count();
+    
+    Log::info('ASSIGNED TICKETS: Found tickets', [
+        'user_id' => $user->id,
+        'assigned_ticket_count' => $assignedCount
+    ]);
+    
+    $tickets = $query->latest()->paginate($request->get('per_page', 10));
+    
+    return response()->json([
+        'message' => 'Assigned tickets retrieved successfully',
+        'total_assigned' => $assignedCount,
+        'data' => $tickets->items(),
+        'meta' => [
+            'current_page' => $tickets->currentPage(),
+            'last_page' => $tickets->lastPage(),
+            'per_page' => $tickets->perPage(),
+            'total' => $tickets->total(),
+            'from' => $tickets->firstItem(),
+            'to' => $tickets->lastItem(),
+        ]
+    ]);
+}
 
     /**
-     * Get ticket statistics
-     */
-    public function statistics(Request $request)
-    {
-        $user = Auth::user();
-        $employee = $user->employee;
-        
-        if ($user->hasRole('admin') && $employee) {
-            $query = Ticket::whereHas('user.employee', function ($q) use ($employee) {
-                $q->where('business_id', $employee->business_id);
-            });
-        } else {
-            $query = Ticket::where(function ($q) use ($user) {
-                $q->where('user_id', $user->id)
-                  ->orWhereHas('assignedUsers', function ($assignQ) use ($user) {
-                      $assignQ->where('user_id', $user->id);
-                  });
-            });
-        }
+ * Get ticket statistics
+ * UPDATED: Fixed total count calculation and added SLA compliance
+ */
+public function statistics(Request $request)
+{
+    $user = Auth::user();
+    $employee = $user->employee;
+    
+    // Build base query based on user role
+    if ($user->hasRole('admin') && $employee) {
+        $query = Ticket::whereHas('user.employee', function ($q) use ($employee) {
+            $q->where('business_id', $employee->business_id);
+        });
+    } else {
+        $query = Ticket::where(function ($q) use ($user) {
+            $q->where('user_id', $user->id)
+              ->orWhereHas('assignedUsers', function ($assignQ) use ($user) {
+                  $assignQ->where('user_id', $user->id);
+              });
+        });
+    }
 
-        // Get counts by type
-        $byType = $query->selectRaw('type, count(*) as count, status')
-            ->groupBy('type', 'status')
-            ->get()
-            ->groupBy('type');
+    // Clone the query for different aggregations
+    $baseQuery = clone $query;
 
-        // Get counts by status
-        $byStatus = $query->selectRaw('status, count(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status');
+    // Get total count - FIX: This should count all tickets, not just one
+    $total = (clone $query)->count();
 
-        // Get counts by priority
-        $byPriority = $query->selectRaw('priority, count(*) as count')
-            ->groupBy('priority')
-            ->pluck('count', 'priority');
+    // Get counts by status
+    $byStatus = (clone $query)->selectRaw('status, count(*) as count')
+        ->groupBy('status')
+        ->pluck('count', 'status')
+        ->toArray();
 
-        // Get overdue tickets
-        $overdue = $query->where('due_date', '<', now())
-            ->whereNotIn('status', ['resolved', 'closed'])
+    // Get counts by type with status breakdown
+    $byTypeRaw = (clone $query)->selectRaw('type, status, count(*) as count')
+        ->groupBy('type', 'status')
+        ->get();
+
+    $byType = $byTypeRaw->groupBy('type')->map(function ($items) {
+        return $items->map(function ($item) {
+            return [
+                'type' => $item->type,
+                'count' => $item->count,
+                'status' => $item->status,
+                'status_label' => ucfirst(str_replace('_', ' ', $item->status)),
+            ];
+        })->values();
+    });
+
+    // Get counts by priority
+    $byPriority = (clone $query)->selectRaw('priority, count(*) as count')
+        ->groupBy('priority')
+        ->pluck('count', 'priority')
+        ->toArray();
+
+    // Get status counts
+    $pending = (clone $query)->where('status', 'pending')->count();
+    $approved = (clone $query)->where('status', 'approved')->count();
+    $rejected = (clone $query)->where('status', 'rejected')->count();
+    $inProgress = (clone $query)->where('status', 'in_progress')->count();
+    $resolved = (clone $query)->where('status', 'resolved')->count();
+    $closed = (clone $query)->where('status', 'closed')->count();
+
+    // Get overdue tickets (past due date and not resolved/closed)
+    $overdue = (clone $query)
+        ->where('due_date', '<', now())
+        ->whereNotIn('status', ['resolved', 'closed'])
+        ->count();
+
+    // Calculate SLA Compliance - NEW ADDITION
+    $slaTrackedTickets = (clone $query)
+        ->whereNotNull('due_date')
+        ->count();
+
+    if ($slaTrackedTickets > 0) {
+        // Tickets that meet SLA:
+        // 1. Resolved before or on due date
+        // 2. Not yet resolved but still within due date
+        $slaCompliantTickets = (clone $query)
+            ->whereNotNull('due_date')
+            ->where(function ($q) {
+                // Resolved tickets that met deadline
+                $q->where(function ($resolved) {
+                    $resolved->whereNotNull('resolved_at')
+                           ->whereColumn('resolved_at', '<=', 'due_date');
+                })
+                // Active tickets still within deadline
+                ->orWhere(function ($active) {
+                    $active->whereNull('resolved_at')
+                         ->where('due_date', '>=', now());
+                });
+            })
             ->count();
 
-        // Get total counts
-        $total = $query->count();
-        $pending = (clone $query)->where('status', 'pending')->count();
-        $approved = (clone $query)->where('status', 'approved')->count();
-        $rejected = (clone $query)->where('status', 'rejected')->count();
-        $inProgress = (clone $query)->where('status', 'in_progress')->count();
-
-        return response()->json([
-            'by_type' => $byType,
-            'by_status' => $byStatus,
-            'by_priority' => $byPriority,
-            'overdue' => $overdue,
-            'total' => $total,
-            'pending' => $pending,
-            'approved' => $approved,
-            'rejected' => $rejected,
-            'in_progress' => $inProgress,
-        ]);
+        $slaPercentage = round(($slaCompliantTickets / $slaTrackedTickets) * 100);
+    } else {
+        $slaCompliantTickets = 0;
+        $slaPercentage = 0;
     }
+
+    return response()->json([
+        // Main statistics
+        'total' => $total,
+        'pending' => $pending,
+        'approved' => $approved,
+        'rejected' => $rejected,
+        'in_progress' => $inProgress,
+        'resolved' => $resolved,
+        'closed' => $closed,
+        'overdue' => $overdue,
+        
+        // Breakdowns
+        'by_type' => $byType,
+        'by_status' => $byStatus,
+        'by_priority' => $byPriority,
+        
+        // SLA Compliance - NEW
+        'sla_compliance' => [
+            'compliant' => $slaCompliantTickets,
+            'total' => $slaTrackedTickets,
+            'percentage' => $slaPercentage,
+        ],
+    ]);
+}
 
     /**
      * Get departments for ticket assignment - DISABLED
@@ -874,6 +1241,7 @@ public function __construct(TicketNotificationService $notificationService)
 
     /**
      * Get users available for assignment AND approvers - COMBINED METHOD
+     * UPDATED: Added detailed logging for users and approvers with their roles
      */
     public function getAssignableUsers(Request $request)
     {
@@ -882,11 +1250,11 @@ public function __construct(TicketNotificationService $notificationService)
             $user = Auth::user();
             $employee = $user->employee;
 
-            Log::info('TICKET_CONTROLLER: Getting assignable users and approvers', [
-                'user_id' => $user->id,
-                'user_role' => $user->role,
-                'has_employee' => $employee ? 'yes' : 'no',
-            ]);
+            // Log::info('TICKET_CONTROLLER: Getting assignable users and approvers', [
+            //     'user_id' => $user->id,
+            //     'user_role' => $user->role,
+            //     'has_employee' => $employee ? 'yes' : 'no',
+            // ]);
 
             if (!$employee) {
                 Log::warning('TICKET_CONTROLLER: No employee profile found for user', [
@@ -903,8 +1271,21 @@ public function __construct(TicketNotificationService $notificationService)
                 ->with(['user'])
                 ->get();
 
+            // Log::info('TICKET_CONTROLLER: Retrieved employees', [
+            //     'employee_count' => $employees->count(),
+            //     'business_id' => $employee->business_id,
+            // ]);
+
             $assignableUsers = $employees->map(function ($employeeItem) {
-                return [
+                $userRole = $employeeItem->user->role ?? 'employee';
+                
+                // Check BOTH role column AND hasRole method for admin status
+                // This handles both role systems (column-based and relationship-based)
+                $hasRoleMethod = $employeeItem->user->hasRole('admin') ?? false;
+                $hasRoleColumn = ($userRole === 'admin');
+                $isAdmin = $hasRoleColumn || $hasRoleMethod;
+                
+                $userData = [
                     'id' => $employeeItem->user_id,
                     'employee_id' => $employeeItem->id,
                     'employee_number' => $employeeItem->employee_id,
@@ -912,14 +1293,29 @@ public function __construct(TicketNotificationService $notificationService)
                     'last_name' => $employeeItem->user->last_name ?? $employeeItem->last_name,
                     'name' => trim(($employeeItem->user->first_name ?? $employeeItem->first_name) . ' ' . ($employeeItem->user->last_name ?? $employeeItem->last_name)),
                     'email' => $employeeItem->user->email ?? $employeeItem->email,
-                    'role' => $employeeItem->user->role ?? 'employee',
+                    'role' => $userRole,
                     'position' => $employeeItem->position,
                     'department' => $employeeItem->department,
                     'employment_type' => $employeeItem->employment_type,
                     'hire_date' => $employeeItem->hire_date,
                     'is_active' => true,
-                    'is_admin' => $employeeItem->user->hasRole('admin') ?? false,
+                    'is_admin' => $isAdmin,
                 ];
+                
+                // // Log each user with their role details
+                // Log::info('TICKET_CONTROLLER: Mapped assignable user', [
+                //     'user_id' => $userData['id'],
+                //     'name' => $userData['name'],
+                //     'email' => $userData['email'],
+                //     'role' => $userRole,
+                //     'role_column_is_admin' => $hasRoleColumn,
+                //     'hasRole_method_result' => $hasRoleMethod,
+                //     'final_is_admin' => $isAdmin,
+                //     'position' => $userData['position'],
+                //     'department' => $userData['department'],
+                // ]);
+                
+                return $userData;
             })->filter(function ($userData) {
                 return !empty($userData['id']) && !empty($userData['email']);
             })->values();
@@ -927,7 +1323,7 @@ public function __construct(TicketNotificationService $notificationService)
             $approvers = $assignableUsers->filter(function ($userData) {
                 return $userData['is_admin'] === true;
             })->map(function ($approver) {
-                return [
+                $approverData = [
                     'id' => $approver['id'],
                     'name' => $approver['name'],
                     'email' => $approver['email'],
@@ -935,16 +1331,31 @@ public function __construct(TicketNotificationService $notificationService)
                     'last_name' => $approver['last_name'],
                     'position' => $approver['position'],
                     'department' => $approver['department'],
+                    'role' => $approver['role'],
+                    'is_admin' => $approver['is_admin'],
                 ];
+                
+                // // Log each approver with their role details
+                // Log::info('TICKET_CONTROLLER: Mapped approver', [
+                //     'approver_id' => $approverData['id'],
+                //     'name' => $approverData['name'],
+                //     'email' => $approverData['email'],
+                //     'role' => $approverData['role'],
+                //     'is_admin' => $approverData['is_admin'],
+                //     'position' => $approverData['position'],
+                //     'department' => $approverData['department'],
+                // ]);
+                
+                return $approverData;
             })->values();
 
             $executionTime = round((microtime(true) - $startTime) * 1000, 2);
             
-            Log::info('TICKET_CONTROLLER: Users fetched successfully', [
-                'total_users' => $assignableUsers->count(),
-                'approvers_count' => $approvers->count(),
-                'execution_time_ms' => $executionTime,
-            ]);
+            // Log::info('TICKET_CONTROLLER: Users fetched successfully', [
+            //     'total_users' => $assignableUsers->count(),
+            //     'approvers_count' => $approvers->count(),
+            //     'execution_time_ms' => $executionTime,
+            // ]);
 
             return response()->json([
                 'assignable_users' => $assignableUsers,

@@ -34,6 +34,11 @@ export default [
           specificUser: 'michaelchikoba0@gmail.com'
         }
       },
+      {
+        path: 'productivity',
+        name: 'AdminProductivityMonitor',
+        component: () => import('@/views/common/ProductivityMonitor.vue')
+      },
       // 5. PAYROLL PROCESSING
       {
         path: 'payroll',
@@ -109,6 +114,24 @@ export default [
         component: () => import('@/views/admin/AdminTasks.vue'),
         meta: { title: 'Tasks Management' }
       },
+      {
+        path: '/admin/demo-requests',
+        name: 'DemoRequests',
+        component: () => import('@/views/admin/DemoRequests.vue'),
+        meta: {
+          requiresAuth: true,
+          roles: ['admin']
+        }
+      },
+      {
+        path: '/admin/contact-requests',
+        name: 'ContactRequests',
+        component: () => import('@/views/admin/ContactRequests.vue'),
+        meta: {
+          requiresAuth: true,
+          roles: ['admin']
+        }
+      },
       // 13. BUSINESS MANAGEMENT - NO LONGER RESTRICTED TO SPECIFIC USER
       {
         path: 'businesses',
@@ -117,6 +140,40 @@ export default [
         meta: {
           requiresAuth: true,
           roles: ['admin']
+        }
+      },
+      // 14. BUSINESS GROUP LIST
+      {
+        path: 'business-groups',
+        name: 'BusinessGroupList',
+        component: () => import('@/components/BusinessGroups/BusinessGroupList.vue'),
+        meta: {
+          requiresAuth: true,
+          roles: ['admin'],
+          title: 'Business Groups'
+        }
+      },
+      // 15. BUSINESS GROUP DETAILS (with dynamic ID parameter)
+      {
+        path: 'business-groups/:id',
+        name: 'BusinessGroupDetails',
+        component: () => import('@/components/BusinessGroups/BusinessGroupDetails.vue'),
+        meta: {
+          requiresAuth: true,
+          roles: ['admin'],
+          title: 'Business Group Details'
+        },
+        props: true // Pass route params as props to component
+      },
+      // 16. CREATE BUSINESS GROUP MODAL (if you want a standalone page for creation)
+      {
+        path: 'business-groups/create',
+        name: 'CreateBusinessGroup',
+        component: () => import('@/components/BusinessGroups/CreateBusinessGroupModal.vue'),
+        meta: {
+          requiresAuth: true,
+          roles: ['admin'],
+          title: 'Create Business Group'
         }
       }
     ]

@@ -1,12 +1,12 @@
 <template>
   <div class="schedule-page min-h-screen bg-gray-50 pb-12">
     <!-- Header with Notifications -->
-    <div class="bg-white shadow relative z-30">
+    <div class="bg-white shadow relative z-30 border-b border-gray-200">
       <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div class="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
           <div>
-            <h1 class="text-3xl font-bold text-gray-900">Team Schedule & Operations</h1>
-            <p class="mt-1 text-sm text-gray-500">Manage weekly tasks, assignments, and deadlines</p>
+            <h1 class="text-3xl font-extrabold text-gray-900">Team Schedule & Operations</h1>
+            <p class="mt-1 text-sm text-gray-600 font-medium">Manage weekly tasks, assignments, and deadlines</p>
           </div>
           
           <div class="flex items-center space-x-4">
@@ -15,7 +15,7 @@
               <button 
                 type="button"
                 @click="toggleNotifications"
-                class="relative p-2 text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 rounded-full transition-colors">
+                class="relative p-2 text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 rounded-full transition-colors bg-white hover:bg-gray-100 border border-gray-200">
                 <span class="sr-only">View notifications</span>
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
@@ -36,12 +36,12 @@
               >
                 <div v-if="showNotifications" class="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl z-50 border border-gray-200 max-h-96 overflow-y-auto ring-1 ring-black ring-opacity-5">
                   <div class="p-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
-                    <h3 class="text-lg font-semibold text-gray-900">Notifications</h3>
-                    <button type="button" v-if="unreadCount > 0" @click="markAllRead" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                    <h3 class="text-lg font-bold text-gray-900">Notifications</h3>
+                    <button type="button" v-if="unreadCount > 0" @click="markAllRead" class="text-xs text-indigo-700 hover:text-indigo-900 font-bold">
                       Mark all read
                     </button>
                   </div>
-                  <div v-if="!notifications || notifications.length === 0" class="p-8 text-center text-gray-500">
+                  <div v-if="!notifications || notifications.length === 0" class="p-8 text-center text-gray-500 font-medium">
                     No new notifications
                   </div>
                   <div v-else>
@@ -57,8 +57,8 @@
                           </svg>
                         </div>
                         <div class="flex-1 min-w-0">
-                          <p class="text-sm font-medium text-gray-900 truncate">{{ getNotificationMessage(notif) }}</p>
-                          <p class="text-xs text-gray-500 mt-1">{{ formatDateTime(notif.created_at) }}</p>
+                          <p class="text-sm font-bold text-gray-900 truncate">{{ getNotificationMessage(notif) }}</p>
+                          <p class="text-xs text-gray-600 mt-1 font-medium">{{ formatDateTime(notif.created_at) }}</p>
                         </div>
                         <div v-if="!notif.is_read" class="w-2 h-2 bg-blue-600 rounded-full mt-2 ml-2"></div>
                       </div>
@@ -73,13 +73,13 @@
               <button 
                 type="button"
                 @click="currentView = 'calendar'"
-                :class="['px-4 py-2 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:z-10', currentView === 'calendar' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50']">
+                :class="['px-4 py-2 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:z-10', currentView === 'calendar' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50']">
                 Calendar
               </button>
               <button 
                 type="button"
                 @click="currentView = 'list'"
-                :class="['px-4 py-2 text-sm font-medium border-l border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:z-10', currentView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50']">
+                :class="['px-4 py-2 text-sm font-bold border-l border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:z-10', currentView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50']">
                 List View
               </button>
             </div>
@@ -88,7 +88,7 @@
             <button 
               type="button"
               @click="openCreateModal"
-              class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition shadow-sm">
+              class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-bold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition shadow-sm">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
               </svg>
@@ -111,7 +111,7 @@
             </svg>
           </div>
           <div class="ml-3">
-            <p class="text-sm text-red-700">{{ error }}</p>
+            <p class="text-sm text-red-700 font-bold">{{ error }}</p>
           </div>
         </div>
       </div>

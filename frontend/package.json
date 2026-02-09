@@ -5,11 +5,25 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:clean": "rm -rf node_modules/.vite && vite",
     "build": "vite build",
+    "cap:sync": "cap sync",
+    "cap:android": "cap open android",
+    "cap:ios": "cap open ios",
+    "mobile:build": "npm run build && cap sync",
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.2",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/cli": "^8.0.2",
+    "@capacitor/core": "^8.0.2",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/ios": "^8.0.2",
+    "@capacitor/push-notifications": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0",
     "@headlessui/vue": "^1.7.17",
     "@heroicons/vue": "^2.2.0",
     "@kyvg/vue3-notification": "^3.4.1",
@@ -30,13 +44,13 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
     "@vue/eslint-config-prettier": "^9.0.0",
-    "autoprefixer": "^10.4.16",
+    "autoprefixer": "^10.4.24",
     "baseline-browser-mapping": "^2.9.11",
     "eslint": "^8.55.0",
     "eslint-plugin-vue": "^9.19.0",
-    "postcss": "^8.4.32",
+    "postcss": "^8.5.6",
     "prettier": "^3.1.0",
-    "tailwindcss": "^3.4.0",
+    "tailwindcss": "^3.4.19",
     "vite": "^5.0.0"
   }
 }

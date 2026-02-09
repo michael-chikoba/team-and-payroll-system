@@ -20,29 +20,29 @@
           leave-from-class="opacity-100 translate-y-0 sm:scale-100"
           leave-to-class="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
         >
-          <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+          <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-200">
             <!-- Header -->
-            <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+            <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4 border-b border-gray-100">
               <div class="sm:flex sm:items-start">
                 <div class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10">
                   <span class="text-xl">⏱️</span>
                 </div>
                 <div class="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
-                  <h3 class="text-lg font-semibold leading-6 text-gray-900" id="modal-title">
+                  <h3 class="text-xl font-bold leading-6 text-gray-900" id="modal-title">
                     {{ isEditing ? 'Edit Shift Assignment' : 'Assign New Shift' }}
                   </h3>
 
                   <!-- Loading State -->
                   <div v-if="loadingEmployees" class="mt-4 text-center py-4">
                     <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-                    <p class="text-gray-600 mt-2">Loading team members...</p>
+                    <p class="text-gray-900 mt-2 font-medium">Loading team members...</p>
                   </div>
 
                   <!-- Form Content -->
                   <div v-else class="mt-4 space-y-4">
                     
                     <!-- Debug Info (Remove in production) -->
-                    <div v-if="debugMode" class="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                    <div v-if="debugMode" class="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-gray-900">
                       <p><strong>Debug:</strong> Found {{ employees.length }} employees</p>
                       <p v-if="employees.length > 0">First: {{ getEmployeeName(employees[0]) }}</p>
                       <p>Manager ID: {{ authStore.user?.id }}</p>
@@ -50,56 +50,57 @@
 
                     <!-- Employee Select -->
                     <div>
-                      <label class="block text-sm font-medium text-gray-700">Employee *</label>
+                      <label class="block text-sm font-bold text-gray-900">Employee *</label>
                       <select 
                         v-model="form.employee_id" 
                         :disabled="employees.length === 0 || isEditing"
-                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed font-medium"
                       >
-                        <option value="" disabled>Select an employee</option>
+                        <option value="" disabled class="text-gray-500">Select an employee</option>
                        
                         <option 
                           v-for="employee in employees" 
                           :key="employee.id" 
                           :value="employee.id"
+                          class="text-gray-900"
                         >
                           {{ getEmployeeName(employee) }}
                         </option>
                       </select>
                       
                       <!-- Status Messages -->
-                      <p v-if="employees.length === 0 && !loadingEmployees" class="text-sm text-yellow-600 mt-1">
+                      <p v-if="employees.length === 0 && !loadingEmployees" class="text-sm text-yellow-700 font-medium mt-1">
                         No team members found. Contact HR to assign employees to your team.
                       </p>
-                      <p v-else class="text-sm text-gray-500 mt-1">
+                      <p v-else class="text-sm text-gray-600 mt-1">
                         {{ employees.length }} team member{{ employees.length !== 1 ? 's' : '' }} available
                       </p>
                     </div>
 
                     <!-- Shift Type -->
                     <div>
-                      <label class="block text-sm font-medium text-gray-700">Shift Type *</label>
-                      <select v-model="form.shift_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
-                        <option value="morning">Morning (06:00 - 14:00)</option>
-                        <option value="evening">Evening (14:00 - 22:00)</option>
-                        <option value="night">Night (22:00 - 06:00)</option>
-                        <option value="day">Day Shift</option>
+                      <label class="block text-sm font-bold text-gray-900">Shift Type *</label>
+                      <select v-model="form.shift_type" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium">
+                        <option value="morning" class="text-gray-900">Morning (06:00 - 14:00)</option>
+                        <option value="evening" class="text-gray-900">Evening (14:00 - 22:00)</option>
+                        <option value="night" class="text-gray-900">Night (22:00 - 06:00)</option>
+                        <option value="day" class="text-gray-900">Day Shift</option>
                       </select>
                     </div>
 
                     <!-- Date Range Selection -->
                     <div class="border-t border-gray-200 pt-4">
                       <div class="flex items-center justify-between mb-2">
-                        <label class="block text-sm font-medium text-gray-700">Date Range *</label>
+                        <label class="block text-sm font-bold text-gray-900">Date Range *</label>
                         <div class="flex items-center space-x-2">
                           <button 
                             type="button"
                             @click="toggleDateRange"
-                            class="text-sm text-blue-600 hover:text-blue-800"
+                            class="text-sm text-blue-700 font-bold hover:text-blue-900 hover:underline"
                           >
                             {{ useDateRange ? 'Single Date' : 'Date Range' }}
                           </button>
-                          <span class="text-xs text-gray-500">
+                          <span class="text-xs text-gray-700 font-medium">
                             {{ useDateRange ? 'Range selected' : 'Single date' }}
                           </span>
                         </div>
@@ -111,39 +112,39 @@
                           type="date" 
                           v-model="form.start_date" 
                           :min="minDate"
-                          class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" 
+                          class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium" 
                         />
-                        <p class="text-xs text-gray-500 mt-1">Shift date</p>
+                        <p class="text-xs text-gray-600 mt-1">Shift date</p>
                       </div>
 
                       <!-- Date Range (when using range) -->
                       <div v-else class="grid grid-cols-2 gap-4">
                         <div>
-                          <label class="block text-sm font-medium text-gray-700">Start Date *</label>
+                          <label class="block text-sm font-bold text-gray-900">Start Date *</label>
                           <input 
                             type="date" 
                             v-model="form.start_date" 
                             :min="minDate"
                             :max="form.end_date"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" 
+                            class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium" 
                           />
                         </div>
                         <div>
-                          <label class="block text-sm font-medium text-gray-700">End Date *</label>
+                          <label class="block text-sm font-bold text-gray-900">End Date *</label>
                           <input 
                             type="date" 
                             v-model="form.end_date" 
                             :min="form.start_date"
-                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" 
+                            class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium" 
                           />
                         </div>
                         <div v-if="form.start_date && form.end_date" class="col-span-2">
-                          <div class="bg-blue-50 p-3 rounded-lg">
-                            <p class="text-sm text-blue-800">
-                              <span class="font-medium">Duration:</span> 
+                          <div class="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                            <p class="text-sm text-blue-900">
+                              <span class="font-bold">Duration:</span> 
                               {{ calculateDuration() }} day{{ calculateDuration() !== 1 ? 's' : '' }}
                             </p>
-                            <p class="text-xs text-blue-600 mt-1">
+                            <p class="text-xs text-blue-800 mt-1 font-medium">
                               Shift will be assigned for each day in this range
                             </p>
                           </div>
@@ -154,24 +155,29 @@
                     <!-- Time Range -->
                     <div class="grid grid-cols-2 gap-4">
                       <div>
-                        <label class="block text-sm font-medium text-gray-700">Start Time *</label>
-                        <input type="time" v-model="form.start_time" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" />
+                        <label class="block text-sm font-bold text-gray-900">Start Time *</label>
+                        <input type="time" v-model="form.start_time" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium" />
                       </div>
                       <div>
-                        <label class="block text-sm font-medium text-gray-700">End Time *</label>
-                        <input type="time" v-model="form.end_time" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" />
+                        <label class="block text-sm font-bold text-gray-900">End Time *</label>
+                        <input type="time" v-model="form.end_time" class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium" />
                       </div>
                     </div>
 
                     <!-- Notes -->
                     <div>
-                      <label class="block text-sm font-medium text-gray-700">Notes (Optional)</label>
-                      <textarea v-model="form.notes" rows="2" placeholder="Add any special instructions..." class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"></textarea>
+                      <label class="block text-sm font-bold text-gray-900">Notes (Optional)</label>
+                      <textarea 
+                        v-model="form.notes" 
+                        rows="2" 
+                        placeholder="Add any special instructions..." 
+                        class="mt-1 block w-full rounded-md border-gray-300 bg-white text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2.5 font-medium placeholder-gray-500"
+                      ></textarea>
                     </div>
 
                     <!-- Form Errors -->
                     <div v-if="formErrors.length > 0" class="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <ul class="text-sm text-red-600">
+                      <ul class="text-sm text-red-800 font-medium">
                         <li v-for="error in formErrors" :key="error" class="mb-1 last:mb-0">• {{ error }}</li>
                       </ul>
                     </div>
@@ -181,12 +187,12 @@
             </div>
 
             <!-- Footer -->
-            <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+            <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6 border-t border-gray-200">
               <button 
                 type="button" 
                 @click="handleSubmit"
                 :disabled="loadingSave || (employees.length === 0 && !isEditing)"
-                class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                class="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-blue-700 sm:ml-3 sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <span v-if="loadingSave">{{ isEditing ? 'Updating...' : 'Assigning...' }}</span>
                 <span v-else>{{ isEditing ? 'Update Shift' : 'Assign Shift' }}</span>
@@ -195,7 +201,7 @@
                 type="button" 
                 @click="$emit('close')"
                 :disabled="loadingSave"
-                class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-bold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto transition-colors"
               >
                 Cancel
               </button>

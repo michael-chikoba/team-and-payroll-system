@@ -3,6 +3,7 @@
 
 A new ticket requires your approval.
 
+**Ticket ID:** #{{ $ticket->id }}  
 **Title:** {{ $ticket->title }}  
 **Priority:** <span style="color: {{ $ticket->priority === 'high' ? '#dc2626' : ($ticket->priority === 'critical' ? '#991b1b' : '#2563eb') }}">{{ ucfirst($ticket->priority) }}</span>  
 **Created By:** {{ $ticket->user->name }}  
@@ -11,8 +12,8 @@ A new ticket requires your approval.
 **Description:**  
 {{ $ticket->description }}
 
-@component('mail::button', ['url' => 'https://archangel.darth.cloud/admin/tickets'])
-Review Ticket
+@component('mail::button', ['url' => 'https://archangel.darth.cloud/admin/tickets?search=' . $ticket->id])
+Review Ticket #{{ $ticket->id }}
 @endcomponent
 
 Thanks,  

@@ -54,6 +54,42 @@ class Employee extends Model
     ];
 
     /**
+ * Get tasks assigned to this employee
+ */
+public function tasks(): HasMany
+{
+    return $this->hasMany(Task::class, 'assigned_to', 'user_id');
+}
+
+/**
+ * Get tasks created by this employee
+ */
+public function createdTasks(): HasMany
+{
+    return $this->hasMany(Task::class, 'created_by', 'user_id');
+}
+/**
+ * Get tickets submitted by this employee
+ */
+public function tickets(): HasMany
+{
+    return $this->hasMany(Ticket::class, 'user_id', 'user_id');
+}
+/**
+ * Get tickets assigned to this employee
+ */
+public function assignedTickets()
+{
+    return $this->hasManyThrough(
+        Ticket::class,
+        Ticket::class, 
+        'user_id',
+        'id',
+        'user_id',
+        'ticket_id'
+    );
+}
+    /**
      * Boot method for model events
      */
     protected static function boot()

@@ -10,7 +10,7 @@
         leave-from="opacity-100"
         leave-to="opacity-0"
       >
-        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity" />
+        <div class="fixed inset-0 bg-gradient-to-br from-slate-900/80 via-slate-900/60 to-slate-900/80 backdrop-blur-xl transition-opacity" />
       </TransitionChild>
 
       <div class="fixed inset-0 z-10 overflow-y-auto">
@@ -24,22 +24,26 @@
             leave-from="opacity-100 translate-y-0 sm:scale-100"
             leave-to="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
           >
-            <DialogPanel class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl">
-              <!-- Header -->
-              <div class="bg-gradient-to-r from-indigo-600 to-indigo-500 px-6 py-5">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-3">
-                    <div class="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                      <TicketIcon class="h-6 w-6 text-white" />
+            <DialogPanel class="relative transform overflow-hidden rounded-2xl bg-gradient-to-b from-white to-slate-50 text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl border border-slate-200/60">
+              <!-- Modern Header -->
+              <div class="bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-500 px-8 py-6 relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-r from-white/10 to-transparent"></div>
+                <div class="relative flex items-center justify-between">
+                  <div class="flex items-center gap-4">
+                    <div class="bg-white/20 p-3 rounded-xl backdrop-blur-sm shadow-lg">
+                      <TicketIcon class="h-7 w-7 text-white" />
                     </div>
-                    <DialogTitle class="text-xl font-bold text-white">
-                      Create New Ticket
-                    </DialogTitle>
+                    <div>
+                      <DialogTitle class="text-2xl font-bold text-white tracking-tight">
+                        Create New Ticket
+                      </DialogTitle>
+                      <p class="text-sm text-white/90 mt-1">Fill in the details to create a new support ticket</p>
+                    </div>
                   </div>
                   <button
                     type="button"
                     @click="$emit('close')"
-                    class="text-white/80 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
+                    class="text-white/90 hover:text-white transition-all p-2 rounded-xl hover:bg-white/10 backdrop-blur-sm hover:scale-105"
                   >
                     <XMarkIcon class="h-6 w-6" />
                   </button>
@@ -47,47 +51,51 @@
               </div>
 
               <!-- Form Body -->
-              <form @submit.prevent="handleSubmit" class="px-6 py-6 space-y-6">
-                <!-- Ticket Type Selection -->
+              <form @submit.prevent="handleSubmit" class="px-8 py-8 space-y-8">
+                <!-- Ticket Type Selection - Modern Cards -->
                 <div>
-                  <label class="block text-sm font-semibold text-slate-700 mb-3">
+                  <label class="block text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
+                    <div class="w-1 h-4 bg-indigo-500 rounded-full"></div>
                     Ticket Type <span class="text-red-500">*</span>
                   </label>
-                  <div class="grid grid-cols-3 gap-3">
+                  <div class="grid grid-cols-3 gap-4">
                     <button
                       type="button"
                       v-for="type in ticketTypes"
                       :key="type.slug"
                       @click="selectTicketType(type)"
                       :class="[
-                        'flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all duration-200',
+                        'group flex flex-col items-center justify-center p-5 rounded-xl border-2 transition-all duration-300 transform hover:scale-[1.02]',
                         form.type === type.slug
-                          ? 'border-indigo-500 bg-indigo-50 shadow-sm'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                          ? 'border-indigo-500 bg-gradient-to-br from-indigo-50 to-white shadow-lg shadow-indigo-100'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-lg'
                       ]"
                     >
                       <div :class="[
-                        'p-3 rounded-full mb-2',
-                        form.type === type.slug ? 'bg-indigo-100' : 'bg-slate-100'
+                        'p-3 rounded-xl mb-3 transition-all duration-300 group-hover:scale-110',
+                        form.type === type.slug 
+                          ? 'bg-gradient-to-br from-indigo-500 to-purple-500 shadow-lg' 
+                          : 'bg-gradient-to-br from-slate-100 to-slate-50 group-hover:from-slate-200'
                       ]">
                         <component
                           :is="getTypeIcon(type.slug)"
                           :class="[
-                            'h-6 w-6',
-                            form.type === type.slug ? 'text-indigo-600' : 'text-slate-500'
+                            'h-6 w-6 transition-all duration-300',
+                            form.type === type.slug ? 'text-white' : 'text-slate-600'
                           ]"
                         />
                       </div>
-                      <span class="text-sm font-medium text-slate-900">{{ type.name }}</span>
-                      <span class="text-xs text-slate-500 mt-1 text-center">{{ type.description }}</span>
+                      <span class="text-sm font-semibold text-slate-900 mb-1">{{ type.name }}</span>
+                      <span class="text-xs text-slate-500 text-center leading-relaxed">{{ type.description }}</span>
                     </button>
                   </div>
-                  <p v-if="errors.type" class="mt-2 text-sm text-red-600">{{ errors.type }}</p>
+                  <p v-if="errors.type" class="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.type }}</p>
                 </div>
 
-                <!-- Title -->
+                <!-- Title - Modern Input -->
                 <div>
-                  <label for="title" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <label for="title" class="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                    <div class="w-1 h-4 bg-indigo-500 rounded-full"></div>
                     Ticket Title <span class="text-red-500">*</span>
                   </label>
                   <input
@@ -96,15 +104,16 @@
                     type="text"
                     required
                     :placeholder="titlePlaceholder"
-                    class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                    :class="{ 'border-red-500': errors.title }"
+                    class="block w-full px-5 py-3.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                    :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.title }"
                   />
-                  <p v-if="errors.title" class="mt-1 text-sm text-red-600">{{ errors.title }}</p>
+                  <p v-if="errors.title" class="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.title }}</p>
                 </div>
 
-                <!-- Description -->
+                <!-- Description - Modern Textarea -->
                 <div>
-                  <label for="description" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <label for="description" class="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                    <div class="w-1 h-4 bg-indigo-500 rounded-full"></div>
                     Description <span class="text-red-500">*</span>
                   </label>
                   <textarea
@@ -113,202 +122,237 @@
                     required
                     rows="4"
                     :placeholder="descriptionPlaceholder"
-                    class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors resize-none"
-                    :class="{ 'border-red-500': errors.description }"
+                    class="block w-full px-5 py-3.5 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 resize-none bg-white"
+                    :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.description }"
                   ></textarea>
-                  <p v-if="errors.description" class="mt-1 text-sm text-red-600">{{ errors.description }}</p>
+                  <p v-if="errors.description" class="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.description }}</p>
                 </div>
 
-                <!-- Category and Subcategory Row -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <!-- Category and Subcategory Row - Modern Cards -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <!-- Category -->
-                  <div>
-                    <label for="category" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="category" class="block text-sm font-semibold text-slate-700 mb-3">
                       Category <span class="text-red-500">*</span>
                     </label>
                     <select
                       id="category"
                       v-model="form.category"
                       required
-                      class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      :class="{ 'border-red-500': errors.category }"
+                      class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                      :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.category }"
                     >
-                      <option value="">Select Category</option>
+                      <option value="" class="text-slate-400">Select Category</option>
                       <option
                         v-for="category in selectedTypeCategories"
                         :key="category"
                         :value="category"
+                        class="text-slate-700"
                       >
                         {{ category }}
                       </option>
                     </select>
-                    <p v-if="errors.category" class="mt-1 text-sm text-red-600">{{ errors.category }}</p>
+                    <p v-if="errors.category" class="mt-2 text-sm text-red-600">{{ errors.category }}</p>
                   </div>
 
                   <!-- Subcategory -->
-                  <div>
-                    <label for="subcategory" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="subcategory" class="block text-sm font-semibold text-slate-700 mb-3">
                       Subcategory
                     </label>
                     <select
                       id="subcategory"
                       v-model="form.subcategory"
-                      class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      :class="{ 'border-red-500': errors.subcategory }"
+                      class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                      :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.subcategory }"
                     >
-                      <option value="">Select Subcategory (Optional)</option>
+                      <option value="" class="text-slate-400">Select Subcategory (Optional)</option>
                       <option
                         v-for="subcategory in selectedTypeSubcategories"
                         :key="subcategory"
                         :value="subcategory"
+                        class="text-slate-700"
                       >
                         {{ subcategory }}
                       </option>
                     </select>
-                    <p v-if="errors.subcategory" class="mt-1 text-sm text-red-600">{{ errors.subcategory }}</p>
+                    <p v-if="errors.subcategory" class="mt-2 text-sm text-red-600">{{ errors.subcategory }}</p>
                   </div>
                 </div>
 
-                <!-- Priority, Department, and Estimated Hours Row -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <!-- Priority, Department, and Estimated Hours - Modern Cards -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <!-- Priority -->
-                  <div>
-                    <label for="priority" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="priority" class="block text-sm font-semibold text-slate-700 mb-3">
                       Priority <span class="text-red-500">*</span>
                     </label>
                     <select
                       id="priority"
                       v-model="form.priority"
                       required
-                      class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      :class="{ 'border-red-500': errors.priority }"
+                      class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                      :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.priority }"
                     >
-                      <option value="">Select Priority</option>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
+                      <option value="" class="text-slate-400">Select Priority</option>
+                      <option value="low" class="text-emerald-600">Low</option>
+                      <option value="medium" class="text-amber-600">Medium</option>
+                      <option value="high" class="text-orange-600">High</option>
+                      <option value="critical" class="text-red-600">Critical</option>
                     </select>
-                    <p v-if="errors.priority" class="mt-1 text-sm text-red-600">{{ errors.priority }}</p>
+                    <p v-if="errors.priority" class="mt-2 text-sm text-red-600">{{ errors.priority }}</p>
                   </div>
 
                   <!-- Department -->
-                  <div>
-                    <label for="department_id" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="department_id" class="block text-sm font-semibold text-slate-700 mb-3">
                       Department
                     </label>
                     <select
                       id="department_id"
                       v-model="form.department_id"
-                      class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      :class="{ 'border-red-500': errors.department_id }"
+                      class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                      :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.department_id }"
                     >
-                      <option value="">Select Department</option>
+                      <option value="" class="text-slate-400">Select Department</option>
                       <option
                         v-for="dept in departments"
                         :key="dept.id"
                         :value="dept.id"
+                        class="text-slate-700"
                       >
                         {{ dept.name }}
                       </option>
                     </select>
-                    <p v-if="errors.department_id" class="mt-1 text-sm text-red-600">{{ errors.department_id }}</p>
+                    <p v-if="errors.department_id" class="mt-2 text-sm text-red-600">{{ errors.department_id }}</p>
                   </div>
 
                   <!-- Estimated Hours -->
-                  <div>
-                    <label for="estimated_hours" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="estimated_hours" class="block text-sm font-semibold text-slate-700 mb-3">
                       Estimated Hours
                     </label>
-                    <input
-                      id="estimated_hours"
-                      v-model.number="form.estimated_hours"
-                      type="number"
-                      min="0"
-                      max="1000"
-                      step="0.5"
-                      placeholder="e.g., 2.5"
-                      class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      :class="{ 'border-red-500': errors.estimated_hours }"
-                    />
-                    <p v-if="errors.estimated_hours" class="mt-1 text-sm text-red-600">{{ errors.estimated_hours }}</p>
+                    <div class="relative">
+                      <input
+                        id="estimated_hours"
+                        v-model.number="form.estimated_hours"
+                        type="number"
+                        min="0"
+                        max="1000"
+                        step="0.5"
+                        placeholder="e.g., 2.5"
+                        class="block w-full px-4 py-3 pl-10 border border-slate-200 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                        :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.estimated_hours }"
+                      />
+                      <ClockIcon class="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
+                    </div>
+                    <p v-if="errors.estimated_hours" class="mt-2 text-sm text-red-600">{{ errors.estimated_hours }}</p>
                   </div>
                 </div>
 
-                <!-- Due Date and Assignees Row -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <!-- Due Date and Assignees Row - Modern Cards -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <!-- Due Date -->
-                  <div>
-                    <label for="due_date" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="due_date" class="block text-sm font-semibold text-slate-700 mb-3">
                       Due Date <span class="text-red-500">*</span>
                     </label>
-                    <input
-                      id="due_date"
-                      v-model="form.due_date"
-                      type="date"
-                      required
-                      :min="minDate"
-                      class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                      :class="{ 'border-red-500': errors.due_date }"
-                    />
-                    <p v-if="errors.due_date" class="mt-1 text-sm text-red-500">{{ errors.due_date }}</p>
+                    <div class="relative">
+                      <CalendarDaysIcon class="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
+                      <input
+                        id="due_date"
+                        v-model="form.due_date"
+                        type="date"
+                        required
+                        :min="minDate"
+                        class="block w-full px-4 py-3 pl-10 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                        :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.due_date }"
+                      />
+                    </div>
+                    <p v-if="errors.due_date" class="mt-2 text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{{ errors.due_date }}</p>
                   </div>
 
                   <!-- Assignees Section -->
-                  <div>
-                    <label for="assigned_to" class="block text-sm font-semibold text-slate-700 mb-2">
+                  <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                    <label for="assigned_to" class="block text-sm font-semibold text-slate-700 mb-3">
                       Assign To
                     </label>
-                    <Multiselect
-                      v-model="form.assigned_to"
-                      :options="availableUsers"
-                      :multiple="true"
-                      :searchable="true"
-                      :close-on-select="false"
-                      placeholder="Select team members..."
-                      label="name"
-                      track-by="id"
-                      value-prop="id"
-                      :object="false"
-                      class="multiselect-custom"
-                      :loading="loadingUsers"
-                    />
-                    <p v-if="errors.assigned_to" class="mt-1 text-sm text-red-600">{{ errors.assigned_to }}</p>
                     
-                    <!-- Display selected assignees as chips -->
-                    <div v-if="selectedAssignees.length > 0" class="mt-2 flex flex-wrap gap-2">
-                      <div v-for="user in selectedAssignees" :key="user.id" class="inline-flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-800 rounded text-xs">
-                        {{ user.name }}
-                        <button
-                          type="button"
-                          @click="removeAssignee(user.id)"
-                          class="text-indigo-600 hover:text-indigo-900"
+                    <!-- Multiple select with modern styling -->
+                    <select
+                      id="assigned_to"
+                      v-model="form.assigned_to"
+                      multiple
+                      class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white h-32"
+                      :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.assigned_to }"
+                      :disabled="loadingUsers"
+                    >
+                      <option value="" class="text-slate-400">Select team members (Ctrl+Click for multiple)</option>
+                      <option
+                        v-for="user in availableUsers"
+                        :key="user.id"
+                        :value="user.id"
+                        class="text-slate-700 py-2"
+                      >
+                        {{ user.name }} ({{ user.email }})
+                      </option>
+                    </select>
+                    
+                    <!-- Loading state -->
+                    <div v-if="loadingUsers" class="mt-3 flex items-center gap-3 px-4 py-3 bg-slate-50 rounded-lg">
+                      <div class="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent"></div>
+                      <span class="text-sm text-slate-600">Loading team members...</span>
+                    </div>
+                    
+                    <!-- Selected assignees as chips -->
+                    <div v-if="selectedAssignees.length > 0" class="mt-4">
+                      <p class="text-sm font-medium text-slate-700 mb-2">Selected Assignees:</p>
+                      <div class="flex flex-wrap gap-2">
+                        <div 
+                          v-for="user in selectedAssignees" 
+                          :key="user.id" 
+                          class="inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-800 rounded-lg text-sm font-medium border border-indigo-200"
                         >
-                          <XMarkIcon class="h-3 w-3" />
-                        </button>
+                          <UserCircleIcon class="h-4 w-4" />
+                          {{ user.name }}
+                          <button
+                            type="button"
+                            @click="removeAssignee(user.id)"
+                            class="ml-1 text-indigo-600 hover:text-indigo-900 transition-colors"
+                          >
+                            <XMarkIcon class="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <p class="mt-1 text-xs text-slate-500">
-                      Select team members who will work on this ticket
+                    
+                    <p class="mt-3 text-xs text-slate-500">
+                      <InformationCircleIcon class="inline h-4 w-4 mr-1" />
+                      Hold Ctrl (or Cmd on Mac) to select multiple team members
                     </p>
+                    <p v-if="errors.assigned_to" class="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.assigned_to }}</p>
                   </div>
                 </div>
 
-                <!-- APPROVER SECTION (Based on the simpler example) -->
-                <div v-if="showApproverField">
-                  <label for="approver_id" class="block text-sm font-semibold text-slate-700 mb-2">
+                <!-- APPROVER SECTION -->
+                <div v-if="showApproverField" class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                  <label for="approver_id" class="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                    <ShieldCheckIcon class="h-5 w-5 text-indigo-500" />
                     Assign to Approver <span class="text-red-500">*</span>
                   </label>
                  
                   <!-- Loading State -->
-                  <div v-if="loadingApprovers && internalApprovers.length === 0" class="flex items-center gap-2 px-4 py-3 border border-slate-300 rounded-lg bg-slate-50">
-                    <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
-                    <span class="text-sm text-slate-500">Loading approvers...</span>
+                  <div v-if="loadingApprovers && internalApprovers.length === 0" class="flex items-center gap-3 px-4 py-3 border border-slate-200 rounded-lg bg-slate-50">
+                    <div class="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent"></div>
+                    <span class="text-sm text-slate-600">Loading approvers...</span>
                   </div>
                  
                   <!-- No Approvers -->
-                  <div v-else-if="!loadingApprovers && internalApprovers.length === 0" class="px-4 py-3 border border-amber-300 rounded-lg bg-amber-50">
-                    <p class="text-sm text-amber-800">No approvers available. Please contact your administrator.</p>
+                  <div v-else-if="!loadingApprovers && internalApprovers.length === 0" class="px-4 py-3 border border-amber-200 rounded-lg bg-gradient-to-r from-amber-50 to-amber-100">
+                    <p class="text-sm text-amber-800 flex items-center gap-2">
+                      <ExclamationTriangleIcon class="h-4 w-4" />
+                      No approvers available. Please contact your administrator.
+                    </p>
                   </div>
                  
                   <!-- Approvers List -->
@@ -317,32 +361,35 @@
                     id="approver_id"
                     v-model="form.approver_id"
                     required
-                    class="block w-full px-4 py-3 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                    :class="{ 'border-red-500': errors.approver_id }"
+                    class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white"
+                    :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.approver_id }"
                   >
-                    <option value="">Select Approver</option>
+                    <option value="" class="text-slate-400">Select Approver</option>
                     <option
                       v-for="approver in internalApprovers"
                       :key="approver.id"
                       :value="approver.id"
+                      class="text-slate-700"
                     >
                       {{ approver.name }} ({{ approver.email }})
                     </option>
                   </select>
-                  <p v-if="errors.approver_id" class="mt-1 text-sm text-red-500">{{ errors.approver_id }}</p>
+                  <p v-if="errors.approver_id" class="mt-2 text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{{ errors.approver_id }}</p>
                 </div>
 
-                <!-- Attachments -->
-                <div>
-                  <label class="block text-sm font-semibold text-slate-700 mb-2">
+                <!-- Attachments - Modern Upload Area -->
+                <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
+                  <label class="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                    <PaperClipIcon class="h-5 w-5 text-slate-500" />
                     Attachments
                   </label>
-                  <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-lg hover:border-indigo-400 transition-colors">
-                    <div class="space-y-1 text-center">
-                      <DocumentArrowUpIcon class="mx-auto h-12 w-12 text-slate-400" />
-                      <div class="flex text-sm text-slate-600">
-                        <label for="file-upload" class="relative cursor-pointer rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
-                          <span>Upload files</span>
+                  <div class="mt-2 flex justify-center px-6 pt-8 pb-8 border-2 border-dashed rounded-xl transition-all duration-300 hover:border-indigo-400 hover:bg-indigo-50/50 group"
+                       :class="errors.attachments ? 'border-red-300 bg-red-50/50' : 'border-slate-300'">
+                    <div class="space-y-4 text-center">
+                      <DocumentArrowUpIcon class="mx-auto h-12 w-12 text-slate-400 group-hover:text-indigo-400 transition-colors" />
+                      <div class="flex flex-col sm:flex-row items-center justify-center gap-2 text-sm text-slate-600">
+                        <label for="file-upload" class="relative cursor-pointer rounded-lg font-semibold text-indigo-600 hover:text-indigo-500 px-4 py-2 border border-indigo-200 hover:border-indigo-300 bg-white hover:bg-indigo-50 transition-all duration-200">
+                          <span>Browse files</span>
                           <input
                             id="file-upload"
                             type="file"
@@ -351,81 +398,95 @@
                             class="sr-only"
                           />
                         </label>
-                        <p class="pl-1">or drag and drop</p>
+                        <p class="text-slate-500">or drag and drop here</p>
                       </div>
-                      <p class="text-xs text-slate-500">
-                        PNG, JPG, PDF up to 10MB
+                      <p class="text-xs text-slate-400">
+                        PNG, JPG, PDF up to 10MB each
                       </p>
                     </div>
                   </div>
+                  
                   <!-- File list preview -->
-                  <div v-if="form.attachments && form.attachments.length > 0" class="mt-3 space-y-2">
-                    <div v-for="(file, index) in form.attachments" :key="index" class="flex items-center justify-between p-2 bg-slate-50 rounded-lg">
-                      <div class="flex items-center gap-2">
-                        <DocumentIcon class="h-5 w-5 text-slate-400" />
-                        <span class="text-sm text-slate-700 truncate">{{ file.name }}</span>
+                  <div v-if="form.attachments && form.attachments.length > 0" class="mt-6 space-y-3">
+                    <p class="text-sm font-medium text-slate-700 mb-2">Selected files:</p>
+                    <div v-for="(file, index) in form.attachments" :key="index" 
+                         class="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors group">
+                      <div class="flex items-center gap-3">
+                        <div class="p-2 bg-slate-100 rounded-lg">
+                          <DocumentIcon class="h-5 w-5 text-slate-500" />
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <p class="text-sm font-medium text-slate-900 truncate">{{ file.name }}</p>
+                          <p class="text-xs text-slate-500">{{ formatFileSize(file.size) }}</p>
+                        </div>
                       </div>
                       <button
                         type="button"
                         @click="removeAttachment(index)"
-                        class="text-slate-400 hover:text-red-500"
+                        class="text-slate-400 hover:text-red-500 p-1 rounded-lg hover:bg-red-50 transition-colors"
                       >
-                        <TrashIcon class="h-4 w-4" />
+                        <TrashIcon class="h-5 w-5" />
                       </button>
                     </div>
                   </div>
+                  <p v-if="errors.attachments" class="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.attachments }}</p>
                 </div>
 
-                <!-- SLA Information -->
-                <div v-if="selectedTicketType" class="rounded-lg bg-slate-50 p-4">
-                  <div class="flex items-center gap-2">
-                    <ClockIcon class="h-5 w-5 text-slate-500" />
-                    <span class="text-sm font-medium text-slate-700">SLA Information</span>
-                  </div>
-                  <div class="mt-2 grid grid-cols-2 gap-4">
-                    <div>
-                      <span class="text-xs text-slate-500">Type SLA</span>
-                      <p class="text-sm font-semibold text-slate-900">{{ selectedTicketType.sla_hours }} hours</p>
+                <!-- SLA Information - Modern Card -->
+                <div v-if="selectedTicketType" class="bg-gradient-to-r from-indigo-50 to-purple-50 p-5 rounded-xl border border-indigo-100">
+                  <div class="flex items-center gap-3">
+                    <div class="p-2 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg">
+                      <ClockIcon class="h-5 w-5 text-white" />
                     </div>
-                    <div>
-                      <span class="text-xs text-slate-500">Status</span>
-                      <p class="text-sm font-semibold text-slate-900">
-                        {{ selectedTicketType.requires_approval ? 'Requires Approval' : 'Auto-assigned' }}
+                    <span class="text-sm font-semibold text-indigo-900">Service Level Agreement</span>
+                  </div>
+                  <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white/80 p-3 rounded-lg">
+                      <p class="text-xs text-slate-500 mb-1">Response Time</p>
+                      <p class="text-sm font-bold text-indigo-900">{{ selectedTicketType.sla_hours }} hours</p>
+                    </div>
+                    <div class="bg-white/80 p-3 rounded-lg">
+                      <p class="text-xs text-slate-500 mb-1">Approval Required</p>
+                      <p class="text-sm font-bold" :class="selectedTicketType.requires_approval ? 'text-amber-600' : 'text-emerald-600'">
+                        {{ selectedTicketType.requires_approval ? 'Yes' : 'No' }}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <!-- General Error Message -->
-                <div v-if="errors.general" class="rounded-lg bg-red-50 p-4 border border-red-200">
-                  <div class="flex">
+                <div v-if="errors.general" class="rounded-xl bg-gradient-to-r from-red-50 to-red-100 p-4 border border-red-200">
+                  <div class="flex items-center gap-3">
                     <div class="flex-shrink-0">
-                      <ExclamationTriangleIcon class="h-5 w-5 text-red-400" />
+                      <ExclamationTriangleIcon class="h-5 w-5 text-red-500" />
                     </div>
-                    <div class="ml-3">
+                    <div>
                       <p class="text-sm font-medium text-red-800">{{ errors.general }}</p>
                     </div>
                   </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                <!-- Action Buttons - Modern -->
+                <div class="flex items-center justify-end gap-4 pt-6 border-t border-slate-200/60">
                   <button
                     type="button"
                     @click="$emit('close')"
-                    class="px-5 py-2.5 border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                    class="px-6 py-3 border border-slate-300 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-3 focus:ring-slate-500/20 transition-all duration-200 hover:scale-[1.02] disabled:opacity-50"
                     :disabled="submitting"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    class="inline-flex items-center px-5 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    class="px-6 py-3 border border-transparent rounded-xl text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-3 focus:ring-indigo-500/30 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     :disabled="submitting || (loadingApprovers && internalApprovers.length === 0 && showApproverField)"
                   >
-                    <span v-if="!submitting">Create Ticket</span>
+                    <span v-if="!submitting" class="flex items-center gap-2">
+                      <PlusIcon class="h-4 w-4" />
+                      Create Ticket
+                    </span>
                     <span v-else class="flex items-center gap-2">
-                      <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                       Creating...
                     </span>
                   </button>
@@ -442,7 +503,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import axios from 'axios'
-import Multiselect from '@vueform/multiselect'
 import {
   Dialog,
   DialogPanel,
@@ -460,7 +520,13 @@ import {
   ClockIcon,
   ExclamationCircleIcon,
   DocumentTextIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  UserCircleIcon,
+  PlusIcon,
+  PaperClipIcon,
+  CalendarDaysIcon,
+  InformationCircleIcon,
+  ShieldCheckIcon
 } from '@heroicons/vue/24/outline'
 
 // Props
@@ -494,7 +560,7 @@ const form = ref({
   priority: 'medium',
   due_date: '',
   estimated_hours: null,
-  assigned_to: [], // Store user IDs as array
+  assigned_to: [],
   attachments: []
 })
 
@@ -538,6 +604,10 @@ const availableUsers = computed(() => {
 const selectedAssignees = computed(() => {
   if (!form.value.assigned_to || form.value.assigned_to.length === 0) return []
   return availableUsers.value.filter(user => form.value.assigned_to.includes(user.id))
+})
+
+const processedAssignedTo = computed(() => {
+  return prepareAssignedToArray(form.value.assigned_to)
 })
 
 const titlePlaceholder = computed(() => {
@@ -595,16 +665,21 @@ const removeAssignee = (userId) => {
   form.value.assigned_to = form.value.assigned_to.filter(id => id !== userId)
 }
 
-// Enhanced Approvers Fetching (from second example)
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 const fetchApprovers = async () => {
   loadingApprovers.value = true
   try {
-    console.log('📞 [Modal] Fetching approvers from API...')
     const response = await axios.get('/api/tickets/approvers')
-    console.log('📦 [Modal] Raw API response:', response.data)
-   
+    
     let rawList = []
-   
+    
     if (Array.isArray(response.data)) {
       rawList = response.data
     } else if (response.data && Array.isArray(response.data.approvers)) {
@@ -612,9 +687,7 @@ const fetchApprovers = async () => {
     } else if (response.data && Array.isArray(response.data.data)) {
       rawList = response.data.data
     }
-   
-    console.log('🔍 [Modal] Extracted raw list:', rawList)
-   
+    
     const processedList = rawList
       .filter(item => item && typeof item === 'object')
       .map(approver => {
@@ -622,7 +695,7 @@ const fetchApprovers = async () => {
                      `${approver.first_name || ''} ${approver.last_name || ''}`.trim() ||
                      approver.email ||
                      'Unknown User'
-       
+        
         return {
           id: approver.id,
           name: name,
@@ -634,14 +707,10 @@ const fetchApprovers = async () => {
         }
       })
       .filter(approver => approver.id)
-   
-    console.log('✅ [Modal] Processed approvers:', processedList)
-    console.log('📊 [Modal] Total approvers:', processedList.length)
-   
+    
     internalApprovers.value = processedList
-   
+    
   } catch (error) {
-    console.error('❌ [Modal] Error fetching approvers:', error)
     internalApprovers.value = []
   } finally {
     loadingApprovers.value = false
@@ -657,9 +726,8 @@ const fetchUsers = async () => {
   loadingUsers.value = true
   try {
     const response = await axios.get('/api/users/assignable')
-    users.value = response.data || []
+    users.value = response.data?.assignable_users || response.data?.data || response.data || []
   } catch (error) {
-    console.error('Error fetching users:', error)
     users.value = []
   } finally {
     loadingUsers.value = false
@@ -677,7 +745,6 @@ const fetchTicketTypes = async () => {
       fetchCategories(ticketTypes.value[0].slug)
     }
   } catch (error) {
-    console.error('Error fetching ticket types:', error)
     ticketTypes.value = []
   } finally {
     loadingTicketTypes.value = false
@@ -695,7 +762,7 @@ const fetchCategories = async (typeSlug) => {
       }
     }
   } catch (error) {
-    console.error('Error fetching categories:', error)
+    // Handle error silently
   }
 }
 
@@ -705,7 +772,6 @@ const fetchDepartments = async () => {
     const response = await axios.get('/api/tickets/departments')
     departments.value = response.data || []
   } catch (error) {
-    console.error('Error fetching departments:', error)
     departments.value = []
   } finally {
     loadingDepartments.value = false
@@ -724,7 +790,7 @@ const resetForm = () => {
     priority: 'medium',
     due_date: '',
     estimated_hours: null,
-    assigned_to: [], // Reset to empty array
+    assigned_to: [],
     attachments: []
   }
   errors.value = {}
@@ -754,6 +820,47 @@ const handleFileUpload = (event) => {
 
 const removeAttachment = (index) => {
   form.value.attachments.splice(index, 1)
+}
+
+const prepareAssignedToArray = (assignedTo) => {
+  let assignedToArray = assignedTo;
+  
+  if (!assignedToArray) {
+    return [];
+  }
+  
+  if (!Array.isArray(assignedToArray)) {
+    assignedToArray = [assignedToArray];
+  }
+  
+  return assignedToArray
+    .map(item => {
+      if (typeof item === 'object' && item !== null) {
+        return item.id;
+      }
+      return Number(item);
+    })
+    .filter(id => !isNaN(id) && id > 0);
+}
+
+const prepareFormData = () => {
+  const assignedToArray = prepareAssignedToArray(form.value.assigned_to);
+  
+  const data = {
+    type: form.value.type,
+    title: form.value.title,
+    description: form.value.description,
+    category: form.value.category,
+    subcategory: form.value.subcategory || null,
+    department_id: form.value.department_id || null,
+    approver_id: form.value.approver_id || null,
+    priority: form.value.priority,
+    due_date: form.value.due_date,
+    estimated_hours: form.value.estimated_hours || null,
+    assigned_to: assignedToArray
+  }
+  
+  return data
 }
 
 const validateForm = () => {
@@ -790,7 +897,6 @@ const validateForm = () => {
     isValid = false
   }
 
-  // Validate due date is not in the past
   if (form.value.due_date) {
     const today = new Date().toISOString().split('T')[0]
     if (form.value.due_date < today) {
@@ -799,46 +905,12 @@ const validateForm = () => {
     }
   }
 
-  // Only require approver for request and change_request types
   if (showApproverField.value && !form.value.approver_id) {
     errors.value.approver_id = 'Approver is required for this ticket type'
     isValid = false
   }
 
-  // Ensure assigned_to is always an array
-  if (!Array.isArray(form.value.assigned_to)) {
-    form.value.assigned_to = []
-  }
-
   return isValid
-}
-
-const prepareFormData = () => {
-  // Ensure assigned_to is always an array
-  let assignedToArray = form.value.assigned_to;
-  
-  if (!assignedToArray) {
-    assignedToArray = [];
-  } else if (!Array.isArray(assignedToArray)) {
-    assignedToArray = [assignedToArray];
-  }
-  
-  const data = {
-    type: form.value.type,
-    title: form.value.title,
-    description: form.value.description,
-    category: form.value.category,
-    subcategory: form.value.subcategory || null,
-    department_id: form.value.department_id || null,
-    approver_id: form.value.approver_id || null, // Send null for issue type
-    priority: form.value.priority,
-    due_date: form.value.due_date,
-    estimated_hours: form.value.estimated_hours || null,
-    assigned_to: assignedToArray
-  }
-  
-  console.log('Submitting ticket data:', data)
-  return data
 }
 
 const handleSubmit = async () => {
@@ -855,25 +927,19 @@ const handleSubmit = async () => {
     if (form.value.attachments.length > 0) {
       const formData = new FormData()
       
-      // Append regular fields
       Object.keys(data).forEach(key => {
         const value = data[key]
         if (key === 'assigned_to' && Array.isArray(value)) {
-          // Handle assigned_to array
           if (value.length > 0) {
             value.forEach(item => {
               formData.append('assigned_to[]', item)
             })
-          } else {
-            // Send empty array as empty string
-            formData.append('assigned_to', '')
           }
         } else {
-          formData.append(key, value || '')
+          formData.append(key, value !== null && value !== undefined ? value : '')
         }
       })
       
-      // Append attachments
       form.value.attachments.forEach(file => {
         formData.append('attachments[]', file)
       })
@@ -889,7 +955,6 @@ const handleSubmit = async () => {
         emit('created', response.data)
       }
     } else {
-      // No attachments, send as JSON
       const response = await axios.post('/api/tickets', data)
       
       if (response.data) {
@@ -898,8 +963,6 @@ const handleSubmit = async () => {
       }
     }
   } catch (error) {
-    console.error('Error creating ticket:', error.response || error)
-    
     if (error.response?.data?.errors) {
       errors.value = error.response.data.errors
     } else if (error.response?.data?.message) {
@@ -915,22 +978,22 @@ const handleSubmit = async () => {
 // Watchers
 watch(() => props.show, (newVal) => {
   if (newVal) {
-    console.log('🚪 [Modal] Modal opened')
-    console.log('📦 [Modal] Props approvers:', props.approvers)
-   
-    // Use approvers from props if available
     if (props.approvers && props.approvers.length > 0) {
-      console.log('✅ [Modal] Using approvers from parent:', props.approvers.length)
       internalApprovers.value = props.approvers
       loadingApprovers.value = false
     } else {
-      console.log('🔄 [Modal] No approvers passed, fetching...')
       fetchApprovers()
     }
     
     fetchTicketTypes()
     fetchDepartments()
-    fetchUsers()
+    
+    if (props.assignableUsers.length === 0) {
+      fetchUsers()
+    } else {
+      users.value = props.assignableUsers
+    }
+    
     resetForm()
   } else {
     resetForm()
@@ -939,52 +1002,56 @@ watch(() => props.show, (newVal) => {
   }
 }, { immediate: true })
 
-// Watch for changes in approvers prop
 watch(() => props.approvers, (newApprovers) => {
-  console.log('🔄 [Modal] Approvers prop updated:', newApprovers?.length)
   if (newApprovers && newApprovers.length > 0 && props.show) {
-    console.log('✅ [Modal] Updating internal approvers from prop')
     internalApprovers.value = newApprovers
   }
 })
 
 onMounted(() => {
-  import('@vueform/multiselect/themes/default.css')
-  console.log('🎫 [Modal] Component mounted')
-  
-  if (props.assignableUsers.length === 0) {
-    fetchUsers()
-  }
+  // Initial setup if needed
 })
 </script>
 
 <style scoped>
-:deep(.multiselect-custom) {
-  --ms-radius: 0.5rem;
-  --ms-border-width: 1px;
-  --ms-border-color: #cbd5e1;
-  --ms-font-size: 0.875rem;
-  --ms-py: 0.75rem;
-  --ms-px: 1rem;
-}
-
-:deep(.multiselect-custom .multiselect-tags) {
-  border-radius: 0.5rem;
-  min-height: 48px;
-}
-
-:deep(.multiselect-custom .multiselect-tag) {
-  background: #e0e7ff;
+/* Custom styles for multiple select */
+select[multiple] option:checked {
+  background: linear-gradient(to right, #e0e7ff, #f3f4f6);
   color: #4f46e5;
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
+  font-weight: 500;
 }
 
-:deep(.multiselect-custom .multiselect-tag-remove) {
-  color: #4f46e5;
+select[multiple] option:hover {
+  background: linear-gradient(to right, #f1f5f9, #f8fafc);
 }
 
-:deep(.multiselect-custom .multiselect-spinner) {
-  border-color: #4f46e5 transparent transparent;
+select[multiple]:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+/* Smooth transitions */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom scrollbar */
+select[multiple]::-webkit-scrollbar {
+  width: 6px;
+}
+
+select[multiple]::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+select[multiple]::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+select[multiple]::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 </style>

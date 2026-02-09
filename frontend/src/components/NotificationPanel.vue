@@ -1,6 +1,14 @@
 <template>
-  <div class="notification-panel-overlay" @click="$emit('close')">
-    <div class="notification-panel" @click.stop>
+  <!-- Backdrop overlay - teleported to body -->
+  <div class="notification-panel-backdrop" @click="$emit('close')"></div>
+  
+  <!-- Panel container - teleported to body with dynamic positioning -->
+  <div 
+    class="notification-panel-wrapper" 
+    :style="panelStyles"
+    @click.stop
+  >
+    <div class="notification-panel">
       <div class="panel-header">
         <h3>Notifications</h3>
         <div class="header-actions">
@@ -23,8 +31,13 @@
           :class="['notification-item', { unread: !notification.is_read }]"
           @click="handleNotificationClick(notification)">
           <div :class="['notification-icon', getIconClass(notification.type)]">
+            <!-- Business Group Invitation Icon -->
+            <svg v-if="notification.type === 'business_group_invitation'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            
             <!-- Task Assigned Icon -->
-            <svg v-if="notification.type === 'task_assigned'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-else-if="notification.type === 'task_assigned'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
               <circle cx="9" cy="7" r="4"></circle>
               <polyline points="16 11 18 13 22 9"></polyline>
@@ -74,7 +87,7 @@
           
           <div class="notification-content">
             <p class="notification-title" v-if="notification.title">{{ notification.title }}</p>
-            <p class="notification-message">{{ notification.message }}</p>
+            <p class="notification-message">{{ formatNotificationMessage(notification) }}</p>
             <span class="notification-time">{{ formatTime(notification.created_at) }}</span>
           </div>
           
@@ -110,6 +123,10 @@ export default {
     notifications: {
       type: Array,
       required: true
+    },
+    buttonPosition: {
+      type: Object,
+      required: true
     }
   },
   emits: ['close', 'mark-all-read'],
@@ -120,75 +137,49 @@ export default {
 
     const loading = computed(() => store.loading)
     const hasUnread = computed(() => props.notifications.some(n => !n.is_read))
-
-    const handleNotificationClick = async (notification) => {
-      try {
-        // Mark as read first
-        if (!notification.is_read) {
-          await store.markAsRead(notification.id)
-        }
-        
-        // Close the panel
-        emit('close')
-        
-        // Navigate to the appropriate page
-        if (notification.action) {
-          const actionUrl = notification.action
-          const userRole = authStore.user?.role
-          
-          // Check notification type and navigate accordingly
-          if (notification.type === 'task_assigned' || actionUrl.includes('/tasks')) {
-            await router.push({ name: 'TaskBoard' })
-            console.log('✅ Navigated to TaskBoard from notification')
-          } 
-          else if (notification.type === 'schedule_assigned' || notification.type === 'schedule_updated' || actionUrl.includes('/schedules')) {
-            await router.push({ name: 'EmployeeSchedules' })
-            console.log('✅ Navigated to Schedules from notification')
-          }
-          else if (notification.type.includes('leave') || actionUrl.includes('/leaves')) {
-            if (userRole === 'employee') {
-              await router.push({ name: 'employeeleaves' })
-            } else if (userRole === 'manager') {
-              await router.push({ name: 'managerleaves' })
-            }
-            console.log('✅ Navigated to leaves from notification')
-          }
-          else if (notification.type.includes('ticket') || actionUrl.includes('/tickets')) {
-            await router.push({ name: 'mytickets' })
-            console.log('✅ Navigated to tickets from notification')
-          }
-          else if (notification.type.includes('shift') || actionUrl.includes('/shifts')) {
-            await router.push({ name: 'myshifts' })
-            console.log('✅ Navigated to shifts from notification')
-          }
-          else if (notification.type.includes('payslip') || actionUrl.includes('/payslips')) {
-            if (userRole === 'employee') {
-              await router.push({ name: 'employeepayslips' })
-            } else if (userRole === 'manager') {
-              await router.push({ name: 'managerpayslips' })
-            }
-            console.log('✅ Navigated to payslips from notification')
-          }
-          // Fallback: try to navigate directly
-          else {
-            try {
-              await router.push(actionUrl)
-              console.log('✅ Navigated to:', actionUrl)
-            } catch (error) {
-              console.warn('⚠️ Could not navigate to:', actionUrl, error)
-              // Navigate to dashboard as fallback
-              const dashboardRoute = userRole === 'employee' ? 'employeedashboard' 
-                : userRole === 'manager' ? 'managerdashboard' 
-                : 'admindashboard'
-              await router.push({ name: dashboardRoute })
-            }
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error handling notification click:', error)
+    
+    const panelStyles = computed(() => {
+      return {
+        position: 'fixed',
+        top: `${props.buttonPosition.top}px`,
+        right: `${props.buttonPosition.right}px`,
       }
+    })
+
+    const formatNotificationMessage = (notification) => {
+      // For business group invitations, format the message nicely
+      if (notification.type === 'business_group_invitation') {
+        const data = notification.data || {}
+        return `${data.invited_by || 'A business'} invited you to join "${data.group_name || 'a business group'}" as ${data.proposed_role || 'member'}`
+      }
+      
+      // For other notifications, return the existing message
+      return notification.message
     }
 
+  
+const handleNotificationClick = async (notification) => {
+  try {
+    // Mark as read first
+    if (!notification.is_read) {
+      await store.markAsRead(notification.id)
+    }
+    
+    // Close the panel
+    emit('close')
+    
+    // Handle business group invitation
+    if (notification.type === 'business_group_invitation') {
+      await router.push({ name: 'Invitations' })
+      console.log('✅ Navigated to Invitations from notification')
+      return
+    }
+    
+    // ... rest of your code
+  } catch (error) {
+    console.error('❌ Error handling notification click:', error)
+  }
+}
     const formatTime = (timestamp) => {
       const date = new Date(timestamp)
       const now = new Date()
@@ -218,6 +209,7 @@ export default {
     }
 
     const getIconClass = (type) => {
+      if (type === 'business_group_invitation') return 'invitation'
       if (type === 'task_assigned') return 'assignment'
       if (type.includes('schedule')) return 'schedule'
       if (type.includes('updated')) return 'reminder'
@@ -232,6 +224,8 @@ export default {
     return {
       loading,
       hasUnread,
+      panelStyles,
+      formatNotificationMessage,
       handleNotificationClick,
       formatTime,
       markAllAsRead,
@@ -242,55 +236,55 @@ export default {
 </script>
 
 <style scoped>
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
-  color: #9ca3af;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #f3f4f6;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.notification-panel-overlay {
+/* Backdrop - covers entire screen with MAXIMUM z-index */
+.notification-panel-backdrop {
   position: fixed;
   top: 0;
+  left: 0;
   right: 0;
   bottom: 0;
-  left: 0;
   background: rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  display: flex;
-  justify-content: flex-end;
-  animation: fadeIn 0.2s;
+  z-index: 999998; /* Maximum z-index for backdrop */
+  animation: fadeIn 0.2s ease-out;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Panel wrapper - positioned dynamically with MAXIMUM z-index */
+.notification-panel-wrapper {
+  z-index: 999999; /* Maximum z-index - highest in entire app */
+  animation: slideIn 0.3s ease-out;
+  pointer-events: auto;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .notification-panel {
-  width: 400px;
-  max-width: 100%;
+  width: 420px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 100px);
   background: white;
-  box-shadow: -4px 0 24px rgba(0,0,0,0.2);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 1px rgba(0, 0, 0, 0.2);
   display: flex;
   flex-direction: column;
-  max-height: 100vh;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -300,12 +294,14 @@ export default {
   justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
+  background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
 }
 
 .panel-header h3 {
   margin: 0;
   font-size: 1.25rem;
   color: #1f2937;
+  font-weight: 700;
 }
 
 .header-actions {
@@ -322,11 +318,14 @@ export default {
   font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s;
+  color: #4b5563;
+  font-weight: 500;
 }
 
 .mark-all-btn:hover {
   background: #f9fafb;
   border-color: #d1d5db;
+  color: #1f2937;
 }
 
 .close-btn {
@@ -339,15 +338,37 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #6b7280;
 }
 
 .close-btn:hover {
   background: #f3f4f6;
+  color: #1f2937;
 }
 
 .notifications-list {
   flex: 1;
   overflow-y: auto;
+  min-height: 200px;
+  max-height: calc(100vh - 200px);
+}
+
+/* Custom scrollbar */
+.notifications-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notifications-list::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.notifications-list::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.notifications-list::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 .notification-item {
@@ -368,6 +389,10 @@ export default {
   background: #eff6ff;
 }
 
+.notification-item.unread:hover {
+  background: #dbeafe;
+}
+
 .notification-icon {
   width: 32px;
   height: 32px;
@@ -376,6 +401,11 @@ export default {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.notification-icon.invitation {
+  background: #f3e8ff;
+  color: #9333ea;
 }
 
 .notification-icon.assignment {
@@ -433,6 +463,7 @@ export default {
   font-size: 0.875rem;
   font-weight: 600;
   color: #1f2937;
+  line-height: 1.4;
 }
 
 .notification-message {
@@ -468,10 +499,97 @@ export default {
 
 .empty-state svg {
   margin-bottom: 1rem;
+  opacity: 0.5;
 }
 
 .empty-state p {
   margin: 0;
   font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  color: #9ca3af;
+  min-height: 300px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #f3f4f6;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-state p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .notification-panel-wrapper {
+    top: 60px !important;
+    right: 10px !important;
+    left: 10px !important;
+    width: auto !important;
+  }
+  
+  .notification-panel {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100vh - 80px);
+  }
+  
+  .panel-header {
+    padding: 1rem;
+  }
+  
+  .panel-header h3 {
+    font-size: 1.1rem;
+  }
+  
+  .notification-item {
+    padding: 0.875rem 1rem;
+  }
+  
+  .notifications-list {
+    max-height: calc(100vh - 150px);
+  }
+}
+
+@media (max-width: 480px) {
+  .notification-panel-wrapper {
+    top: 50px !important;
+    right: 5px !important;
+    left: 5px !important;
+  }
+  
+  .mark-all-btn {
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+  }
+  
+  .notification-icon {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .notification-icon svg {
+    width: 14px;
+    height: 14px;
+  }
 }
 </style>

@@ -5,7 +5,7 @@
     <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" @click.stop>
       <!-- Header -->
       <div class="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
-        <h2 class="text-2xl font-bold text-gray-900">
+        <h2 class="text-2xl font-extrabold text-gray-900">
           {{ schedule?.id ? 'Edit Schedule' : 'Create New Schedule' }}
         </h2>
         <button
@@ -24,29 +24,29 @@
         
         <!-- Title -->
         <div>
-          <label for="title" class="block text-sm font-medium text-gray-700 mb-2">
-            Title <span class="text-red-500">*</span>
+          <label for="title" class="block text-sm font-bold text-gray-900 mb-2">
+            Title <span class="text-red-600">*</span>
           </label>
           <input
             id="title"
             v-model="formData.title"
             type="text"
             required
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium placeholder-gray-500"
             placeholder="Enter schedule title"
           />
         </div>
 
         <!-- Description -->
         <div>
-          <label for="description" class="block text-sm font-medium text-gray-700 mb-2">
+          <label for="description" class="block text-sm font-bold text-gray-900 mb-2">
             Description
           </label>
           <textarea
             id="description"
             v-model="formData.description"
             rows="3"
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium placeholder-gray-500"
             placeholder="Enter schedule description"
           ></textarea>
         </div>
@@ -55,14 +55,14 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <!-- Type -->
           <div>
-            <label for="type" class="block text-sm font-medium text-gray-700 mb-2">
-              Task Type <span class="text-red-500">*</span>
+            <label for="type" class="block text-sm font-bold text-gray-900 mb-2">
+              Task Type <span class="text-red-600">*</span>
             </label>
             <select
               id="type"
               v-model="formData.type"
               required
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium"
             >
               <option value="banner_creation">Banner Creation</option>
               <option value="weekly_overview">Weekly Overview</option>
@@ -75,14 +75,14 @@
 
           <!-- Priority -->
           <div>
-            <label for="priority" class="block text-sm font-medium text-gray-700 mb-2">
-              Priority <span class="text-red-500">*</span>
+            <label for="priority" class="block text-sm font-bold text-gray-900 mb-2">
+              Priority <span class="text-red-600">*</span>
             </label>
             <select
               id="priority"
               v-model="formData.priority"
               required
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium"
             >
               <option value="low">Low</option>
               <option value="moderate">Moderate</option>
@@ -96,44 +96,44 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <!-- Start Date -->
           <div>
-            <label for="scheduled_date" class="block text-sm font-medium text-gray-700 mb-2">
+            <label for="scheduled_date" class="block text-sm font-bold text-gray-900 mb-2">
               Start Date
             </label>
             <input
               id="scheduled_date"
               v-model="formData.scheduled_date"
               type="date"
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium"
             />
           </div>
 
           <!-- Due Date -->
           <div>
-            <label for="due_date" class="block text-sm font-medium text-gray-700 mb-2">
-              Due Date <span class="text-red-500">*</span>
+            <label for="due_date" class="block text-sm font-bold text-gray-900 mb-2">
+              Due Date <span class="text-red-600">*</span>
             </label>
             <input
               id="due_date"
               v-model="formData.due_date"
               type="date"
               required
-              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium"
             />
           </div>
         </div>
 
         <!-- Assigned To -->
         <div>
-          <label for="assigned_to" class="block text-sm font-medium text-gray-700 mb-2">
-            Assign To <span class="text-red-500">*</span>
+          <label for="assigned_to" class="block text-sm font-bold text-gray-900 mb-2">
+            Assign To <span class="text-red-600">*</span>
           </label>
           <select
             id="assigned_to"
             v-model="formData.assigned_to"
             required
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium"
           >
-            <option value="">Select team member</option>
+            <option value="" disabled class="text-gray-500">Select team member</option>
             <option v-for="emp in employees" :key="emp.id" :value="emp.id">
               {{ emp.full_name || emp.name || `Employee #${emp.id}` }}
             </option>
@@ -142,7 +142,7 @@
 
         <!-- Banner Regions (Only for banner_creation type) -->
         <div v-if="formData.type === 'banner_creation'">
-          <label class="block text-sm font-medium text-gray-700 mb-3">
+          <label class="block text-sm font-bold text-gray-900 mb-3">
             Target Regions
           </label>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -152,9 +152,9 @@
               type="button"
               @click="toggleRegion(region)"
               :class="[
-                'px-4 py-3 text-sm font-medium rounded-lg border-2 transition-all duration-200',
+                'px-4 py-3 text-sm font-bold rounded-lg border-2 transition-all duration-200',
                 formData.meta_data[region]
-                  ? 'bg-green-500 border-green-600 text-white shadow-sm'
+                  ? 'bg-green-600 border-green-700 text-white shadow-sm'
                   : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400 hover:bg-gray-50'
               ]"
             >
@@ -175,14 +175,14 @@
 
         <!-- Notes -->
         <div>
-          <label for="notes" class="block text-sm font-medium text-gray-700 mb-2">
+          <label for="notes" class="block text-sm font-bold text-gray-900 mb-2">
             Additional Notes
           </label>
           <textarea
             id="notes"
             v-model="formData.notes"
             rows="3"
-            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white text-gray-900 font-medium placeholder-gray-500"
             placeholder="Add any additional information or instructions"
           ></textarea>
         </div>
@@ -193,14 +193,14 @@
             type="button"
             @click="$emit('close')"
             :disabled="saving"
-            class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50"
+            class="px-4 py-2 text-sm font-bold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="submit"
             :disabled="saving"
-            class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
+            class="px-4 py-2 text-sm font-bold text-white bg-indigo-600 border border-transparent rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
           >
             <svg v-if="saving" class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

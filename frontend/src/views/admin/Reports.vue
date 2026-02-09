@@ -1765,340 +1765,12 @@ export default {
   }
 }
 </script>
-
 <style>
-/* Add new styles for report type selector */
-.report-type-selector {
-  background: white;
-  border-radius: 12px;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid var(--color-border);
-}
-.type-selector-header {
-  margin-bottom: 1.5rem;
-}
-.type-selector-header h3 {
-  color: var(--color-heading);
-  font-size: 1.2rem;
-  margin: 0;
-}
-.type-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1rem;
-}
-.type-selector-btn {
-  padding: 1.25rem;
-  border: 2px solid var(--color-border);
-  border-radius: 10px;
-  background: white;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-}
-.type-selector-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: var(--color-primary);
-}
-.type-selector-btn.active {
-  border-color: var(--color-primary);
-  background: linear-gradient(135deg, #667eea0d 0%, #764ba20d 100%);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
-}
-.type-icon {
-  font-size: 2rem;
-}
-.type-name {
-  font-weight: 600;
-  color: var(--color-heading);
-  text-align: center;
-  font-size: 0.95rem;
-}
-.dynamic-report-form {
-  background: white;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border: 1px solid var(--color-border);
-}
-.report-form-header {
-  margin-bottom: 2rem;
-}
-.report-form-header h3 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin: 0 0 0.5rem 0;
-}
-.form-description {
-  color: var(--color-text);
-  margin: 0;
-  font-size: 0.95rem;
-}
-.report-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-.report-form .generate-btn {
-  margin-top: 1rem;
-}
-.generation-header {
-  margin-bottom: 2rem;
-}
-.generation-header h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem;
-}
-.section-description {
-  color: var(--color-text);
-  font-size: 0.95rem;
-  margin-bottom: 0;
-}
-.filters-applied-note {
-  color: var(--color-primary);
-  font-weight: 500;
-}
-/* Earnings-specific styles */
-.btn-earnings {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-.btn-earnings:hover {
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-}
-/* Deductions-specific styles */
-.btn-deductions {
-  background: linear-gradient(135deg, #f56565 0%, #ed64a6 100%);
-  color: white;
-}
-.btn-deductions:hover {
-  background: linear-gradient(135deg, #e53e3e 0%, #d53f8c 100%);
-}
-/* Earnings Breakdown Section */
-.earnings-breakdown-section {
-  margin-top: 2rem;
-  margin-bottom: 2rem;
-}
-.earning-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-.earning-card {
-  background: white;
-  border: 1px solid #dbeafe;
-  border-radius: 12px;
-  padding: 1.25rem;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-.earning-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-.earning-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-.earning-name {
-  font-weight: 600;
-  color: var(--color-heading);
-  font-size: 0.95rem;
-}
-.earning-type-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.earning-type-badge.type-basic {
-  background: #dbeafe;
-  color: #1e40af;
-}
-.earning-type-badge.type-allowance {
-  background: #d1fae5;
-  color: #065f46;
-}
-.earning-type-badge.type-bonus {
-  background: #fef3c7;
-  color: #92400e;
-}
-.earning-type-badge.type-overtime {
-  background: #e0e7ff;
-  color: #4f46e5;
-}
-.earning-type-badge.type-commission {
-  background: #fce7f3;
-  color: #9f1239;
-}
-.earning-type-badge.type-other {
-  background: #f3f4f6;
-  color: #4b5563;
-}
-.earning-card-body {
-  border-top: 1px solid #dbeafe;
-  padding-top: 0.75rem;
-}
-.earning-amount {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--color-primary);
-  margin-bottom: 0.25rem;
-}
-.earning-employees {
-  font-size: 0.85rem;
-  color: var(--color-text);
-}
-/* Deduction Breakdown Section */
-.deduction-breakdown-section {
-  margin-top: 2rem;
-  margin-bottom: 2rem;
-}
-.deduction-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1rem;
-  margin-top: 1rem;
-}
-.deduction-card {
-  background: white;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 1.25rem;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
-.deduction-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-.deduction-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-}
-.deduction-name {
-  font-weight: 600;
-  color: var(--color-heading);
-  font-size: 0.95rem;
-}
-.deduction-type-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.deduction-type-badge.type-tax {
-  background: #fee2e2;
-  color: #991b1b;
-}
-.deduction-type-badge.type-statutory {
-  background: #fef3c7;
-  color: #92400e;
-}
-.deduction-type-badge.type-pension {
-  background: #dbeafe;
-  color: #1e40af;
-}
-.deduction-type-badge.type-health {
-  background: #d1fae5;
-  color: #065f46;
-}
-.deduction-type-badge.type-voluntary {
-  background: #fce7f3;
-  color: #9f1239;
-}
-.deduction-type-badge.type-loan {
-  background: #e0e7ff;
-  color: #4f46e5;
-}
-.deduction-type-badge.type-other {
-  background: #f3f4f6;
-  color: #4b5563;
-}
-.deduction-card-body {
-  border-top: 1px solid var(--color-border);
-  padding-top: 0.75rem;
-}
-.deduction-amount {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--color-primary);
-  margin-bottom: 0.25rem;
-}
-.deduction-employees {
-  font-size: 0.85rem;
-  color: var(--color-text);
-}
-/* Responsive adjustments */
-@media (max-width: 1400px) {
-  .earning-cards,
-  .deduction-cards {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  }
- 
-  .type-selector-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  }
-}
-@media (max-width: 768px) {
-  .earning-cards,
-  .deduction-cards {
-    grid-template-columns: 1fr;
-  }
- 
-  .type-selector-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 480px) {
-  .type-selector-grid {
-    grid-template-columns: 1fr;
-  }
-}
-/* Pagination styles */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-.pagination button {
-  padding: 0.5rem 1rem;
-  background: var(--color-primary);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: background 0.3s;
-}
-.pagination button:hover {
-  background: #2563eb;
-}
-.pagination button:disabled {
-  background: #9ca3af;
-  cursor: not-allowed;
-}
-.pagination span {
-  font-weight: bold;
-  color: var(--color-heading);
-}
-/* Keep all existing CSS styles from your original code */
+/* ============================================
+   ENHANCED VISIBILITY STYLES FOR REPORTS MANAGEMENT
+   All filter buttons, labels, and inputs are now highly visible
+   ============================================ */
+
 /* CSS Variables */
 :root {
   /* Primary Brand Color - A calm, professional blue */
@@ -2118,6 +1790,7 @@ export default {
   --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.06);
   --shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.1);
 }
+
 /* --- Page Layout --- */
 .reports-management {
   max-width: 1400px;
@@ -2126,145 +1799,228 @@ export default {
   background-color: var(--color-bg);
   min-height: 100vh;
 }
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--color-border);
-}
-.page-header h1 {
-  color: var(--color-heading);
-  font-size: 2.25rem;
-  font-weight: 700;
-}
-.header-actions {
-  display: flex;
-  gap: 1rem;
-}
-/* Business Filter Section Styles */
+
+/* ============================================
+   BUSINESS FILTER SECTION - MAXIMUM VISIBILITY
+   ============================================ */
 .business-filter-section {
   background: white;
-  padding: 1.5rem;
+  padding: 2rem;
   border-radius: 16px;
-  margin-bottom: 1.5rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  border: 2px solid #e5e7eb;
 }
+
+.business-filter-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
 .business-filter-header h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 0.25rem;
+  color: #1a202c;
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
 }
+
 .filter-subtitle {
-  color: var(--color-text);
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
+  color: #4b5563;
+  font-size: 1rem;
+  margin-bottom: 0;
+  font-weight: 500;
 }
+
+/* ============================================
+   BUSINESS FILTER CONTROLS - ENHANCED VISIBILITY
+   ============================================ */
 .business-filter-controls {
   display: flex;
   gap: 1.5rem;
   align-items: flex-end;
   flex-wrap: wrap;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e0e7ff 100%);
+  border-radius: 12px;
+  border: 2px solid #c7d2fe;
 }
+
 .filter-group {
   display: flex;
   flex-direction: column;
-  min-width: 200px;
+  min-width: 220px;
   flex: 1;
 }
+
+/* CRITICAL: Enhanced label visibility */
 .filter-label {
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 0.5rem;
-  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1a202c;
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  display: block;
 }
-.business-select, .country-select {
-  padding: 0.75rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  transition: border-color 0.3s;
+
+/* CRITICAL: Enhanced select dropdown visibility */
+.business-select, 
+.country-select {
+  padding: 0.875rem 1rem;
+  border: 2px solid #cbd5e0;
+  border-radius: 10px;
+  font-size: 1.05rem;
+  transition: all 0.3s;
   background: white;
   width: 100%;
+  cursor: pointer;
+  color: #1a202c;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
-.business-select:focus, .country-select:focus {
+
+.business-select:hover,
+.country-select:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.business-select:focus, 
+.country-select:focus {
   outline: none;
   border-color: #667eea;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
 }
+
+/* CRITICAL: Select option visibility */
+.business-select option,
+.country-select option {
+  background: white;
+  color: #1a202c;
+  padding: 0.75rem;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
 .active-filter-badge {
-  margin-left: 0.5rem;
-  padding: 0.25rem 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 1rem;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  border-radius: 12px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 700;
   display: inline-block;
-  margin-top: 0.5rem;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  letter-spacing: 0.025em;
 }
+
+/* CRITICAL: Enhanced clear filters button */
 .btn-clear-filters {
-  padding: 0.75rem 1.5rem;
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  font-weight: 500;
+  padding: 0.875rem 1.75rem;
+  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+  color: #991b1b;
+  border: 2px solid #fca5a5;
+  border-radius: 10px;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.3s;
   height: fit-content;
   white-space: nowrap;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
 }
+
 .btn-clear-filters:hover {
-  background: #e5e7eb;
+  background: linear-gradient(135deg, #fca5a5 0%, #f87171 100%);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
 }
+
+/* ============================================
+   APPLIED FILTERS INFO - MAXIMUM VISIBILITY
+   ============================================ */
 .applied-filters-info {
-  padding: 1rem;
-  background: #f9fafb;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-radius: 12px;
+  border: 2px solid #3b82f6;
   margin-top: 1rem;
+  display: block !important;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
 }
+
 .applied-filters-info p {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.9rem;
-  color: #374151;
+  margin: 0 0 0.75rem 0;
+  font-size: 1rem;
+  color: #1e3a8a;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+
 .applied-filters-tags {
   display: flex;
-  gap: 0.75rem;
+  gap: 1rem;
   flex-wrap: wrap;
 }
+
+/* CRITICAL: Enhanced filter tags */
 .filter-tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  background: #eef2ff;
-  color: #667eea;
-  border-radius: 20px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  background: white;
+  color: #1e3a8a;
+  border-radius: 25px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: 2px solid #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+  letter-spacing: 0.025em;
 }
+
 .tag-remove {
   cursor: pointer;
-  font-size: 1.2rem;
+  font-size: 1.5rem;
   line-height: 1;
-  color: #667eea;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-  margin-left: 0.25rem;
-}
-.tag-remove:hover {
+  color: #dc2626;
   opacity: 1;
+  transition: all 0.2s;
+  margin-left: 0.5rem;
+  font-weight: 900;
+  background: #fee2e2;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-/* Admin Info Section */
+
+.tag-remove:hover {
+  background: #dc2626;
+  color: white;
+  transform: scale(1.1);
+}
+
+/* ============================================
+   ADMIN INFO SECTION
+   ============================================ */
 .admin-info h2 {
   color: var(--color-heading);
   font-size: 1.75rem;
   margin-bottom: 0.25rem;
+  font-weight: 700;
 }
+
 .admin-subtitle-row {
   display: flex;
   justify-content: space-between;
@@ -2273,342 +2029,639 @@ export default {
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
+
 .admin-subtitle {
   color: var(--color-text);
   font-size: 1rem;
+  font-weight: 500;
 }
+
 .active-filters-display {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
 }
+
 .filter-display-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #f0f4ff;
-  border-radius: 8px;
-  font-size: 0.9rem;
-}
-.filter-display-item .filter-label {
-  font-weight: 600;
-  color: #4b5563;
-  margin: 0;
-}
-.filter-display-item .filter-value {
-  font-weight: 500;
-  color: #3b82f6;
-}
-/* --- Buttons --- */
-.btn-primary, .btn-secondary, .btn-tertiary, .btn-download, .btn-view, .btn-close-preview {
+  gap: 0.75rem;
   padding: 0.75rem 1.25rem;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+  border-radius: 12px;
+  font-size: 0.95rem;
+  border: 2px solid #818cf8;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+}
+
+.filter-display-item .filter-label {
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.filter-display-item .filter-value {
+  font-weight: 700;
+  color: #4f46e5;
+  font-size: 1rem;
+}
+
+/* ============================================
+   BUTTONS - ENHANCED VISIBILITY
+   ============================================ */
+.btn-primary, .btn-secondary, .btn-tertiary, .btn-download, .btn-view, .btn-close-preview {
+  padding: 0.875rem 1.5rem;
   border: none;
-  border-radius: 8px;
-  font-weight: 600;
+  border-radius: 10px;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
+
 .btn-primary {
-  background: var(--color-primary);
-  color: var(--color-card-bg);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
 }
+
 .btn-secondary {
-  background: var(--color-secondary);
-  color: var(--color-card-bg);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
 }
+
 .btn-tertiary {
-  background: var(--color-tertiary);
-  color: var(--color-card-bg);
+  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
+  color: white;
 }
+
 .btn-primary:hover, .btn-secondary:hover, .btn-tertiary:hover, .btn-download:hover, .btn-view:hover {
   opacity: 0.9;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
+
 .btn-primary:disabled, .btn-secondary:disabled, .btn-tertiary:disabled {
-  background-color: var(--color-border);
-  color: var(--color-text);
+  background: #9ca3af;
+  color: white;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+  opacity: 0.6;
 }
-/* Specific button styles for reports list */
+
 .btn-download {
-  background: var(--color-secondary);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   color: white;
-  padding: 0.6rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.95rem;
 }
+
 .btn-view {
-  background: var(--color-primary);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: white;
-  padding: 0.6rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.95rem;
 }
+
 .btn-close-preview {
-  background: #6b7280;
+  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
   color: white;
 }
+
 .btn-close-preview:hover {
-  background: #4b5563;
+  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
 }
-/* --- Status/Error Messages --- */
+
+/* ============================================
+   STATUS/ERROR MESSAGES
+   ============================================ */
 .error-message, .loading {
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   border-radius: 12px;
   text-align: center;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 1.1rem;
 }
+
 .error-message {
-  background-color: #fef2f2;
-  color: #ef4444;
-  border: 1px solid #fca5a5;
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #f87171;
 }
+
 .loading {
-  background-color: #eff6ff;
-  color: var(--color-primary);
-  border: 1px solid #93c5fd;
+  background-color: #dbeafe;
+  color: #1e40af;
+  border: 2px solid #60a5fa;
 }
-/* --- Main Dashboard Sections --- */
+
+/* ============================================
+   MAIN DASHBOARD SECTIONS
+   ============================================ */
 .reports-dashboard > div:not(.admin-info) {
   background: var(--color-card-bg);
   border-radius: 16px;
   box-shadow: var(--shadow-card);
   padding: 2rem;
   margin-bottom: 2.5rem;
+  border: 1px solid var(--color-border);
 }
-/* Report Generation Section */
+
+/* ============================================
+   REPORT GENERATION SECTION
+   ============================================ */
 .report-generation-section h2 {
   color: var(--color-heading);
   font-size: 1.5rem;
   margin-bottom: 0.5rem;
+  font-weight: 700;
 }
+
 .section-description {
   color: var(--color-text);
-  font-size: 0.95rem;
+  font-size: 1rem;
   margin-bottom: 1.5rem;
-}
-.filters-applied-note {
-  color: var(--color-primary);
   font-weight: 500;
 }
+
+.filters-applied-note {
+  color: #3b82f6;
+  font-weight: 700;
+  background: #dbeafe;
+  padding: 0.25rem 0.75rem;
+  border-radius: 8px;
+  display: inline-block;
+  margin-left: 0.5rem;
+}
+
+/* ============================================
+   REPORT TYPE SELECTOR - ENHANCED VISIBILITY
+   ============================================ */
+.report-type-selector {
+  background: white;
+  border-radius: 12px;
+  padding: 1.75rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  border: 2px solid var(--color-border);
+}
+
+.type-selector-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.type-selector-header h3 {
+  color: #1a202c;
+  font-size: 1.3rem;
+  margin: 0;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.type-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
+}
+
+/* CRITICAL: Enhanced type selector buttons */
+.type-selector-btn {
+  padding: 1.5rem;
+  border: 3px solid #e5e7eb;
+  border-radius: 12px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.type-selector-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+}
+
+.type-selector-btn.active {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.25);
+  transform: translateY(-4px);
+}
+
+.type-icon {
+  font-size: 2.5rem;
+}
+
+.type-name {
+  font-weight: 700;
+  color: #1a202c;
+  text-align: center;
+  font-size: 1rem;
+  letter-spacing: 0.025em;
+}
+
+/* ============================================
+   DYNAMIC REPORT FORM - ENHANCED VISIBILITY
+   ============================================ */
+.dynamic-report-form {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  border: 2px solid var(--color-border);
+}
+
+.report-form-header {
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.report-form-header h3 {
+  color: #1a202c;
+  font-size: 1.6rem;
+  margin: 0 0 0.75rem 0;
+  font-weight: 800;
+}
+
+.form-description {
+  color: #4b5563;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.report-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.report-form .generate-btn {
+  margin-top: 1.5rem;
+}
+
+.generation-header {
+  margin-bottom: 2rem;
+}
+
+.generation-header h2 {
+  color: var(--color-heading);
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
 .option-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
+
+/* CRITICAL: Enhanced date inputs */
 .date-inputs {
   display: flex;
-  gap: 1rem;
+  gap: 1.5rem;
 }
+
 .input-group {
   flex: 1;
 }
+
+/* CRITICAL: Enhanced input labels */
 .input-group label {
-  color: var(--color-heading);
-  font-size: 0.9rem;
-  display: block;
-  margin-bottom: 0.25rem;
-  font-weight: 500;
-}
-.date-input {
-  padding: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  color: #1a202c;
   font-size: 1rem;
+  display: block;
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+/* CRITICAL: Enhanced date input fields */
+.date-input {
+  padding: 0.875rem 1rem;
+  border: 2px solid #cbd5e0;
+  border-radius: 10px;
+  font-size: 1.05rem;
   width: 100%;
   box-sizing: border-box;
+  background: white;
+  color: #1a202c;
+  font-weight: 600;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
+
+.date-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+}
+
+/* CRITICAL: Enhanced filter group */
 .filter-group {
   margin-bottom: 0;
 }
+
 .filter-group label {
   display: block;
-  color: var(--color-heading);
-  font-size: 0.9rem;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
+  color: #1a202c;
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
 }
+
+/* CRITICAL: Enhanced filter select dropdown */
 .filter-select {
   width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 1rem;
+  padding: 0.875rem 1rem;
+  border: 2px solid #cbd5e0;
+  border-radius: 10px;
+  font-size: 1.05rem;
   background-color: white;
   box-sizing: border-box;
+  color: #1a202c;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
+
+.filter-select:hover {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
 .filter-select:focus {
   outline: none;
-  border-color: var(--color-primary);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
 }
-.business-country-info {
+
+/* CRITICAL: Select option visibility */
+.filter-select option {
+  background: white;
+  color: #1a202c;
   padding: 0.75rem;
-  background: #f0f4ff;
-  border-radius: 8px;
-  border: 1px solid #dbeafe;
-  margin-top: 0.5rem;
-}
-.info-label {
-  font-size: 0.85rem;
-  color: #3b82f6;
   font-weight: 600;
-  margin-bottom: 0.5rem;
+  font-size: 1rem;
 }
+
+.business-country-info {
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-radius: 12px;
+  border: 2px solid #3b82f6;
+  margin-top: 1rem;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+}
+
+.info-label {
+  font-size: 0.95rem;
+  color: #1e3a8a;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .info-tags {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
+
 .info-tag {
   display: inline-block;
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
+
 .info-tag.business {
-  background: #e0e7ff;
+  background: white;
   color: #4f46e5;
+  border: 2px solid #4f46e5;
 }
+
 .info-tag.country {
-  background: #d1fae5;
+  background: white;
   color: #059669;
+  border: 2px solid #059669;
 }
+
 .generate-btn {
   margin-top: auto;
   width: 100%;
   justify-content: center;
+  padding: 1rem 1.5rem;
+  font-size: 1.05rem;
 }
-/* --- Quick Stats Grid --- */
+
+/* Earnings-specific styles */
+.btn-earnings {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-earnings:hover {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+}
+
+/* Deductions-specific styles */
+.btn-deductions {
+  background: linear-gradient(135deg, #f56565 0%, #ed64a6 100%);
+  color: white;
+}
+
+.btn-deductions:hover {
+  background: linear-gradient(135deg, #e53e3e 0%, #d53f8c 100%);
+}
+
+/* ============================================
+   QUICK STATS GRID
+   ============================================ */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
+
 .stat-card {
   background: var(--color-card-bg);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   padding: 1.5rem;
   display: flex;
   align-items: center;
   transition: transform 0.2s;
   border-left: 5px solid var(--color-primary);
+  border: 2px solid #e5e7eb;
 }
+
 .stat-card:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--shadow-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
+
 .stat-icon {
   font-size: 2.5rem;
   margin-right: 1rem;
   background-color: #eff6ff;
-  padding: 0.5rem;
-  border-radius: 8px;
+  padding: 0.75rem;
+  border-radius: 12px;
+  border: 2px solid #bfdbfe;
 }
+
 .stat-content h3 {
   font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--color-text);
+  font-weight: 700;
+  color: #1a202c;
   margin: 0;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+
 .stat-value {
-  font-size: 1.8rem;
-  font-weight: 800;
-  color: var(--color-primary);
-  margin: 0.25rem 0;
+  font-size: 2rem;
+  font-weight: 900;
+  color: #3b82f6;
+  margin: 0.5rem 0 0.25rem;
   line-height: 1;
 }
+
 .stat-label {
-  font-size: 0.8rem;
-  color: #9ca3af;
+  font-size: 0.85rem;
+  color: #6b7280;
   margin: 0;
+  font-weight: 600;
 }
-/* --- Generated Reports Section --- */
+
+/* ============================================
+   GENERATED REPORTS SECTION
+   ============================================ */
 .generated-reports h2 {
   color: var(--color-heading);
   font-size: 1.5rem;
   margin-bottom: 1.5rem;
+  font-weight: 700;
 }
+
 .reports-list {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
+
 .report-item {
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 1rem 1.5rem;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  transition: all 0.2s;
+  padding: 1.25rem 1.75rem;
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  transition: all 0.3s;
   background-color: var(--color-card-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
+
 .report-item:hover {
-  border-color: var(--color-primary);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  border-color: #3b82f6;
+  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
+  transform: translateY(-2px);
 }
+
 .report-icon {
   font-size: 2.5rem;
   line-height: 1;
 }
+
 .report-info {
   flex: 1;
 }
+
 .report-info h4 {
-  margin: 0 0 0.25rem 0;
-  color: var(--color-heading);
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-.report-period {
-  margin: 0 0 0.25rem 0;
-  color: var(--color-primary);
-  font-weight: 700;
-  font-size: 0.9rem;
-}
-.report-date {
   margin: 0 0 0.5rem 0;
-  color: var(--color-text);
-  font-size: 0.85rem;
+  color: #1a202c;
+  font-size: 1.2rem;
+  font-weight: 700;
 }
-.report-filters {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+
+.report-period {
+  margin: 0 0 0.5rem 0;
+  color: #3b82f6;
+  font-weight: 700;
+  font-size: 1rem;
 }
-.filter-badge {
-  padding: 0.125rem 0.5rem;
-  background: #f5f3ff;
-  color: #8b5cf6;
-  border-radius: 4px;
-  font-size: 0.75rem;
+
+.report-date {
+  margin: 0 0 0.75rem 0;
+  color: #6b7280;
+  font-size: 0.9rem;
   font-weight: 500;
 }
+
+.report-filters {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.filter-badge {
+  padding: 0.375rem 0.875rem;
+  background: #f5f3ff;
+  color: #7c3aed;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 2px solid #a78bfa;
+  letter-spacing: 0.025em;
+}
+
 .report-actions {
   display: flex;
   gap: 0.75rem;
 }
-/* --- Report Preview Section --- */
+
+/* ============================================
+   REPORT PREVIEW SECTION
+   ============================================ */
 .report-preview-section {
   background: var(--color-card-bg);
   border-radius: 16px;
   box-shadow: var(--shadow-card);
   padding: 2rem;
   margin-bottom: 2.5rem;
+  border: 2px solid var(--color-border);
 }
+
 .preview-header {
   display: flex;
   justify-content: space-between;
@@ -2617,63 +2670,253 @@ export default {
   padding-bottom: 1rem;
   border-bottom: 2px solid var(--color-border);
 }
+
 .preview-header h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin: 0 0 0.5rem 0;
+  color: #1a202c;
+  font-size: 1.6rem;
+  margin: 0 0 0.75rem 0;
+  font-weight: 800;
 }
+
 .preview-filters {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
+
 .preview-actions {
   display: flex;
   gap: 1rem;
   margin-bottom: 2rem;
+  flex-wrap: wrap;
 }
+
 .preview-content h3 {
-  color: var(--color-primary);
-  font-size: 1.2rem;
+  color: #3b82f6;
+  font-size: 1.3rem;
   margin-bottom: 1rem;
   border-bottom: 2px solid var(--color-border);
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.75rem;
+  font-weight: 700;
 }
+
+.preview-content h4 {
+  color: #1a202c;
+  font-size: 1.1rem;
+  margin: 2rem 0 1rem;
+  font-weight: 700;
+}
+
+/* ============================================
+   EARNINGS & DEDUCTIONS BREAKDOWN
+   ============================================ */
+.earnings-breakdown-section,
+.deduction-breakdown-section {
+  margin-top: 2rem;
+  margin-bottom: 2rem;
+}
+
+.earning-cards,
+.deduction-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.earning-card,
+.deduction-card {
+  background: white;
+  border: 2px solid #dbeafe;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.earning-card:hover,
+.deduction-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  border-color: #3b82f6;
+}
+
+.earning-card-header,
+.deduction-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.earning-name,
+.deduction-name {
+  font-weight: 700;
+  color: #1a202c;
+  font-size: 1rem;
+  letter-spacing: 0.025em;
+}
+
+.earning-type-badge,
+.deduction-type-badge {
+  padding: 0.375rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Type badge colors */
+.earning-type-badge.type-basic {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 2px solid #3b82f6;
+}
+
+.earning-type-badge.type-allowance {
+  background: #d1fae5;
+  color: #065f46;
+  border: 2px solid #10b981;
+}
+
+.earning-type-badge.type-bonus {
+  background: #fef3c7;
+  color: #92400e;
+  border: 2px solid #f59e0b;
+}
+
+.earning-type-badge.type-overtime {
+  background: #e0e7ff;
+  color: #4f46e5;
+  border: 2px solid #818cf8;
+}
+
+.earning-type-badge.type-commission {
+  background: #fce7f3;
+  color: #9f1239;
+  border: 2px solid #ec4899;
+}
+
+.earning-type-badge.type-other {
+  background: #f3f4f6;
+  color: #1f2937;
+  border: 2px solid #9ca3af;
+}
+
+.deduction-type-badge.type-tax {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 2px solid #ef4444;
+}
+
+.deduction-type-badge.type-statutory {
+  background: #fef3c7;
+  color: #92400e;
+  border: 2px solid #f59e0b;
+}
+
+.deduction-type-badge.type-pension {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 2px solid #3b82f6;
+}
+
+.deduction-type-badge.type-health {
+  background: #d1fae5;
+  color: #065f46;
+  border: 2px solid #10b981;
+}
+
+.deduction-type-badge.type-voluntary {
+  background: #fce7f3;
+  color: #9f1239;
+  border: 2px solid #ec4899;
+}
+
+.deduction-type-badge.type-loan {
+  background: #e0e7ff;
+  color: #4f46e5;
+  border: 2px solid #818cf8;
+}
+
+.deduction-type-badge.type-other {
+  background: #f3f4f6;
+  color: #1f2937;
+  border: 2px solid #9ca3af;
+}
+
+.earning-card-body,
+.deduction-card-body {
+  border-top: 2px solid #dbeafe;
+  padding-top: 1rem;
+}
+
+.earning-amount,
+.deduction-amount {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #3b82f6;
+  margin-bottom: 0.5rem;
+}
+
+.earning-employees,
+.deduction-employees {
+  font-size: 0.9rem;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+/* ============================================
+   REPORT STATS
+   ============================================ */
 .report-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
+
 .report-stat {
-  padding: 1.25rem;
-  background: #f0f4ff;
-  border-radius: 10px;
-  border-left: 4px solid var(--color-primary);
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 12px;
+  border-left: 5px solid #3b82f6;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 2px solid #bfdbfe;
 }
+
 .report-stat .stat-label {
-  color: var(--color-text);
-  font-weight: 500;
-  font-size: 0.9rem;
+  color: #1e3a8a;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
 }
+
 .report-stat .stat-value {
-  color: var(--color-heading);
-  font-size: 1.2rem;
-  font-weight: 600;
+  color: #1a202c;
+  font-size: 1.5rem;
+  font-weight: 900;
 }
-/* Table Styles */
+
+/* ============================================
+   TABLE STYLES
+   ============================================ */
 .attendance-details-table,
 .leave-details-table,
 .payroll-details-table {
   overflow-x: auto;
   margin-top: 1rem;
   margin-bottom: 2rem;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  border: 2px solid var(--color-border);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
+
 .attendance-details-table table,
 .leave-details-table table,
 .payroll-details-table table {
@@ -2681,66 +2924,95 @@ export default {
   border-collapse: collapse;
   background: var(--color-card-bg);
 }
+
 .attendance-details-table th,
 .attendance-details-table td,
 .leave-details-table th,
 .leave-details-table td,
 .payroll-details-table th,
 .payroll-details-table td {
-  padding: 0.75rem 1rem;
+  padding: 1rem 1.25rem;
   text-align: left;
   border-bottom: 1px solid var(--color-border);
 }
+
 .attendance-details-table th,
 .leave-details-table th,
 .payroll-details-table th {
-  background: #f9fafb;
-  font-weight: 600;
-  color: var(--color-heading);
-  font-size: 0.9rem;
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+  font-weight: 700;
+  color: #1a202c;
+  font-size: 0.95rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
+  border-bottom: 2px solid var(--color-border);
 }
+
+.attendance-details-table tbody tr,
+.leave-details-table tbody tr,
+.payroll-details-table tbody tr {
+  transition: all 0.2s;
+}
+
 .attendance-details-table tr:hover,
 .leave-details-table tr:hover,
 .payroll-details-table tr:hover {
   background: #f0f4ff;
 }
+
 .attendance-details-table tr:last-child td,
 .leave-details-table tr:last-child td,
 .payroll-details-table tr:last-child td {
   border-bottom: none;
 }
+
 .status-badge {
   display: inline-block;
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
+  padding: 0.375rem 0.875rem;
+  border-radius: 20px;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
-.status-badge.present, .status-badge.approved {
+
+.status-badge.present, 
+.status-badge.approved {
   background: #d1fae5;
   color: #065f46;
+  border: 2px solid #10b981;
 }
-.status-badge.absent, .status-badge.rejected {
+
+.status-badge.absent, 
+.status-badge.rejected {
   background: #fee2e2;
   color: #991b1b;
+  border: 2px solid #ef4444;
 }
-.status-badge.late, .status-badge.pending {
+
+.status-badge.late, 
+.status-badge.pending {
   background: #fef3c7;
   color: #92400e;
+  border: 2px solid #f59e0b;
 }
+
 .more-records {
   text-align: center;
-  padding: 1rem;
-  color: var(--color-text);
+  padding: 1.25rem;
+  color: #6b7280;
   font-style: italic;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   background: #f9fafb;
-  border-top: 1px solid var(--color-border);
+  border-top: 2px solid var(--color-border);
+  font-weight: 600;
 }
+
+/* ============================================
+   LOADING SPINNER
+   ============================================ */
 .spinner {
   border: 4px solid #f3f3f3;
   border-top: 4px solid var(--color-primary);
@@ -2750,43 +3022,93 @@ export default {
   animation: spin 1s linear infinite;
   margin: 0 auto 1rem;
 }
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-/* Responsive adjustments */
-@media (max-width: 1024px) {
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
-  .header-actions {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
+
+/* ============================================
+   PAGINATION
+   ============================================ */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.5rem;
+  margin-top: 2rem;
+  padding: 1rem;
+}
+
+.pagination button {
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.pagination button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.3);
+}
+
+.pagination button:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.pagination span {
+  font-weight: 800;
+  color: #1a202c;
+  font-size: 1.05rem;
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+@media (max-width: 1400px) {
+  .earning-cards,
+  .deduction-cards {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
  
-  .generation-options {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  .type-selector-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
 }
+
 @media (max-width: 768px) {
   .reports-management {
     padding: 1rem;
   }
  
+  .business-filter-section {
+    padding: 1.5rem;
+  }
+ 
   .business-filter-controls {
     flex-direction: column;
     align-items: stretch;
-    gap: 1rem;
+    gap: 1.25rem;
   }
  
   .filter-group {
     width: 100%;
+    min-width: auto;
   }
  
-  .business-select, .country-select {
+  .business-select, 
+  .country-select {
     width: 100%;
   }
  
@@ -2796,26 +3118,11 @@ export default {
  
   .active-filter-badge {
     margin-left: 0;
-    margin-top: 0.5rem;
-    display: inline-block;
+    margin-top: 0.75rem;
+    display: block;
+    text-align: center;
   }
  
- 
-  
-  .business-select, .country-select {
-    width: 100%;
-  }
-  
-  .btn-clear-filters {
-    width: 100%;
-  }
-  
-  .active-filter-badge {
-    margin-left: 0;
-    margin-top: 0.5rem;
-    display: inline-block;
-  }
-  
   .admin-subtitle-row {
     flex-direction: column;
     align-items: flex-start;
@@ -2825,12 +3132,13 @@ export default {
     width: 100%;
   }
   
-  .generation-options {
+  .earning-cards,
+  .deduction-cards {
     grid-template-columns: 1fr;
   }
-  
-  .date-inputs {
-    flex-direction: column;
+ 
+  .type-selector-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
  
   .report-item {
@@ -2847,6 +3155,7 @@ export default {
   .report-actions {
     width: 100%;
     justify-content: flex-start;
+    flex-wrap: wrap;
   }
  
   .preview-header {
@@ -2866,23 +3175,22 @@ export default {
     grid-template-columns: 1fr;
   }
   
-  .header-actions {
+  .date-inputs {
     flex-direction: column;
   }
-  
-  .header-actions button {
+ 
+  .input-group {
     width: 100%;
-    justify-content: center;
   }
 }
 
 @media (max-width: 480px) {
-  .page-header h1 {
-    font-size: 1.75rem;
+  .type-selector-grid {
+    grid-template-columns: 1fr;
   }
   
   .business-filter-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.5rem;
   }
   
   .admin-info h2 {
@@ -2890,13 +3198,13 @@ export default {
   }
   
   .preview-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.3rem;
   }
   
   .attendance-details-table,
   .leave-details-table,
   .payroll-details-table {
-    font-size: 0.8rem;
+    font-size: 0.85rem;
   }
   
   .attendance-details-table th,
@@ -2905,7 +3213,23 @@ export default {
   .leave-details-table td,
   .payroll-details-table th,
   .payroll-details-table td {
-    padding: 0.5rem;
+    padding: 0.75rem;
+  }
+ 
+  .btn-primary, 
+  .btn-secondary, 
+  .btn-tertiary {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+  }
+ 
+  .applied-filters-tags {
+    flex-direction: column;
+  }
+ 
+  .filter-tag {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 </style>

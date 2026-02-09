@@ -433,9 +433,11 @@
     </div>
   </div>
 </template>
+
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+
 export default {
   name: 'EmployeeManagement',
   setup() {
@@ -610,7 +612,7 @@ export default {
           this.availableDepartments = []
         }
       },
-      immediate: false // Changed to false - we'll handle initialization manually
+      immediate: false 
     },
     
     // NEW WATCHER: Watch for modal opening
@@ -667,9 +669,6 @@ export default {
       }
     },
     
-    /**
-     * NEW METHOD: Initialize form when Add Employee modal opens
-     */
     initializeFormForAdd() {
       console.log('Initializing form for add employee modal');
       console.log('Businesses count:', this.businesses.length);
@@ -720,8 +719,6 @@ export default {
         });
         console.log('Settings response:', response.data);
         
-        // Structure from AdminController::getSettings
-        // Returns { settings: { departments: [{name: 'IT'}], ... }, ... }
         if (response.data && response.data.settings && response.data.settings.departments) {
           this.availableDepartments = response.data.settings.departments;
           console.log('Departments loaded:', this.availableDepartments.length);
@@ -1101,7 +1098,28 @@ export default {
   }
 }
 </script>
+
 <style scoped>
+/* =========================================
+   CORE LAYOUT & VISIBILITY FIXES
+   ========================================= */
+
+.employee-management {
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  /* Ensure a light background for the page */
+  background: #ffffff;
+  color: #1a202c; /* Default dark text */
+  min-height: 100vh;
+}
+
+/* Ensure inputs have dark text on white backgrounds */
+input, select, textarea {
+  color: #1a202c !important; /* Force dark text */
+  background-color: #ffffff;
+}
+
 /* Enhanced Country Selector Styles */
 .country-select-wrapper {
   position: relative;
@@ -1117,6 +1135,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   transition: border-color 0.2s;
+  color: #2d3748; /* Dark Text */
 }
 .country-select-header:hover {
   border-color: #667eea;
@@ -1167,7 +1186,7 @@ export default {
 }
 .country-name {
   font-weight: 500;
-  color: #4a5568;
+  color: #2d3748; /* Dark Text */
 }
 .country-code {
   font-size: 0.75rem;
@@ -1198,6 +1217,8 @@ export default {
   border: 1px solid #e2e8f0;
   border-radius: 4px;
   font-size: 0.875rem;
+  color: #1a202c; /* Input Text */
+  background: #fff;
 }
 .search-icon {
   position: absolute;
@@ -1219,6 +1240,7 @@ export default {
   cursor: pointer;
   transition: background-color 0.2s;
   border-bottom: 1px solid #f7fafc;
+  color: #2d3748;
 }
 .country-option:last-child {
   border-bottom: none;
@@ -1252,6 +1274,7 @@ export default {
   color: #718096;
   font-size: 0.875rem;
 }
+
 /* Table Controls */
 .table-controls {
   display: flex;
@@ -1263,19 +1286,26 @@ export default {
   border-radius: 8px;
   flex-wrap: wrap;
   gap: 1rem;
+  border: 1px solid #e2e8f0;
 }
 .search-box {
   position: relative;
   flex: 1;
   min-width: 250px;
 }
+/* Explicit Search Input Styling */
 .search-input {
   width: 100%;
   padding: 0.75rem 2.5rem 0.75rem 1rem;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #cbd5e0;
   border-radius: 6px;
   font-size: 0.95rem;
   transition: border-color 0.2s;
+  background-color: #ffffff;
+  color: #1a202c !important; /* Ensure visibility */
+}
+.search-input::placeholder {
+  color: #a0aec0;
 }
 .search-input:focus {
   outline: none;
@@ -1305,14 +1335,15 @@ export default {
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: white;
-  color: #4a5568;
+  color: #1a202c;
   min-width: 80px;
 }
 .table-info {
-  color: #718096;
+  color: #4a5568;
   font-size: 0.9rem;
   white-space: nowrap;
 }
+
 /* Pagination Styles */
 .pagination {
   display: flex;
@@ -1377,7 +1408,8 @@ export default {
   background: transparent;
   border: none;
 }
-/* Existing CSS styles */
+
+/* Business Filter */
 .business-filter {
   background: #f8fafc;
   padding: 1rem;
@@ -1387,17 +1419,18 @@ export default {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  border: 1px solid #e2e8f0;
 }
 .business-filter label {
   font-weight: 600;
-  color: #4a5568;
+  color: #2d3748;
 }
 .business-select {
   padding: 0.5rem 1rem;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   background: white;
-  color: #4a5568;
+  color: #1a202c;
   min-width: 200px;
 }
 .business-badge {
@@ -1424,7 +1457,7 @@ export default {
 }
 .disabled-input {
   background: #f7fafc;
-  color: #a0aec0;
+  color: #a0aec0 !important;
   cursor: not-allowed;
   border: 1px solid #e2e8f0;
 }
@@ -1436,6 +1469,7 @@ export default {
   align-items: center;
   gap: 0.5rem;
   font-size: 0.95rem;
+  color: #2d3748;
 }
 .country-flag-small {
   position: relative;
@@ -1472,6 +1506,7 @@ export default {
   background: #fee2e2;
   color: #991b1b;
 }
+
 /* Updated action buttons with icons */
 .employee-actions {
   display: flex;
@@ -1513,14 +1548,8 @@ export default {
   font-size: 1rem;
   line-height: 1;
 }
-/* Existing CSS styles */
-.employee-management {
-  padding: 2rem;
-  max-width: 1600px;
-  margin: 0 auto;
-  background: #f9fafb;
-  min-height: 100vh;
-}
+
+/* Page Header */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -1552,9 +1581,12 @@ export default {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+/* Loading/Error */
 .loading {
   text-align: center;
   padding: 4rem;
+  color: #4a5568;
 }
 .spinner {
   width: 50px;
@@ -1576,11 +1608,14 @@ export default {
   border-radius: 8px;
   text-align: center;
 }
+
+/* Table Styles - Fixed Visibility */
 .employees-table-wrapper {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   overflow-x: auto;
+  border: 1px solid #e2e8f0;
 }
 .employees-table {
   width: 100%;
@@ -1595,18 +1630,27 @@ export default {
 .employees-table th {
   background-color: #f7fafc;
   font-weight: 600;
-  color: #4a5568;
+  color: #2d3748; /* Dark Header Text */
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
   position: sticky;
   top: 0;
   z-index: 10;
 }
+.employees-table td {
+  color: #2d3748; /* Dark Content Text - Fixes invisibility */
+  font-size: 0.95rem;
+}
 .employees-table tr:hover {
-  background-color: #f7fafc;
+  background-color: #f8fafc;
 }
 .employee-name {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  font-weight: 500;
+  color: #1a202c;
 }
 .employee-avatar {
   width: 40px;
@@ -1649,7 +1693,8 @@ export default {
 .empty-state p {
   margin-bottom: 1rem;
 }
-/* Modal Styles - SCROLLING FIX HERE */
+
+/* Modal Styles */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -1661,16 +1706,17 @@ export default {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  backdrop-filter: blur(2px);
 }
 .modal {
   background: white;
   border-radius: 12px;
   width: 90%;
   max-width: 600px;
-  max-height: 90vh; /* Limits total height */
-  /* These lines allow the internal parts to scroll independently */
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 .modal-header {
   display: flex;
@@ -1678,7 +1724,7 @@ export default {
   align-items: center;
   padding: 1.5rem;
   border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0; /* Prevents header from shrinking */
+  flex-shrink: 0;
 }
 .modal-header h2 {
   margin: 0;
@@ -1703,8 +1749,8 @@ export default {
 }
 .modal-body {
   padding: 1.5rem;
-  overflow-y: auto; /* Enables scrolling on the form content */
-  flex-grow: 1; /* Takes up remaining space */
+  overflow-y: auto;
+  flex-grow: 1;
 }
 .form-row {
   display: grid;
@@ -1719,6 +1765,7 @@ export default {
   margin-bottom: 0.5rem;
   color: #4a5568;
   font-weight: 600;
+  font-size: 0.9rem;
 }
 .form-group input,
 .form-group select {
@@ -1727,11 +1774,14 @@ export default {
   border: 1px solid #e2e8f0;
   border-radius: 6px;
   font-size: 1rem;
+  color: #1a202c; /* Input Text */
+  background: #fff;
 }
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
   border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 .form-error {
   background: #fee;
@@ -1744,9 +1794,9 @@ export default {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
-  padding-top: 1rem;
+  padding: 1.5rem;
   border-top: 1px solid #e2e8f0;
-  margin-top: 1rem;
+  margin-top: auto;
 }
 .btn-secondary {
   background: #e2e8f0;
@@ -1763,9 +1813,11 @@ export default {
   margin-top: 0.25rem;
   display: block;
 }
+
+/* Mobile Responsive */
 @media (max-width: 768px) {
   .modal {
-    max-height: 95vh; /* More space on mobile */
+    max-height: 95vh;
   }
   .table-controls {
     flex-direction: column;

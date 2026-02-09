@@ -58,14 +58,16 @@
                       </div>
                     </div>
                     
-                    <!-- New Status Selection -->
+                    <!-- ✅ FIXED: Only show valid status transitions -->
                     <div>
                       <label class="block text-sm font-medium text-gray-700 mb-2">
                         Select New Status
                       </label>
-                      <div class="grid grid-cols-2 gap-2">
+                      
+                      <!-- Show available options or message if none -->
+                      <div v-if="availableStatusOptions.length > 0" class="grid grid-cols-2 gap-2">
                         <button
-                          v-for="option in statusOptions"
+                          v-for="option in availableStatusOptions"
                           :key="option.value"
                           @click="selectedStatus = option.value"
                           :class="[
@@ -79,6 +81,18 @@
                           <span class="text-sm font-medium">{{ option.label }}</span>
                         </button>
                       </div>
+                      
+                      <!-- Show message if no transitions available -->
+                      <div v-else class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p class="text-sm text-amber-800">
+                          No status transitions available from current status.
+                        </p>
+                      </div>
+                      
+                      <!-- ✅ Show helpful guidance -->
+                      <p class="mt-2 text-xs text-gray-500">
+                        {{ statusGuidance }}
+                      </p>
                     </div>
                     
                     <!-- Comments -->
@@ -94,6 +108,11 @@
                         class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                       />
                     </div>
+                    
+                    <!-- ✅ Show error messages -->
+                    <div v-if="error" class="p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p class="text-sm text-red-800 font-medium">{{ error }}</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -102,10 +121,10 @@
                 <button
                   type="button"
                   @click="updateStatus"
-                  :disabled="isUpdating || !selectedStatus"
+                  :disabled="isUpdating || !selectedStatus || !canSubmit"
                   :class="[
                     'inline-flex w-full justify-center rounded-md px-3 py-2 text-sm font-semibold text-white shadow-sm sm:ml-3 sm:w-auto',
-                    isUpdating || !selectedStatus
+                    isUpdating || !selectedStatus || !canSubmit
                       ? 'bg-indigo-400 cursor-not-allowed'
                       : 'bg-indigo-600 hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600'
                   ]"
@@ -144,7 +163,9 @@ import {
   CheckCircleIcon,
   ClockIcon,
   XCircleIcon,
-  PlayIcon
+  PlayIcon,
+  CheckBadgeIcon,
+  ArrowUturnLeftIcon
 } from '@heroicons/vue/24/outline'
 import StatusBadge from '@/components/StatusBadge.vue'
 import axios from 'axios'
@@ -156,57 +177,143 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'status-updated'])
 
-const selectedStatus = ref(props.ticket?.status || 'pending')
+const selectedStatus = ref('')
 const comments = ref('')
 const isUpdating = ref(false)
 const error = ref(null)
 
-const statusOptions = computed(() => [
-  {
+// ✅ FIXED: Define status transitions (must match backend)
+const statusTransitions = {
+  'pending': ['approved', 'rejected', 'in_progress'],
+  'in_progress': ['resolved', 'closed', 'reopened'],
+  'resolved': ['closed', 'reopened'],
+  'closed': ['reopened'],
+  'reopened': ['in_progress', 'resolved', 'closed'],
+  'approved': ['in_progress', 'rejected'],
+  'rejected': ['reopened'],
+}
+
+// ✅ All possible status options with their styling
+const allStatusOptions = {
+  'pending': {
     value: 'pending',
     label: 'Pending',
     icon: ClockIcon,
     defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
     selectedClass: 'border-amber-300 bg-amber-50 text-amber-700 ring-2 ring-amber-200'
   },
-  {
+  'approved': {
     value: 'approved',
     label: 'Approved',
-    icon: CheckCircleIcon,
+    icon: CheckBadgeIcon,
     defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
     selectedClass: 'border-emerald-300 bg-emerald-50 text-emerald-700 ring-2 ring-emerald-200'
   },
-  {
+  'rejected': {
     value: 'rejected',
     label: 'Rejected',
     icon: XCircleIcon,
     defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
     selectedClass: 'border-red-300 bg-red-50 text-red-700 ring-2 ring-red-200'
   },
-  {
+  'in_progress': {
     value: 'in_progress',
     label: 'In Progress',
     icon: PlayIcon,
     defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
     selectedClass: 'border-indigo-300 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-200'
+  },
+  'resolved': {
+    value: 'resolved',
+    label: 'Resolved',
+    icon: CheckCircleIcon,
+    defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
+    selectedClass: 'border-green-300 bg-green-50 text-green-700 ring-2 ring-green-200'
+  },
+  'closed': {
+    value: 'closed',
+    label: 'Closed',
+    icon: CheckCircleIcon,
+    defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
+    selectedClass: 'border-gray-300 bg-gray-50 text-gray-700 ring-2 ring-gray-200'
+  },
+  'reopened': {
+    value: 'reopened',
+    label: 'Reopened',
+    icon: ArrowUturnLeftIcon,
+    defaultClass: 'border-slate-200 text-slate-600 hover:bg-slate-50',
+    selectedClass: 'border-purple-300 bg-purple-50 text-purple-700 ring-2 ring-purple-200'
   }
-])
+}
+
+// ✅ FIXED: Only show valid status options based on current status
+const availableStatusOptions = computed(() => {
+  if (!props.ticket?.status) return []
+  
+  const currentStatus = props.ticket.status
+  const availableStatuses = statusTransitions[currentStatus] || []
+  
+  return availableStatuses
+    .map(status => allStatusOptions[status])
+    .filter(option => option !== undefined)
+})
+
+// ✅ Show helpful guidance text
+const statusGuidance = computed(() => {
+  if (!props.ticket?.status) return ''
+  
+  const available = statusTransitions[props.ticket.status] || []
+  if (available.length === 0) {
+    return 'No transitions available from current status.'
+  }
+  
+  return `Available transitions: ${available.map(s => allStatusOptions[s]?.label || s).join(', ')}`
+})
+
+// ✅ Check if can submit
+const canSubmit = computed(() => {
+  return selectedStatus.value && 
+         selectedStatus.value !== props.ticket?.status &&
+         availableStatusOptions.value.some(opt => opt.value === selectedStatus.value)
+})
 
 const updateStatus = async () => {
-  if (!props.ticket || !selectedStatus.value) return
+  if (!props.ticket || !selectedStatus.value || !canSubmit.value) return
+  
+  // ✅ Client-side validation
+  if (selectedStatus.value === props.ticket.status) {
+    error.value = 'Ticket is already in this status'
+    return
+  }
+  
+  const availableStatuses = statusTransitions[props.ticket.status] || []
+  if (!availableStatuses.includes(selectedStatus.value)) {
+    error.value = `Cannot transition from '${props.ticket.status}' to '${selectedStatus.value}'`
+    return
+  }
   
   isUpdating.value = true
   error.value = null
   
   try {
+    console.log('Updating ticket status:', {
+      ticketId: props.ticket.id,
+      currentStatus: props.ticket.status,
+      newStatus: selectedStatus.value,
+      comments: comments.value
+    })
+    
     // Use update-status endpoint
     const response = await axios.post(`/api/tickets/${props.ticket.id}/update-status`, {
       status: selectedStatus.value,
-      comments: comments.value || null
+      comments: comments.value || null,
+      send_email: true
     })
     
+    console.log('Status update response:', response.data)
+    
     // Your controller returns 'message' not 'success'
-    if (response.data.message) {
+    if (response.data.message || response.data.success) {
       emit('status-updated', {
         ticket: response.data.ticket,
         old_status: props.ticket.status,
@@ -215,14 +322,33 @@ const updateStatus = async () => {
       closeModal()
     }
   } catch (err) {
-    error.value = err.response?.data?.message || 'Failed to update status'
     console.error('Error updating status:', err)
+    
+    // ✅ Better error handling
+    if (err.response?.status === 422) {
+      const errors = err.response.data.errors
+      if (errors?.status) {
+        error.value = errors.status[0]
+      } else {
+        error.value = err.response.data.message || 'Validation failed'
+      }
+      
+      // ✅ Log debug info if available
+      if (err.response.data.debug) {
+        console.log('Backend debug info:', err.response.data.debug)
+      }
+    } else if (err.response?.status === 403) {
+      error.value = 'You do not have permission to update this ticket'
+    } else {
+      error.value = err.response?.data?.message || 'Failed to update status'
+    }
   } finally {
     isUpdating.value = false
   }
 }
+
 const closeModal = () => {
-  selectedStatus.value = props.ticket?.status || 'pending'
+  selectedStatus.value = ''
   comments.value = ''
   error.value = null
   emit('close')

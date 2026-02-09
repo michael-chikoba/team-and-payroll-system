@@ -35,6 +35,18 @@ use App\Http\Controllers\Api\ActivityTrackingController;
 use App\Http\Controllers\Api\NotificationChannelController;
 use App\Http\Controllers\Api\SlackIntegrationController;
 use App\Http\Controllers\Api\PublicController;
+use App\Http\Controllers\Api\ProductivityController;
+use App\Http\Controllers\Api\SuperAdmin\{
+    SuperAdminBusinessController,
+    SuperAdminUserController,
+    SuperAdminAnalyticsController,
+    SuperAdminSettingsController
+};
+use App\Http\Controllers\Api\BusinessGroupController;
+use App\Http\Controllers\Api\BusinessGroupMembershipController;
+use App\Http\Controllers\Api\BusinessGroupInvitationController;
+use App\Http\Controllers\Api\GroupTicketController;
+use App\Http\Controllers\Api\GroupTaskController;
 
 
 
@@ -42,7 +54,25 @@ use App\Http\Controllers\Api\PublicController;
 Route::post('/demo-requests', [PublicController::class, 'storeDemoRequest']);
 Route::post('/contact', [PublicController::class, 'storeContactRequest']);
 
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::get('/admin/reports/productivity', [ProductivityController::class, 'adminIndex']);
+    Route::get('/manager/reports/productivity', [ProductivityController::class, 'managerIndex']);
+    Route::get('/productivity', [ProductivityController::class, 'index']);
+});
 
+Route::middleware(['auth:sanctum'])->group(function () {
+    // Demo Requests Management
+    Route::get('/admin/demo-requests', [PublicController::class, 'getDemoRequests']);
+    Route::get('/admin/demo-requests/{id}', [PublicController::class, 'getDemoRequest']);
+    Route::put('/admin/demo-requests/{id}', [PublicController::class, 'updateDemoRequest']);
+    Route::delete('/admin/demo-requests/{id}', [PublicController::class, 'deleteDemoRequest']);
+    
+    // Contact Requests Management
+    Route::get('/admin/contact-requests', [PublicController::class, 'getContactRequests']);
+    Route::get('/admin/contact-requests/{id}', [PublicController::class, 'getContactRequest']);
+    Route::put('/admin/contact-requests/{id}', [PublicController::class, 'updateContactRequest']);
+    Route::delete('/admin/contact-requests/{id}', [PublicController::class, 'deleteContactRequest']);
+});
 /*
 |--------------------------------------------------------------------------
 | Public Routes (No Authentication Required)
@@ -104,6 +134,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/{id}/read', [NotificationController::class, 'markAsRead']);
         Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
         Route::delete('/{id}', [NotificationController::class, 'destroy']);
+       Route::get('/business-group-invitations', [BusinessGroupInvitationController::class, 'index']);
+
     });
     Route::middleware(['auth:sanctum'])->group(function () {
     
@@ -130,58 +162,58 @@ Route::middleware(['auth:sanctum'])->group(function () {
     |--------------------------------------------------------------------------
     */
     
-    Route::prefix('tickets')->group(function () {
-        // Ticket types and metadata
-        Route::get('/types', [TicketController::class, 'getTicketTypes']);
-        Route::get('/types/{type}/categories', [TicketController::class, 'getCategories']);
-        
-        // Departments for ticket assignment
-        Route::get('/departments', [TicketController::class, 'getDepartments']);
-        
-        // Assignable users and approvers
-        Route::get('/assignable-users', [TicketController::class, 'getAssignableUsers']);
-        Route::get('/approvers', [TicketController::class, 'getApprovers']);
-        
-        // Statistics and counts
-        Route::get('/statistics', [TicketController::class, 'statistics']);
-        Route::get('/count', [TicketController::class, 'count']);
-        
-        // User-specific tickets
-        Route::get('/my-tickets', [TicketController::class, 'myTickets']);
-        Route::get('/assigned-to-me', [TicketController::class, 'assignedToMe']);
-        
-        // CRUD operations
-        Route::get('/', [TicketController::class, 'index']);
-        Route::post('/', [TicketController::class, 'store']);
-        Route::get('/{ticket}', [TicketController::class, 'show']);
-        Route::put('/{ticket}', [TicketController::class, 'update']);
-        Route::delete('/{ticket}', [TicketController::class, 'destroy']);
-        
-        // Ticket actions
-        Route::post('/{ticket}/update-status', [TicketController::class, 'updateStatus']);
-        Route::post('/{ticket}/update-priority', [TicketController::class, 'updatePriority']);
-        Route::post('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
-        Route::post('/{ticket}/assign', [TicketController::class, 'assignTicket']);
-        
-        // Comments and attachments
-        Route::get('/{ticket}/comments', [TicketController::class, 'getComments']);
-        Route::post('/{ticket}/comments', [TicketController::class, 'addComment']);
-        Route::put('/{ticket}/comments/{comment}', [TicketController::class, 'updateComment']);
-        Route::delete('/{ticket}/comments/{comment}', [TicketController::class, 'deleteComment']);
-        
-        Route::get('/{ticket}/attachments', [TicketController::class, 'getAttachments']);
-        Route::post('/{ticket}/attachments', [TicketController::class, 'uploadAttachment']);
-        Route::delete('/{ticket}/attachments/{attachment}', [TicketController::class, 'deleteAttachment']);
-        Route::get('/attachments/{attachment}/download', [TicketController::class, 'downloadAttachment'])->name('tickets.attachments.download');
-        
-        // Activity history
-        Route::get('/{ticket}/activities', [TicketController::class, 'getActivityHistory']);
-        
-        // Convenience routes (optional)
-        Route::post('/{ticket}/resolve', [TicketController::class, 'resolve']);
-        Route::post('/{ticket}/close', [TicketController::class, 'close']);
-        Route::post('/{ticket}/reopen', [TicketController::class, 'reopen']);
-    });
+  Route::prefix('tickets')->group(function () {
+    // Ticket types and metadata
+    Route::get('/types', [TicketController::class, 'getTicketTypes']);
+    Route::get('/types/{type}/categories', [TicketController::class, 'getCategories']);
+    
+    // Departments for ticket assignment
+    Route::get('/departments', [TicketController::class, 'getDepartments']);
+    Route::get('/assigned-to-me', [TicketController::class, 'assignedTickets']);
+    // Assignable users and approvers
+    Route::get('/assignable-users', [TicketController::class, 'getAssignableUsers']);
+    Route::get('/approvers', [TicketController::class, 'getApprovers']);
+    
+    // Statistics and counts
+    Route::get('/statistics', [TicketController::class, 'statistics']);
+    Route::get('/count', [TicketController::class, 'count']);
+    
+    // User-specific tickets
+    Route::get('/my-tickets', [TicketController::class, 'myTickets']);
+   // Route::get('/assigned-to-me', [TicketController::class, 'assignedToMe']);
+    
+    // CRUD operations
+    Route::get('/', [TicketController::class, 'index']);
+    Route::post('/', [TicketController::class, 'store']);
+    Route::get('/{ticket}', [TicketController::class, 'show']);
+    Route::put('/{ticket}', [TicketController::class, 'update']);
+    Route::delete('/{ticket}', [TicketController::class, 'destroy']);
+    
+    // Ticket actions - FIXED ROUTES
+    Route::post('/{ticket}/update-status', [TicketController::class, 'updateStatus']);
+    Route::patch('/{ticket}/priority', [TicketController::class, 'updatePriority']); // ✅ FIXED: Changed from /update-priority to /priority
+    Route::post('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
+    Route::post('/{ticket}/assign', [TicketController::class, 'assignTicket']);
+    
+    // Comments and attachments
+    Route::get('/{ticket}/comments', [TicketController::class, 'getComments']);
+    Route::post('/{ticket}/comments', [TicketController::class, 'addComment']);
+    Route::put('/{ticket}/comments/{comment}', [TicketController::class, 'updateComment']);
+    Route::delete('/{ticket}/comments/{comment}', [TicketController::class, 'deleteComment']);
+    
+    Route::get('/{ticket}/attachments', [TicketController::class, 'getAttachments']);
+    Route::post('/{ticket}/attachments', [TicketController::class, 'uploadAttachment']);
+    Route::delete('/{ticket}/attachments/{attachment}', [TicketController::class, 'deleteAttachment']);
+    Route::get('/attachments/{attachment}/download', [TicketController::class, 'downloadAttachment'])->name('tickets.attachments.download');
+    
+    // Activity history
+    Route::get('/{ticket}/activities', [TicketController::class, 'getActivityHistory']);
+    
+    // Convenience routes (optional)
+    Route::post('/{ticket}/resolve', [TicketController::class, 'resolve']);
+    Route::post('/{ticket}/close', [TicketController::class, 'close']);
+    Route::post('/{ticket}/reopen', [TicketController::class, 'reopen']);
+});
 
     /*
     |--------------------------------------------------------------------------
@@ -441,20 +473,22 @@ Route::middleware(['auth:sanctum'])->group(function () {
         });
          Route::get('users/search', [EmployeeController::class, 'searchUsers']);
     
-        // Business Management
-    Route::prefix('businesses')->group(function () {
-        Route::get('/', [BusinessController::class, 'index']);
-        Route::post('/', [BusinessController::class, 'store']);
-        Route::get('/{business}', [BusinessController::class, 'show']);
-        Route::put('/{business}', [BusinessController::class, 'update']);
-        Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
-        Route::delete('/{business}', [BusinessController::class, 'destroy']);
-        
-        // Admin management routes
-        Route::post('/{business}/admins', [BusinessController::class, 'addAdmin']);
-        Route::delete('/{business}/admins/{adminUser}', [BusinessController::class, 'removeAdmin']); // Fixed route
-        Route::put('/{business}/admins/{adminUser}/primary', [BusinessController::class, 'updatePrimaryAdmin']);
-    });
+      // Business Management Routes
+Route::prefix('businesses')->group(function () {
+    Route::get('/', [BusinessController::class, 'index']);
+    Route::post('/', [BusinessController::class, 'store']);
+    Route::get('/current', [BusinessController::class, 'getCurrentBusiness']); // NEW ROUTE
+    Route::get('/{business}', [BusinessController::class, 'show']);
+    Route::put('/{business}', [BusinessController::class, 'update']);
+    Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']); // ENHANCED
+    Route::delete('/{business}', [BusinessController::class, 'destroy']);
+    
+    // Admin management routes
+    Route::post('/{business}/admins', [BusinessController::class, 'addAdmin']);
+    Route::delete('/{business}/admins/{adminUser}', [BusinessController::class, 'removeAdmin']);
+    Route::put('/{business}/admins/{adminUser}/primary', [BusinessController::class, 'updatePrimaryAdmin']);
+    Route::get('/{business}/stats', [BusinessController::class, 'getStats']); // NEW ROUTE
+});
     });
 });
 
@@ -820,3 +854,130 @@ Route::middleware(['auth:sanctum'])->group(function () {
 // Admin/cron endpoint
 Route::post('/attendance/check-idle-sessions', [ActivityTrackingController::class, 'checkIdleSessions'])
     ->middleware(['auth:sanctum', 'role:admin']);
+
+    /*
+|--------------------------------------------------------------------------
+| Super Admin Routes
+|--------------------------------------------------------------------------
+| These routes are only accessible by users with is_superadmin = true
+| They provide system-wide access to all businesses and advanced controls
+*/
+
+Route::middleware(['auth:sanctum', 'superadmin'])->prefix('superadmin')->group(function () {
+    
+    // Business Management
+    Route::prefix('businesses')->group(function () {
+        Route::get('/', [SuperAdminBusinessController::class, 'index']);
+        Route::post('/', [SuperAdminBusinessController::class, 'store']);
+        Route::get('/dashboard-stats', [SuperAdminBusinessController::class, 'getDashboardStats']);
+        Route::get('/{business}', [SuperAdminBusinessController::class, 'show']);
+        Route::put('/{business}', [SuperAdminBusinessController::class, 'update']);
+        Route::delete('/{business}', [SuperAdminBusinessController::class, 'destroy']);
+        
+        // Business Actions
+        Route::post('/{business}/suspend', [SuperAdminBusinessController::class, 'suspend']);
+        Route::post('/{business}/activate', [SuperAdminBusinessController::class, 'activate']);
+        Route::post('/{business}/update-limit', [SuperAdminBusinessController::class, 'updateEmployeeLimit']);
+        
+        // History & Logs
+        Route::get('/{business}/activity-logs', [SuperAdminBusinessController::class, 'getActivityLogs']);
+        Route::get('/{business}/limit-history', [SuperAdminBusinessController::class, 'getLimitHistory']);
+    });
+    
+    // User Management
+    Route::prefix('users')->group(function () {
+        Route::get('/', [SuperAdminUserController::class, 'index']);
+        Route::post('/', [SuperAdminUserController::class, 'store']);
+        Route::get('/{user}', [SuperAdminUserController::class, 'show']);
+        Route::put('/{user}', [SuperAdminUserController::class, 'update']);
+        Route::post('/{user}/toggle-superadmin', [SuperAdminUserController::class, 'toggleSuperAdmin']);
+        Route::post('/{user}/reset-password', [SuperAdminUserController::class, 'resetPassword']);
+        Route::delete('/{user}', [SuperAdminUserController::class, 'destroy']);
+    });
+    
+    // Analytics
+    Route::prefix('analytics')->group(function () {
+        Route::get('/overview', [SuperAdminAnalyticsController::class, 'overview']);
+        Route::get('/revenue', [SuperAdminAnalyticsController::class, 'revenue']);
+        Route::get('/growth', [SuperAdminAnalyticsController::class, 'growth']);
+        Route::get('/usage', [SuperAdminAnalyticsController::class, 'usage']);
+    });
+    
+    // Settings
+    Route::prefix('settings')->group(function () {
+        Route::get('/subscription-tiers', [SuperAdminSettingsController::class, 'getSubscriptionTiers']);
+        Route::put('/subscription-tiers', [SuperAdminSettingsController::class, 'updateSubscriptionTiers']);
+        Route::get('/features', [SuperAdminSettingsController::class, 'getFeatures']);
+        Route::put('/features', [SuperAdminSettingsController::class, 'updateFeatures']);
+        Route::get('/system', [SuperAdminSettingsController::class, 'getSystemSettings']);
+        Route::put('/system', [SuperAdminSettingsController::class, 'updateSystemSettings']);
+    });
+});
+
+// Business Group Routes
+Route::middleware(['auth:sanctum'])->group(function () {
+    
+    // ==================== BUSINESS GROUPS ====================
+    Route::prefix('business-groups')->group(function () {
+        Route::get('/', [BusinessGroupController::class, 'index']);
+        Route::post('/', [BusinessGroupController::class, 'store']);
+        Route::get('/{businessGroup}', [BusinessGroupController::class, 'show']);
+        Route::put('/{businessGroup}', [BusinessGroupController::class, 'update']);
+        Route::delete('/{businessGroup}', [BusinessGroupController::class, 'destroy']);
+        
+        // Group Members
+        Route::get('/{businessGroup}/members', [BusinessGroupController::class, 'getMembers']);
+        Route::post('/{businessGroup}/leave', [BusinessGroupController::class, 'leave']);
+        
+        // Group Settings
+        Route::put('/{businessGroup}/settings', [BusinessGroupController::class, 'updateSettings']);
+        
+        // Group Statistics
+        Route::get('/{businessGroup}/stats', [BusinessGroupController::class, 'getStats']);
+        Route::get('/{businessGroup}/activity', [BusinessGroupController::class, 'getActivity']);
+        
+        // Group Resources
+        Route::get('/{businessGroup}/employees', [BusinessGroupController::class, 'getGroupEmployees']);
+        Route::get('/{businessGroup}/users', [BusinessGroupController::class, 'getGroupUsers']);
+        Route::get('/{businessGroup}/businesses', [BusinessGroupController::class, 'getGroupBusinesses']);
+    });
+
+    // ==================== MEMBERSHIP MANAGEMENT ====================
+    Route::prefix('business-group-memberships')->group(function () {
+        Route::get('/', [BusinessGroupMembershipController::class, 'index']);
+        Route::put('/{membership}', [BusinessGroupMembershipController::class, 'update']);
+        Route::delete('/{membership}', [BusinessGroupMembershipController::class, 'destroy']);
+        Route::post('/{membership}/suspend', [BusinessGroupMembershipController::class, 'suspend']);
+        Route::post('/{membership}/activate', [BusinessGroupMembershipController::class, 'activate']);
+    });
+
+    // ==================== INVITATIONS ====================
+    Route::prefix('business-group-invitations')->group(function () {
+        Route::get('/', [BusinessGroupInvitationController::class, 'index']);
+        Route::post('/', [BusinessGroupInvitationController::class, 'store']);
+        Route::get('/{invitation}', [BusinessGroupInvitationController::class, 'show']);
+        Route::post('/{invitation}/accept', [BusinessGroupInvitationController::class, 'accept']);
+        Route::post('/{invitation}/reject', [BusinessGroupInvitationController::class, 'reject']);
+        Route::delete('/{invitation}', [BusinessGroupInvitationController::class, 'cancel']);
+    });
+
+    // ==================== CROSS-BUSINESS TICKETS ====================
+    Route::prefix('group-tickets')->group(function () {
+        Route::get('/', [GroupTicketController::class, 'index']);
+        Route::post('/', [GroupTicketController::class, 'store']);
+        Route::get('/{ticket}', [GroupTicketController::class, 'show']);
+        Route::put('/{ticket}', [GroupTicketController::class, 'update']);
+        Route::post('/{ticket}/assign-to-business', [GroupTicketController::class, 'assignToBusiness']);
+        Route::get('/{ticket}/comments', [GroupTicketController::class, 'getComments']);
+        Route::post('/{ticket}/comments', [GroupTicketController::class, 'addComment']);
+    });
+
+    // ==================== CROSS-BUSINESS TASKS ====================
+    Route::prefix('group-tasks')->group(function () {
+        Route::get('/', [GroupTaskController::class, 'index']);
+        Route::post('/', [GroupTaskController::class, 'store']);
+        Route::get('/{task}', [GroupTaskController::class, 'show']);
+        Route::put('/{task}', [GroupTaskController::class, 'update']);
+        Route::post('/{task}/assign-to-business', [GroupTaskController::class, 'assignToBusiness']);
+    });
+});

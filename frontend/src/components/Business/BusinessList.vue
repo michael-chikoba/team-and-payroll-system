@@ -86,9 +86,25 @@
           <div class="mt-6 space-y-3">
             <button
               @click="switchBusiness(business)"
-              class="w-full inline-flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-xl shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-150 ease-in-out font-semibold"
+              :disabled="isCurrentBusiness(business.id)"
+              :class="[
+                'w-full inline-flex items-center justify-center px-4 py-2 rounded-xl shadow-md focus:outline-none focus:ring-4 focus:ring-opacity-50 transition duration-150 ease-in-out font-semibold',
+                isCurrentBusiness(business.id)
+                  ? 'bg-gray-400 text-gray-700 cursor-not-allowed'
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500'
+              ]"
             >
-               Switch to {{ business.name }}
+              <svg 
+                v-if="isCurrentBusiness(business.id)" 
+                class="w-5 h-5 mr-2" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+              {{ isCurrentBusiness(business.id) ? 'Current Business' : `Switch to ${business.name}` }}
             </button>
             
             <div class="grid grid-cols-2 gap-3">
@@ -121,14 +137,23 @@
 </template>
 
 <script>
-import axios from 'axios';
+import { useBusinessStore } from '@/stores/business'
+import { useAuthStore } from '@/stores/auth'
+import { computed } from 'vue'
+
 export default {
   name: 'BusinessList',
   emits: ['create-business', 'edit-business', 'delete-business', 'manage-admins'],
-  data() {
+  setup() {
+    const businessStore = useBusinessStore()
+    const authStore = useAuthStore()
+    
     return {
-      businesses: [],
-      loading: false
+      businessStore,
+      authStore,
+      businesses: computed(() => businessStore.getAllBusinesses),
+      currentBusinessId: computed(() => businessStore.getCurrentBusinessId),
+      loading: computed(() => businessStore.loading)
     }
   },
   async mounted() {
@@ -136,10 +161,8 @@ export default {
   },
   methods: {
     async fetchBusinesses() {
-      this.loading = true
       try {
-        const response = await axios.get('/api/admin/businesses')
-        this.businesses = response.data.data
+        await this.businessStore.fetchBusinesses()
       } catch (error) {
         console.error('Failed to fetch businesses:', error)
         this.$notify({
@@ -147,23 +170,57 @@ export default {
           title: 'Error',
           text: 'Failed to load businesses'
         })
-      } finally {
-        this.loading = false
       }
     },
+    
+    isCurrentBusiness(businessId) {
+      return this.businessStore.isCurrentBusiness(businessId)
+    },
+    
     async switchBusiness(business) {
+      // Prevent switching if already the current business
+      if (this.isCurrentBusiness(business.id)) {
+        this.$notify({
+          type: 'info',
+          title: 'Already Active',
+          text: `${business.name} is already your active business`
+        })
+        return
+      }
+      
       try {
-        const response = await axios.post(`/api/admin/businesses/${business.id}/switch`)
+        // Show loading state
+        const switchingNotification = this.$notify({
+          type: 'info',
+          title: 'Switching Business',
+          text: `Switching to ${business.name}...`,
+          duration: -1 // Keep showing until we manually close it
+        })
         
+        // Switch business using store (NO PAGE RELOAD)
+        await this.businessStore.switchBusiness(business.id)
+        
+        // Close the loading notification
+        if (switchingNotification && switchingNotification.close) {
+          switchingNotification.close()
+        }
+        
+        // Show success notification
         this.$notify({
           type: 'success',
           title: 'Success',
           text: `Switched to ${business.name}`
         })
         
-        // Reload the page or update global state
-        window.location.reload()
+        // Emit event to parent components if needed
+        this.$emit('business-switched', business)
+        
+        // Optional: Refresh certain data without full page reload
+        // For example, refresh dashboard stats, employee list, etc.
+        this.refreshAfterSwitch()
+        
       } catch (error) {
+        console.error('Failed to switch business:', error)
         this.$notify({
           type: 'error',
           title: 'Error',
@@ -171,6 +228,18 @@ export default {
         })
       }
     },
+    
+    /**
+     * Refresh specific data after business switch without full page reload
+     */
+    refreshAfterSwitch() {
+      // Dispatch custom event that other components can listen to
+      window.dispatchEvent(new CustomEvent('business-context-changed'))
+      
+      // You can also use Vue's event bus or state management
+      // to notify other components about the business switch
+    },
+    
     formatBusinessType(type) {
       const types = {
         sole_proprietorship: 'Sole Proprietorship',
@@ -178,10 +247,8 @@ export default {
         corporation: 'Corporation',
         llc: 'LLC'
       }
-      // Capitalize the first letter if the type is not found in the map
       return types[type] || (type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '))
-    },
-    // Removed unused formatPayPeriod method
+    }
   }
 }
 </script>

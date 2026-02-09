@@ -900,7 +900,7 @@ export default {
 
 <style scoped>
 /* Add these new styles to the existing CSS */
-
+@import '@/assets/css/responsive-utilities.css';
 /* Profile image in avatar */
 .profile-avatar-img {
   width: 100%;
