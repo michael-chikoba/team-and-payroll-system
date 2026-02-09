@@ -169,6 +169,45 @@
             </ul>
           </div>
 
+          <!-- Team Management & Collaboration -->
+          <div class="feature-card">
+            <div class="feature-icon">🎯</div>
+            <h3>Team Management & Collaboration</h3>
+            <p>Organize teams with Trello and Jira-style task management, ticket systems, and built-in collaboration tools.</p>
+            <ul class="feature-list">
+              <li>✓ Kanban boards & task tracking</li>
+              <li>✓ Ticket management system</li>
+              <li>✓ Slack integration available</li>
+              <li>✓ Built-in team chat</li>
+            </ul>
+          </div>
+
+          <!-- Productivity & Performance -->
+          <div class="feature-card">
+            <div class="feature-icon">📈</div>
+            <h3>Productivity Analytics</h3>
+            <p>Track team performance with detailed productivity reports, individual scores, and actionable insights.</p>
+            <ul class="feature-list">
+              <li>✓ Productivity score tracking</li>
+              <li>✓ Team member reports</li>
+              <li>✓ Performance dashboards</li>
+              <li>✓ Goal tracking & OKRs</li>
+            </ul>
+          </div>
+
+          <!-- SLA Compliance -->
+          <div class="feature-card">
+            <div class="feature-icon">✅</div>
+            <h3>SLA Compliance Monitoring</h3>
+            <p>Monitor and maintain service level agreements with real-time compliance tracking and automated alerts.</p>
+            <ul class="feature-list">
+              <li>✓ SLA compliance rate tracking</li>
+              <li>✓ Percentage-based metrics</li>
+              <li>✓ Automated compliance alerts</li>
+              <li>✓ Detailed audit trails</li>
+            </ul>
+          </div>
+
           <!-- Multi-Country Support -->
           <div class="feature-card">
             <div class="feature-icon">🌍</div>
@@ -212,11 +251,11 @@
           <div class="feature-card">
             <div class="feature-icon">🔗</div>
             <h3>Integrations</h3>
-            <p>Seamlessly connect with your existing tools including accounting software, HR systems, and banks.</p>
+            <p>Seamlessly connect with your existing tools including accounting software, HR systems, Slack, and banks.</p>
             <ul class="feature-list">
               <li>✓ Accounting software</li>
               <li>✓ Banking systems</li>
-              <li>✓ HR platforms</li>
+              <li>✓ HR platforms & Slack</li>
               <li>✓ API access</li>
             </ul>
           </div>
@@ -234,16 +273,20 @@
             </ul>
           </div>
 
-          <!-- Mobile Access -->
-          <div class="feature-card">
+          <!-- Mobile Access - UPDATED -->
+          <div class="feature-card featured-mobile">
             <div class="feature-icon">📱</div>
-            <h3>Mobile Access</h3>
-            <p>Full-featured mobile apps for iOS and Android, allowing employees and managers to access payroll on the go.</p>
+            <h3>Mobile Access - Fully Responsive</h3>
+            <p>Complete mobile experience with responsive design that adapts to any device. Access all features on the go with native iOS and Android apps.</p>
             <ul class="feature-list">
-              <li>✓ iOS & Android apps</li>
-              <li>✓ Employee self-service</li>
-              <li>✓ Push notifications</li>
-              <li>✓ Offline access</li>
+              <li>✓ iOS & Android native apps</li>
+              <li>✓ Fully responsive web design</li>
+              <li>✓ Employee self-service portal</li>
+              <li>✓ Mobile time tracking</li>
+              <li>✓ Push notifications & alerts</li>
+              <li>✓ Offline access mode</li>
+              <li>✓ Mobile payslip viewing</li>
+              <li>✓ Touch-optimized interface</li>
             </ul>
           </div>
 
@@ -271,6 +314,18 @@
               <li>✓ Consolidated reporting</li>
               <li>✓ Business switching</li>
             </ul>
+          </div>
+        </div>
+        
+        <!-- Additional Features CTA -->
+        <div class="features-cta">
+          <div class="features-cta-content">
+            <h3>🌟 And Many More Features...</h3>
+            <p>Productivity reports, SLA compliance tracking, team collaboration tools, advanced analytics, workflow automation, custom integrations, and much more!</p>
+            <div class="features-cta-actions">
+              <button @click="scrollToContact" class="btn-primary">Contact Us for Full Feature List</button>
+              <button @click="scrollToDemo" class="btn-outline">Book a Demo</button>
+            </div>
           </div>
         </div>
       </div>
@@ -835,11 +890,19 @@ const contactMessageType = ref('')
 const faqs = [
   {
     question: 'Do all plans include all features?',
-    answer: 'Yes! All plans include access to every feature. You only pay for the number of employees. Higher plans include priority support and additional services.'
+    answer: 'Yes! All plans include access to every feature including team management, productivity tracking, SLA compliance monitoring, and more. You only pay for the number of employees. Higher plans include priority support and additional services.'
   },
   {
     question: 'What support is included with each plan?',
     answer: 'Starter includes standard email and chat support. Professional includes priority support with faster response times. Enterprise includes 24/7 premium support with dedicated account managers and custom SLAs.'
+  },
+  {
+    question: 'How does the team management feature work?',
+    answer: 'Our team management system works like Trello and Jira, offering Kanban boards, ticket systems, task tracking, and collaboration tools. You can integrate with Slack or use our built-in team chat for seamless communication.'
+  },
+  {
+    question: 'What productivity metrics do you track?',
+    answer: 'We track individual productivity scores, team performance reports, goal completion rates, SLA compliance percentages, task completion times, and provide detailed analytics dashboards for actionable insights.'
   },
   {
     question: 'How long does it take to set up?',
@@ -1431,6 +1494,17 @@ onUnmounted(() => {
   border-color: #667eea;
 }
 
+/* Featured Mobile Card */
+.feature-card.featured-mobile {
+  border: 2px solid #667eea;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+}
+
+.feature-card.featured-mobile:hover {
+  border-color: #764ba2;
+  box-shadow: 0 12px 24px rgba(102, 126, 234, 0.2);
+}
+
 .feature-icon {
   font-size: clamp(2.5rem, 4vw, 3rem);
   margin-bottom: 1rem;
@@ -1472,6 +1546,59 @@ onUnmounted(() => {
   left: 0;
   color: #10b981;
   font-weight: bold;
+}
+
+/* Features CTA */
+.features-cta {
+  margin-top: clamp(3rem, 6vw, 5rem);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: clamp(2rem, 5vw, 4rem);
+  text-align: center;
+  color: white;
+}
+
+.features-cta-content h3 {
+  font-size: clamp(1.75rem, 4vw, 2.25rem);
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.features-cta-content p {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  margin-bottom: 2rem;
+  opacity: 0.95;
+  line-height: 1.6;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.features-cta-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: center;
+  align-items: center;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+@media (min-width: 768px) {
+  .features-cta-actions {
+    flex-direction: row;
+  }
+}
+
+.features-cta-actions .btn-outline {
+  background: white;
+  color: #667eea;
+  border-color: white;
+}
+
+.features-cta-actions .btn-outline:hover {
+  background: rgba(255, 255, 255, 0.9);
+  color: #764ba2;
 }
 
 /* ===== Solutions Section ===== */
@@ -2308,6 +2435,10 @@ onUnmounted(() => {
     display: flex;
   }
   
+  .mobile-menu {
+    display: block;
+  }
+  
   .hero .container {
     grid-template-columns: 1fr;
   }
@@ -2331,6 +2462,10 @@ onUnmounted(() => {
   
   .mobile-menu-btn {
     display: flex;
+  }
+  
+  .mobile-menu {
+    display: block;
   }
   
   .hero-actions {
@@ -2360,6 +2495,10 @@ onUnmounted(() => {
   
   .mobile-menu-btn {
     display: flex;
+  }
+  
+  .mobile-menu {
+    display: block;
   }
   
   .hero-title {
