@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
+use App\Services\SLAAnalyticsService;
 use App\Models\TicketComment;
 use App\Models\TicketAttachment;
 use App\Models\TicketActivity;
@@ -11,6 +12,7 @@ use App\Models\TicketType;
 use App\Models\User;
 use App\Models\Department;
 use App\Models\Employee;
+use App\Models\UserNotification;
 use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -30,10 +32,13 @@ class TicketController extends Controller
 
 protected $notificationService;
 
-public function __construct(TicketNotificationService $notificationService)
-{
-    $this->notificationService = $notificationService;
-}
+public function __construct(
+        TicketNotificationService $notificationService,
+        SLAAnalyticsService $slaService
+    ) {
+        $this->notificationService = $notificationService;
+        $this->slaService = $slaService;
+    }
     /**
      * Get list of tickets with filtering (BACKWARD COMPATIBLE)
      */
@@ -44,84 +49,70 @@ public function index(Request $request)
 {
     $user = $request->user();
     
-    // Add detailed request logging
     Log::info('TICKETS INDEX: Request received', [
         'user_id' => $user->id,
         'user_name' => $user->name ?? ($user->first_name . ' ' . $user->last_name),
         'has_role_admin' => $user->hasRole('admin') ? 'yes' : 'no',
         'employee_exists' => $user->employee ? 'yes' : 'no',
         'business_id' => $user->employee ? $user->employee->business_id : 'none',
-        'request_params' => $request->all(),
-        'url' => $request->fullUrl(),
-        'ip' => $request->ip()
     ]);
     
-    // Use the new index method if we have new features enabled
-    if ($request->has('type') || $request->has('category') || $request->has('department_id')) {
-        Log::info('TICKETS INDEX: Using enhanced index method');
-        return $this->indexEnhanced($request);
-    }
+    $query = Ticket::with(['user', 'approver', 'assignedUsers', 'assignedUsers.employee.business']);
     
-    $query = Ticket::with(['user', 'approver', 'assignedUsers']);
-    
-    // Role-based filtering - APPLIED FIRST
+    // Role-based filtering
     if ($user->hasRole('admin')) {
-        // Admins see tickets from their business only
         $employee = $user->employee;
         if ($employee) {
-            $query->whereHas('user.employee', function ($q) use ($employee) {
-                $q->where('business_id', $employee->business_id);
-            });
+            $business = $employee->business;
+            
+            // Get business group IDs
+            $groupIds = $business->activeBusinessGroups()
+                ->wherePivot('can_view_all_tickets', true)
+                ->pluck('business_groups.id');
+            
+            if ($groupIds->isNotEmpty()) {
+                // Show tickets from current business AND cross-business tickets in groups
+                $query->where(function($q) use ($employee, $groupIds) {
+                    // Tickets from own business
+                    $q->whereHas('user.employee', function ($subQ) use ($employee) {
+                        $subQ->where('business_id', $employee->business_id);
+                    })
+                    // OR tickets assigned to users in own business from group
+                    ->orWhereHas('assignedUsers.employee', function ($subQ) use ($employee) {
+                        $subQ->where('business_id', $employee->business_id);
+                    });
+                });
+            } else {
+                // No groups, show only own business tickets
+                $query->whereHas('user.employee', function ($q) use ($employee) {
+                    $q->where('business_id', $employee->business_id);
+                });
+            }
             
             Log::info('TICKETS INDEX: Admin filtering applied', [
                 'business_id' => $employee->business_id,
-                'employee_id' => $employee->id,
-                'ticket_count_before_filter' => Ticket::count()
+                'has_groups' => $groupIds->isNotEmpty()
             ]);
-        } else {
-            Log::warning('TICKETS INDEX: Admin user has no employee profile', [
-                'user_id' => $user->id
-            ]);
-            return response()->json(['data' => [], 'message' => 'No employee profile found'], 200);
         }
     } else {
-        // Regular users only see their own tickets
-        $query->where('user_id', $user->id);
-        
-        Log::info('TICKETS INDEX: Regular user filtering applied', [
-            'user_id' => $user->id,
-            'ticket_count_before_filter' => Ticket::count()
-        ]);
+        // Regular users see their own tickets AND tickets assigned to them
+        $query->where(function($q) use ($user) {
+            $q->where('user_id', $user->id)
+              ->orWhereHas('assignedUsers', function ($assignQ) use ($user) {
+                  $assignQ->where('user_id', $user->id);
+              });
+        });
     }
     
-    // 🔍 DEBUG LOG - MOVED HERE: Show filtered results BEFORE additional filters
-    Log::info('TICKETS INDEX: Tickets after role filtering', [
-        'count' => $query->count(),
-        'first_ticket_id' => $query->first()?->id,
-        'first_ticket_user_id' => $query->first()?->user_id,
-        'first_ticket_assigned_users' => $query->first()?->assignedUsers?->pluck('id')->toArray(),
-        'user_role' => $user->hasRole('admin') ? 'admin' : 'regular'
-    ]);
-    
-    // Status filter
+    // Apply other filters (status, priority, search, etc.)
     if ($request->has('status')) {
         $query->where('status', $request->status);
-        
-        Log::info('TICKETS INDEX: Status filter applied', [
-            'status' => $request->status
-        ]);
     }
     
-    // Priority filter
     if ($request->has('priority')) {
         $query->where('priority', $request->priority);
-        
-        Log::info('TICKETS INDEX: Priority filter applied', [
-            'priority' => $request->priority
-        ]);
     }
     
-    // Search filter
     if ($request->has('search') && !empty($request->search)) {
         $search = $request->search;
         $query->where(function ($q) use ($search) {
@@ -129,38 +120,9 @@ public function index(Request $request)
               ->orWhere('description', 'like', "%{$search}%")
               ->orWhere('id', 'like', "%{$search}%");
         });
-        
-        Log::info('TICKETS INDEX: Search filter applied', [
-            'search_term' => $search
-        ]);
     }
     
-    // Get final results before pagination
-    $finalCount = $query->count();
-    $firstTicket = $query->first();
-    
-    // 🔍 FINAL DEBUG LOG
-    Log::info('TICKETS INDEX: Returning filtered tickets', [
-        'final_count' => $finalCount,
-        'first_ticket_id' => $firstTicket?->id,
-        'first_ticket_title' => $firstTicket?->title,
-        'first_ticket_status' => $firstTicket?->status,
-        'first_ticket_user_id' => $firstTicket?->user_id,
-        'first_ticket_assigned_users' => $firstTicket?->assignedUsers?->pluck('id')->toArray(),
-        'user_id' => $user->id,
-        'is_admin' => $user->hasRole('admin') ? 'yes' : 'no',
-        'applied_filters' => [
-            'status' => $request->has('status') ? $request->status : 'none',
-            'priority' => $request->has('priority') ? $request->priority : 'none',
-            'search' => $request->has('search') && !empty($request->search) ? 'yes' : 'no'
-        ]
-    ]);
-    
-    // Apply pagination
-    $perPage = $request->get('per_page', 10);
-    $page = $request->get('page', 1);
-    
-    $paginatedTickets = $query->latest()->paginate($perPage, ['*'], 'page', $page);
+    $paginatedTickets = $query->latest()->paginate($request->get('per_page', 10));
     
     return response()->json($paginatedTickets);
 }
@@ -579,7 +541,8 @@ public function storeWithType(Request $request)
             'estimated_hours' => $request->estimated_hours,
             'status' => $initialStatus,
         ];
-
+$ticketData['response_sla_hours'] = $this->calculateDefaultResponseSLA($request->priority); // Implement this method
+$ticketData['resolution_sla_hours'] = $this->calculateDefaultResolutionSLA($request->priority, $request->type); // Implement this method
         $ticket = Ticket::create($ticketData);
         
         // 🔥 ENHANCED ASSIGNMENT LOGIC with better data handling
@@ -596,6 +559,20 @@ public function storeWithType(Request $request)
             
             foreach ($assignedToArray as $assignedUserId) {
                 if ($assignedUserId) {
+                     UserNotification::create([
+                        'user_id' => $assignedUserId,
+                        'type' => 'ticket_created',
+                        'title' => 'New Ticket Assigned',
+                        'message' => "New {$ticket->type} ticket: {$ticket->title}",
+                        'action' => "/tickets/{$ticket->id}",
+                        'data' => [
+                            'ticket_id' => $ticket->id,
+                            'ticket_title' => $ticket->title,
+                            'ticket_type' => $ticket->type,
+                            'priority' => $ticket->priority,
+                            'created_by' => $user->name
+                        ]
+                    ]);
                     $this->assignUserToTicket($ticket, $assignedUserId, 'assignee');
                     $assignedUsers[] = $assignedUserId;
                     $assignmentLog[] = "Assigned to user $assignedUserId as assignee";
@@ -614,6 +591,20 @@ public function storeWithType(Request $request)
             }
             // For requests/change requests: auto-assign to approver as reviewer
             elseif ($requiresApproval && $request->approver_id) {
+                 UserNotification::create([
+                'user_id' => $request->approver_id,
+                'type' => 'ticket_created',
+                'title' => 'Ticket Requires Approval',
+                'message' => "{$user->name} created a ticket that requires your approval: {$ticket->title}",
+                'action' => "/tickets/{$ticket->id}",
+                'data' => [
+                    'ticket_id' => $ticket->id,
+                    'ticket_title' => $ticket->title,
+                    'ticket_type' => $ticket->type,
+                    'priority' => $ticket->priority,
+                    'created_by' => $user->name
+                ]
+            ]);
                 $this->assignUserToTicket($ticket, $request->approver_id, 'reviewer');
                 $assignedUsers[] = $request->approver_id;
                 $assignmentLog[] = "Auto-assigned to approver (user $request->approver_id) as reviewer";
@@ -690,6 +681,33 @@ public function storeWithType(Request $request)
             'error' => $e->getMessage()
         ], 500);
     }
+}private function calculateDefaultResponseSLA($priority): float
+{
+    return match($priority) {
+        'critical' => 2,
+        'high' => 4,
+        'medium' => 24,
+        'low' => 48,
+        default => 24,
+    };
+}
+
+private function calculateDefaultResolutionSLA($priority, $type): float
+{
+    $base = match($priority) {
+        'critical' => 8,
+        'high' => 24,
+        'medium' => 72,
+        'low' => 120,
+        default => 72,
+    };
+    $multiplier = match($type) {
+        'issue' => 1.0,
+        'request' => 1.5,
+        'change_request' => 2.0,
+        default => 1.0,
+    };
+    return $base * $multiplier;
 }
 /**
  * Helper method to assign user to ticket with notifications
@@ -861,7 +879,31 @@ private function assignUserToTicket(Ticket $ticket, $userId, $role = 'assignee')
                     ]);
                 }
             }
-
+// ✨ SEND NOTIFICATION ON STATUS CHANGE
+        if ($oldStatus !== $request->status && $ticket->user_id !== $user->id) {
+            $statusMessages = [
+                'approved' => 'Your ticket has been approved',
+                'in_progress' => 'Your ticket is now being worked on',
+                'resolved' => 'Your ticket has been resolved',
+                'rejected' => 'Your ticket has been rejected',
+                'closed' => 'Your ticket has been closed'
+            ];
+            
+            UserNotification::create([
+                'user_id' => $ticket->user_id,
+                'type' => 'ticket_created',
+                'title' => 'Ticket Status Updated',
+                'message' => "{$statusMessages[$request->status]}: {$ticket->title}",
+                'action' => "/tickets/{$ticket->id}",
+                'data' => [
+                    'ticket_id' => $ticket->id,
+                    'ticket_title' => $ticket->title,
+                    'old_status' => $oldStatus,
+                    'new_status' => $request->status,
+                    'updated_by' => $user->name
+                ]
+            ]);
+        }
             return response()->json([
                 'success' => true,
                 'message' => 'Ticket status updated successfully',
@@ -1240,143 +1282,120 @@ public function statistics(Request $request)
     }
 
     /**
-     * Get users available for assignment AND approvers - COMBINED METHOD
-     * UPDATED: Added detailed logging for users and approvers with their roles
-     */
-    public function getAssignableUsers(Request $request)
-    {
-        try {
-            $startTime = microtime(true);
-            $user = Auth::user();
-            $employee = $user->employee;
+ * Get assignable users including users from other businesses in the same group
+ * FIXED: Changed can_assign_tasks to can_assign_cross_business_tasks
+ */
+public function getAssignableUsers(Request $request)
+{
+    try {
+        $user = Auth::user();
+        $employee = $user->employee;
 
-            // Log::info('TICKET_CONTROLLER: Getting assignable users and approvers', [
-            //     'user_id' => $user->id,
-            //     'user_role' => $user->role,
-            //     'has_employee' => $employee ? 'yes' : 'no',
-            // ]);
-
-            if (!$employee) {
-                Log::warning('TICKET_CONTROLLER: No employee profile found for user', [
-                    'user_id' => $user->id,
-                ]);
-                return response()->json([
-                    'assignable_users' => [],
-                    'approvers' => []
-                ]);
-            }
-
-            $employees = Employee::where('business_id', $employee->business_id)
-                ->where('id', '!=', $employee->id)
-                ->with(['user'])
-                ->get();
-
-            // Log::info('TICKET_CONTROLLER: Retrieved employees', [
-            //     'employee_count' => $employees->count(),
-            //     'business_id' => $employee->business_id,
-            // ]);
-
-            $assignableUsers = $employees->map(function ($employeeItem) {
-                $userRole = $employeeItem->user->role ?? 'employee';
-                
-                // Check BOTH role column AND hasRole method for admin status
-                // This handles both role systems (column-based and relationship-based)
-                $hasRoleMethod = $employeeItem->user->hasRole('admin') ?? false;
-                $hasRoleColumn = ($userRole === 'admin');
-                $isAdmin = $hasRoleColumn || $hasRoleMethod;
-                
-                $userData = [
-                    'id' => $employeeItem->user_id,
-                    'employee_id' => $employeeItem->id,
-                    'employee_number' => $employeeItem->employee_id,
-                    'first_name' => $employeeItem->user->first_name ?? $employeeItem->first_name,
-                    'last_name' => $employeeItem->user->last_name ?? $employeeItem->last_name,
-                    'name' => trim(($employeeItem->user->first_name ?? $employeeItem->first_name) . ' ' . ($employeeItem->user->last_name ?? $employeeItem->last_name)),
-                    'email' => $employeeItem->user->email ?? $employeeItem->email,
-                    'role' => $userRole,
-                    'position' => $employeeItem->position,
-                    'department' => $employeeItem->department,
-                    'employment_type' => $employeeItem->employment_type,
-                    'hire_date' => $employeeItem->hire_date,
-                    'is_active' => true,
-                    'is_admin' => $isAdmin,
-                ];
-                
-                // // Log each user with their role details
-                // Log::info('TICKET_CONTROLLER: Mapped assignable user', [
-                //     'user_id' => $userData['id'],
-                //     'name' => $userData['name'],
-                //     'email' => $userData['email'],
-                //     'role' => $userRole,
-                //     'role_column_is_admin' => $hasRoleColumn,
-                //     'hasRole_method_result' => $hasRoleMethod,
-                //     'final_is_admin' => $isAdmin,
-                //     'position' => $userData['position'],
-                //     'department' => $userData['department'],
-                // ]);
-                
-                return $userData;
-            })->filter(function ($userData) {
-                return !empty($userData['id']) && !empty($userData['email']);
-            })->values();
-
-            $approvers = $assignableUsers->filter(function ($userData) {
-                return $userData['is_admin'] === true;
-            })->map(function ($approver) {
-                $approverData = [
-                    'id' => $approver['id'],
-                    'name' => $approver['name'],
-                    'email' => $approver['email'],
-                    'first_name' => $approver['first_name'],
-                    'last_name' => $approver['last_name'],
-                    'position' => $approver['position'],
-                    'department' => $approver['department'],
-                    'role' => $approver['role'],
-                    'is_admin' => $approver['is_admin'],
-                ];
-                
-                // // Log each approver with their role details
-                // Log::info('TICKET_CONTROLLER: Mapped approver', [
-                //     'approver_id' => $approverData['id'],
-                //     'name' => $approverData['name'],
-                //     'email' => $approverData['email'],
-                //     'role' => $approverData['role'],
-                //     'is_admin' => $approverData['is_admin'],
-                //     'position' => $approverData['position'],
-                //     'department' => $approverData['department'],
-                // ]);
-                
-                return $approverData;
-            })->values();
-
-            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
-            
-            // Log::info('TICKET_CONTROLLER: Users fetched successfully', [
-            //     'total_users' => $assignableUsers->count(),
-            //     'approvers_count' => $approvers->count(),
-            //     'execution_time_ms' => $executionTime,
-            // ]);
-
+        if (!$employee) {
             return response()->json([
-                'assignable_users' => $assignableUsers,
-                'approvers' => $approvers
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('TICKET_CONTROLLER: Failed to fetch users', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'user_id' => Auth::id() ?? null,
-            ]);
-            
-            return response()->json([
-                'message' => 'Failed to fetch users',
-                'error' => $e->getMessage(),
                 'assignable_users' => [],
-                'approvers' => []
-            ], 500);
+                'approvers' => [],
+                'group_users' => []
+            ]);
         }
+
+        $business = $employee->business;
+        
+        // Get users from current business
+        $currentBusinessUsers = Employee::where('business_id', $employee->business_id)
+            ->where('id', '!=', $employee->id)
+            ->with(['user'])
+            ->get()
+            ->map(function ($emp) {
+                return $this->formatUserData($emp, false);
+            })
+            ->filter(fn($u) => !empty($u['id']))
+            ->values();
+
+        // Get business groups this business belongs to
+        // FIXED: Changed can_assign_tasks to can_assign_cross_business_tasks
+        $businessGroupIds = $business->activeBusinessGroups()
+            ->wherePivot('can_assign_cross_business_tasks', true)
+            ->pluck('business_groups.id');
+
+        // Get users from other businesses in the same groups
+        $groupUsers = [];
+        if ($businessGroupIds->isNotEmpty()) {
+            $otherBusinessIds = DB::table('business_group_memberships')
+                ->whereIn('business_group_id', $businessGroupIds)
+                ->where('business_id', '!=', $business->id)
+                ->where('status', 'active')
+                ->pluck('business_id');
+
+            if ($otherBusinessIds->isNotEmpty()) {
+                $groupUsers = Employee::whereIn('business_id', $otherBusinessIds)
+                    ->with(['user', 'business'])
+                    ->get()
+                    ->map(function ($emp) {
+                        return $this->formatUserData($emp, true);
+                    })
+                    ->filter(fn($u) => !empty($u['id']))
+                    ->values();
+            }
+        }
+
+        // Get approvers (admins from current business only)
+        $approvers = $currentBusinessUsers->filter(fn($u) => $u['is_admin'])->values();
+
+        return response()->json([
+            'assignable_users' => $currentBusinessUsers,
+            'group_users' => $groupUsers,
+            'approvers' => $approvers,
+            'can_assign_cross_business' => $businessGroupIds->isNotEmpty()
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error fetching assignable users:', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'assignable_users' => [],
+            'approvers' => [],
+            'group_users' => []
+        ], 500);
     }
+}
+
+/**
+ * Helper to format user data
+ */
+private function formatUserData($employee, $isFromOtherBusiness = false)
+{
+    $user = $employee->user;
+    if (!$user) return null;
+
+    $userRole = $user->role ?? 'employee';
+    $hasRoleMethod = $user->hasRole('admin') ?? false;
+    $hasRoleColumn = ($userRole === 'admin');
+    $isAdmin = $hasRoleColumn || $hasRoleMethod;
+
+    return [
+        'id' => $user->id,
+        'employee_id' => $employee->id,
+        'employee_number' => $employee->employee_id,
+        'first_name' => $user->first_name ?? $employee->first_name,
+        'last_name' => $user->last_name ?? $employee->last_name,
+        'name' => trim(($user->first_name ?? $employee->first_name) . ' ' . ($user->last_name ?? $employee->last_name)),
+        'email' => $user->email ?? $employee->email,
+        'role' => $userRole,
+        'position' => $employee->position,
+        'department' => $employee->department,
+        'employment_type' => $employee->employment_type,
+        'hire_date' => $employee->hire_date,
+        'is_active' => true,
+        'is_admin' => $isAdmin,
+        'business_id' => $employee->business_id,
+        'business_name' => $employee->business->name ?? null,
+        'is_from_other_business' => $isFromOtherBusiness
+    ];
+}
 
     /**
      * Get ONLY approvers (for backward compatibility)
@@ -1830,7 +1849,10 @@ public function addComment(Request $request, Ticket $ticket)
             'content' => $request->input('content'),
             'is_internal' => filter_var($request->input('is_internal', false), FILTER_VALIDATE_BOOLEAN),
         ]);
-
+// ✨ NEW: Track first response time
+        if (!$comment->is_internal && !$ticket->first_response_at) {
+            $ticket->recordFirstResponse();
+        }
         // Handle attachments
         $attachmentIds = [];
         if ($request->hasFile('attachments')) {
@@ -1848,6 +1870,19 @@ public function addComment(Request $request, Ticket $ticket)
 // ✨ NEW: Send notification (only for non-internal comments)
         if (!$comment->is_internal) {
             $this->notificationService->notifyCommentAdded($ticket, $comment);
+            UserNotification::create([
+                    'user_id' => $ticket->user_id,
+                    'type' => 'ticket_created',
+                    'title' => 'New Comment on Your Ticket',
+                    'message' => "{$user->name} commented on ticket: {$ticket->title}",
+                    'action' => "/tickets/{$ticket->id}",
+                    'data' => [
+                        'ticket_id' => $ticket->id,
+                        'ticket_title' => $ticket->title,
+                        'comment_id' => $comment->id,
+                        'commenter' => $user->name
+                    ]
+                ]);
         }
 
         DB::commit();

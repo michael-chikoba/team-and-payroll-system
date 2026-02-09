@@ -4,21 +4,16 @@ namespace App\Listeners;
 
 use App\Events\TaskAssigned;
 use App\Models\UserNotification;
+use App\Jobs\SendPushNotification;
 use Illuminate\Support\Facades\Log;
 
 class SendTaskNotification
 {
-    /**
-     * Create the event listener.
-     */
     public function __construct()
     {
         //
     }
 
-    /**
-     * Handle the event.
-     */
     public function handle(TaskAssigned $event): void
     {
         try {
@@ -27,15 +22,24 @@ class SendTaskNotification
             // Load relationships if not already loaded
             $task->loadMissing(['assignedTo', 'createdBy']);
             
+            // Ensure we have the assigned user
+            if (!$task->assignedTo) {
+                Log::warning('Task notification skipped - no assigned user', [
+                    'task_id' => $task->id
+                ]);
+                return;
+            }
+            
             // Get the creator's full name
-            $creatorName = $task->createdBy->first_name . ' ' . $task->createdBy->last_name;
+            $creatorName = $task->createdBy 
+                ? ($task->createdBy->first_name . ' ' . $task->createdBy->last_name)
+                : 'System';
             
             // Determine action URL based on user role
-            // For employees, the route name is 'TaskBoard'
-            $actionUrl = '/employee/tasks'; // This will match the TaskBoard route
+            $actionUrl = '/employee/tasks';
             
-            // Create notification for the assigned employee
-            UserNotification::create([
+            // Create notification in database
+            $notification = UserNotification::create([
                 'user_id' => $task->assigned_to,
                 'type' => 'task_assigned',
                 'title' => 'New Task Assigned',
@@ -59,13 +63,16 @@ class SendTaskNotification
                 'notifiable_type' => 'App\Models\Task'
             ]);
             
-            Log::info('Task assignment notification created', [
+            // Dispatch push notification job
+            // This will only send if user has enabled push notifications
+            SendPushNotification::dispatch($task->assignedTo, $notification);
+            
+            Log::info('Task assignment notification created and push queued', [
                 'task_id' => $task->id,
                 'task_title' => $task->title,
                 'assigned_to' => $task->assigned_to,
                 'created_by' => $task->created_by,
-                'creator_name' => $creatorName,
-                'action_url' => $actionUrl
+                'notification_id' => $notification->id
             ]);
             
         } catch (\Exception $e) {

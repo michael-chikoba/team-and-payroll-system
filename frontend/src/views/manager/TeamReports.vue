@@ -2,10 +2,11 @@
   <div class="reports-management">
     <div class="page-header">
       <div class="header-content">
-        <h1>My Team Reports</h1>
+        <h1>📄 Schedule Reports</h1>
+        <p class="subtitle">View and manage submitted schedule reports from your team</p>
         <div class="filter-section">
           <div class="filter-group">
-            <label for="employee-filter">Select Employee (Optional):</label>
+            <label for="employee-filter">Filter by Employee:</label>
             <select id="employee-filter" v-model="selectedEmployeeId" @change="handleEmployeeFilter">
               <option value="">All Team Members</option>
               <option v-for="employee in managedEmployees" :key="employee.id" :value="employee.id">
@@ -14,282 +15,323 @@
             </select>
           </div>
           <div v-if="selectedEmployeeId" class="filter-info">
-            <p>Viewing reports for: {{ getEmployeeName(selectedEmployeeId) }}</p>
+            <span class="filter-badge">
+              Viewing: {{ getEmployeeName(selectedEmployeeId) }}
+              <button @click="clearEmployeeFilter" class="clear-filter">✕</button>
+            </span>
           </div>
         </div>
       </div>
       <div class="header-actions">
         <button 
-          @click="generateTeamReport" 
+          @click="viewScheduleReports" 
           class="btn-primary"
-          :disabled="generatingReport"
         >
-          <span>📊</span> {{ generatingReport ? 'Generating...' : 'Generate Team Report' }}
-        </button>
-        <button 
-          @click="generateProductivityReport" 
-          class="btn-secondary"
-          :disabled="generatingReport"
-        >
-          <span>📈</span> {{ generatingReport ? 'Generating...' : 'Productivity Report' }}
-        </button>
-        <button 
-          v-if="selectedEmployeeId"
-          @click="generateEmployeeReport" 
-          class="btn-success"
-          :disabled="generatingReport"
-        >
-          <span>👤</span> {{ generatingReport ? 'Generating...' : 'Employee Specific Report' }}
-        </button>
-        <button 
-          v-if="selectedEmployeeId"
-          @click="editPerformanceMetrics(selectedEmployeeId)" 
-          class="btn-info"
-        >
-          <span>✏️</span> Edit Performance
+          <span>📋</span> View All Reports
         </button>
       </div>
     </div>
 
     <!-- Authentication Check -->
     <div v-if="!authStore.isAuthenticated" class="error-message">
-      Please log in to access team reports.
+      <span class="error-icon">🔒</span>
+      <div>
+        <h3>Authentication Required</h3>
+        <p>Please log in to access schedule reports.</p>
+      </div>
     </div>
 
     <!-- Permission Check -->
     <div v-else-if="!authStore.isManager" class="error-message">
-      You don't have permission to access this page.
+      <span class="error-icon">⛔</span>
+      <div>
+        <h3>Access Denied</h3>
+        <p>You don't have permission to access this page.</p>
+      </div>
     </div>
 
     <!-- Loading State -->
     <div v-else-if="loading" class="loading">
       <div class="spinner"></div>
-      <p>Loading team reports...</p>
+      <p>Loading schedule reports...</p>
     </div>
 
     <!-- Error State -->
     <div v-else-if="error" class="error-message">
-      {{ error }}
-      <button @click="retryFetch" class="btn-primary">Retry</button>
+      <span class="error-icon">⚠️</span>
+      <div>
+        <h3>Error</h3>
+        <p>{{ error }}</p>
+        <button @click="retryFetch" class="btn-retry">Retry</button>
+      </div>
     </div>
 
     <!-- Reports Dashboard -->
     <div v-else class="reports-dashboard">
       <!-- Manager Info -->
       <div class="manager-info">
-        <h2>👨‍💼 Managing Team</h2>
-        <p class="manager-subtitle">Team overview and performance metrics for your direct reports{{ selectedEmployeeId ? ` - Focusing on ${getEmployeeName(selectedEmployeeId)}` : '' }}</p>
+        <div class="manager-info-content">
+          <h2>👨‍💼 Team Overview</h2>
+          <p class="manager-subtitle">
+            Managing {{ managedEmployees.length }} team member{{ managedEmployees.length !== 1 ? 's' : '' }}
+            {{ selectedEmployeeId ? ` - Focusing on ${getEmployeeName(selectedEmployeeId)}` : '' }}
+          </p>
+        </div>
       </div>
 
       <!-- Quick Stats -->
       <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon">👥</div>
-          <div class="stat-content">
-            <h3>Team Size</h3>
-            <p class="stat-value">{{ teamStats.team_size || 0 }}</p>
-            <p class="stat-label">Direct Reports</p>
-          </div>
-        </div>
-        
-        <div class="stat-card">
-          <div class="stat-icon">✅</div>
-          <div class="stat-content">
-            <h3>Present Today</h3>
-            <p class="stat-value">{{ teamStats.present_today || 0 }}</p>
-            <p class="stat-label">Employees Present</p>
-          </div>
-        </div>
-        
-        <div class="stat-card">
-          <div class="stat-icon">📅</div>
-          <div class="stat-content">
-            <h3>Pending Leaves</h3>
-            <p class="stat-value">{{ teamStats.pending_leaves || 0 }}</p>
-            <p class="stat-label">Awaiting Approval</p>
-          </div>
-        </div>
-        
-        <div class="stat-card">
+        <div class="stat-card total">
           <div class="stat-icon">📊</div>
           <div class="stat-content">
-            <h3>Avg. Productivity</h3>
-            <p class="stat-value">{{ teamStats.avg_productivity || 0 }}%</p>
-            <p class="stat-label">This Month</p>
+            <h3>Total Reports</h3>
+            <p class="stat-value">{{ scheduleReportsStats.total || 0 }}</p>
+            <p class="stat-label">All Time</p>
           </div>
+        </div>
+        
+        <div class="stat-card pending">
+          <div class="stat-icon">📝</div>
+          <div class="stat-content">
+            <h3>Pending Review</h3>
+            <p class="stat-value">{{ scheduleReportsStats.submitted || 0 }}</p>
+            <p class="stat-label">Awaiting Action</p>
+          </div>
+        </div>
+        
+        <div class="stat-card approved">
+          <div class="stat-icon">✅</div>
+          <div class="stat-content">
+            <h3>Approved</h3>
+            <p class="stat-value">{{ scheduleReportsStats.approved || 0 }}</p>
+            <p class="stat-label">Completed</p>
+          </div>
+        </div>
+        
+        <div class="stat-card rejected">
+          <div class="stat-icon">❌</div>
+          <div class="stat-content">
+            <h3>Rejected</h3>
+            <p class="stat-value">{{ scheduleReportsStats.rejected || 0 }}</p>
+            <p class="stat-label">Needs Revision</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Schedule Reports -->
+      <div class="schedule-reports-section">
+        <div class="section-header">
+          <div class="section-title">
+            <h2>📄 Recent Submissions</h2>
+            <span class="section-count">{{ recentScheduleReports.length }} report{{ recentScheduleReports.length !== 1 ? 's' : '' }}</span>
+          </div>
+          <button @click="viewScheduleReports" class="btn-view-all">
+            View All Reports
+            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Status Filter Pills -->
+        <div class="status-filters">
+          <button 
+            :class="['filter-pill', { active: statusFilter === '' }]"
+            @click="statusFilter = ''; fetchScheduleReports()"
+          >
+            All
+          </button>
+          <button 
+            :class="['filter-pill submitted', { active: statusFilter === 'submitted' }]"
+            @click="statusFilter = 'submitted'; fetchScheduleReports()"
+          >
+            Submitted ({{ scheduleReportsStats.submitted }})
+          </button>
+          <button 
+            :class="['filter-pill reviewed', { active: statusFilter === 'reviewed' }]"
+            @click="statusFilter = 'reviewed'; fetchScheduleReports()"
+          >
+            Reviewed ({{ scheduleReportsStats.reviewed }})
+          </button>
+          <button 
+            :class="['filter-pill approved', { active: statusFilter === 'approved' }]"
+            @click="statusFilter = 'approved'; fetchScheduleReports()"
+          >
+            Approved ({{ scheduleReportsStats.approved }})
+          </button>
+          <button 
+            :class="['filter-pill rejected', { active: statusFilter === 'rejected' }]"
+            @click="statusFilter = 'rejected'; fetchScheduleReports()"
+          >
+            Rejected ({{ scheduleReportsStats.rejected }})
+          </button>
+        </div>
+
+        <!-- Reports List -->
+        <div v-if="recentScheduleReports.length > 0" class="recent-reports">
+          <div class="reports-list">
+            <div 
+              v-for="report in recentScheduleReports" 
+              :key="report.id"
+              @click="viewReportDetails(report)"
+              class="report-item"
+            >
+              <div class="report-item-header">
+                <div class="report-item-title">
+                  <h4>{{ getReportScheduleTitle(report) }}</h4>
+                  <span class="report-employee">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                    {{ getReportEmployeeName(report) }}
+                  </span>
+                </div>
+                <span :class="['report-status-badge', getReportStatusClass(report.status)]">
+                  {{ formatReportStatus(report.status) }}
+                </span>
+              </div>
+              
+              <div class="report-item-meta">
+                <span class="report-meta-item">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  {{ formatDate(report.created_at) }}
+                </span>
+                
+                <span class="report-meta-item report-type">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  {{ formatReportType(report.report_type) }}
+                </span>
+                
+                <span v-if="report.file_name" class="report-meta-item file">
+                  <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/>
+                  </svg>
+                  {{ report.file_name }}
+                </span>
+              </div>
+
+              <!-- Metadata Preview -->
+              <div v-if="hasReportMetadata(report)" class="report-metadata">
+                <span v-if="report.metadata?.hours_worked" class="metadata-badge">
+                  ⏱️ {{ report.metadata.hours_worked }}h worked
+                </span>
+                <span v-if="report.metadata?.tasks_completed" class="metadata-badge">
+                  ✓ {{ report.metadata.tasks_completed }} tasks
+                </span>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="report-quick-actions">
+                <button 
+                  @click.stop="viewReportDetails(report)" 
+                  class="quick-action-btn view"
+                >
+                  View Details
+                </button>
+                <button 
+                  v-if="report.status === 'submitted'"
+                  @click.stop="quickReview(report, 'approved')" 
+                  class="quick-action-btn approve"
+                >
+                  ✓ Approve
+                </button>
+                <button 
+                  v-if="report.status === 'submitted'"
+                  @click.stop="quickReview(report, 'rejected')" 
+                  class="quick-action-btn reject"
+                >
+                  ✕ Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div v-else class="empty-reports">
+          <div class="empty-icon">📄</div>
+          <h3>No Reports Found</h3>
+          <p v-if="statusFilter">No {{ statusFilter }} reports found{{ selectedEmployeeId ? ' for this employee' : '' }}.</p>
+          <p v-else>No schedule reports have been submitted yet{{ selectedEmployeeId ? ' by this employee' : '' }}.</p>
+          <button v-if="statusFilter || selectedEmployeeId" @click="clearFilters" class="btn-secondary">
+            Clear Filters
+          </button>
         </div>
       </div>
 
       <!-- Team Members Quick View -->
       <div class="team-members-section">
         <div class="section-header">
-          <h2>Team Members ({{ managedEmployees.length }})</h2>
-          <button @click="viewAllTeamMembers" class="btn-view">View All</button>
+          <div class="section-title">
+            <h2>👥 Team Members</h2>
+            <span class="section-count">{{ managedEmployees.length }}</span>
+          </div>
         </div>
+        
         <div v-if="managedEmployees.length === 0" class="empty-state">
           <p>No team members assigned to you yet.</p>
         </div>
+        
         <div v-else class="team-members-grid">
-          <div v-for="employee in managedEmployees.slice(0, 6)" :key="employee.id" class="team-member-card">
+          <div 
+            v-for="employee in managedEmployees.slice(0, 8)" 
+            :key="employee.id" 
+            class="team-member-card"
+            @click="filterByEmployee(employee.id)"
+          >
             <div class="member-avatar">
               {{ getInitials(employee.name) }}
             </div>
             <div class="member-info">
               <h4>{{ employee.name }}</h4>
-              <p class="member-position">{{ employee.position || employee.job_title || 'Employee' }}</p>
+              <p class="member-position">{{ employee.position || 'Employee' }}</p>
               <p class="member-department">{{ employee.department || 'General' }}</p>
             </div>
-            <div class="member-status">
-              <span :class="['status-dot', getEmployeeStatus(employee)]"></span>
-              <span class="status-text">{{ getEmployeeStatusText(employee) }}</span>
-            </div>
           </div>
-          <div v-if="managedEmployees.length > 6" class="more-members">
-            <p>+{{ managedEmployees.length - 6 }} more team members</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Report Sections -->
-      <div class="report-sections">
-        <!-- Team Report -->
-        <div class="report-section">
-          <div class="section-header">
-            <h2>Team Performance Report</h2>
-            <button @click="viewTeamReport" class="btn-view">View Full Report</button>
-          </div>
-          <div v-if="teamReport" class="report-preview">
-            <div class="preview-content">
-              <h4>Your Team Overview</h4>
-              <p>Period: {{ formatDate(teamReport.period_start) }} - {{ formatDate(teamReport.period_end) }}</p>
-              <div class="preview-stats">
-                <span class="preview-stat">Team Members: {{ teamReport.total_employees }}</span>
-                <span class="preview-stat">Active Today: {{ teamReport.active_employees }}</span>
-                <span class="preview-stat">On Leave: {{ teamReport.on_leave }}</span>
-                <span class="preview-stat">Attendance Rate: {{ teamReport.attendance_rate }}%</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="empty-preview">
-            <p>No team report generated yet.</p>
-            <button @click="generateTeamReport" class="btn-primary">Generate Report</button>
-          </div>
-        </div>
-
-        <!-- Productivity Report -->
-        <div class="report-section">
-          <div class="section-header">
-            <h2>Team Productivity</h2>
-            <button @click="viewProductivityReport" class="btn-view">View Full Report</button>
-          </div>
-          <div v-if="productivityReport" class="report-preview">
-            <div class="preview-content">
-              <h4>Performance Metrics</h4>
-              <p>Generated: {{ formatDate(productivityReport.generated_at) }}</p>
-              <div class="preview-stats">
-                <span class="preview-stat">Avg. Productivity: {{ productivityReport.avg_productivity }}%</span>
-                <span class="preview-stat">Tasks Completed: {{ productivityReport.total_tasks_completed }}</span>
-                <span class="preview-stat">Team Attendance: {{ productivityReport.avg_attendance_rate }}%</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="empty-preview">
-            <p>No productivity report generated yet.</p>
-            <button @click="generateProductivityReport" class="btn-primary">Generate Report</button>
-          </div>
-        </div>
-
-        <!-- Employee Specific Report (shown when employee selected) -->
-        <div v-if="selectedEmployeeId" class="report-section">
-          <div class="section-header">
-            <h2>Employee Specific Report</h2>
-            <button @click="viewEmployeeReport" class="btn-view">View Full Report</button>
-          </div>
-          <div v-if="employeeReport" class="report-preview">
-            <div class="preview-content">
-              <h4>{{ getEmployeeName(selectedEmployeeId) }} Overview</h4>
-              <p>Period: {{ formatDate(employeeReport.period_start) }} - {{ formatDate(employeeReport.period_end) }}</p>
-              <div class="preview-stats">
-                <span class="preview-stat">Tasks Completed: {{ employeeReport.tasks_completed }}</span>
-                <span class="preview-stat">Total Hours Worked: {{ employeeReport.total_hours }}h</span>
-                <span class="preview-stat">Attendance Rate: {{ employeeReport.attendance_rate }}%</span>
-                <span class="preview-stat">Productivity Score: {{ employeeReport.productivity_score }}%</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="empty-preview">
-            <p>No employee report generated yet.</p>
-            <button @click="generateEmployeeReport" class="btn-primary">Generate Report</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Pending Actions -->
-      <div class="pending-actions">
-        <h2>Pending Actions</h2>
-        <div class="actions-grid">
-          <div class="action-card">
-            <div class="action-icon">📋</div>
-            <div class="action-content">
-              <h3>Leave Requests</h3>
-              <p class="action-count">{{ pendingLeavesCount }} pending</p>
-              <button @click="viewPendingLeaves" class="btn-action">Review</button>
-            </div>
-          </div>
-          <div class="action-card">
-            <div class="action-icon">⏰</div>
-            <div class="action-content">
-              <h3>Attendance Issues</h3>
-              <p class="action-count">{{ attendanceIssuesCount }} to review</p>
-              <button @click="viewAttendanceIssues" class="btn-action">Check</button>
-            </div>
+          
+          <div v-if="managedEmployees.length > 8" class="more-members">
+            <p>+{{ managedEmployees.length - 8 }} more</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Performance Metrics Edit Modal -->
-    <div v-if="showPerformanceModal" class="modal-overlay" @click.self="closePerformanceModal">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2>Edit Performance Metrics for {{ getEmployeeName(selectedEmployeeId) }}</h2>
-          <button @click="closePerformanceModal" class="close-btn">✕</button>
-        </div>
-        <div class="modal-body">
-          <form @submit.prevent="savePerformanceMetrics">
-            <div class="form-group">
-              <label>Performance Rating (1-5):</label>
-              <input type="number" v-model="performanceData.rating" min="1" max="5" required>
-            </div>
-            <div class="form-group">
-              <label>Productivity Score (%):</label>
-              <input type="number" v-model="performanceData.productivity" min="0" max="100" required>
-            </div>
-            <div class="form-group">
-              <label>Total Tasks Completed:</label>
-              <input type="number" v-model="performanceData.tasks_completed" min="0" required>
-            </div>
-            <div class="form-group">
-              <label>Notes:</label>
-              <textarea v-model="performanceData.notes" rows="4" placeholder="Performance notes..."></textarea>
-            </div>
-            <div class="modal-footer">
-              <button type="submit" class="btn-primary">Save Metrics</button>
-              <button type="button" @click="closePerformanceModal" class="btn-secondary">Cancel</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+    <!-- Schedule Reports Modal -->
+    <ScheduleReportsModal
+      :show="showScheduleReportsModal"
+      :employee-id="selectedEmployeeId"
+      :managed-employees="managedEmployees"
+      @close="showScheduleReportsModal = false"
+      @report-reviewed="handleReportReviewed"
+    />
+
+    <!-- Report Details Modal -->
+    <ReportDetailsModal
+      :show="showReportDetailsModal"
+      :report="selectedReport"
+      @close="showReportDetailsModal = false"
+      @review="handleReviewReport"
+      @download="handleDownloadReport"
+    />
   </div>
 </template>
 
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+import ScheduleReportsModal from '@/components/reports/ScheduleReportsModal.vue'
+import ReportDetailsModal from '@/components/reports/ReportDetailsModal.vue'
 
 export default {
   name: 'TeamReports',
+  
+  components: {
+    ScheduleReportsModal,
+    ReportDetailsModal
+  },
   
   setup() {
     const authStore = useAuthStore()
@@ -299,23 +341,23 @@ export default {
   data() {
     return {
       loading: false,
-      generatingReport: false,
       error: null,
       selectedEmployeeId: null,
+      statusFilter: '',
       managedEmployees: [],
-      teamStats: {},
-      teamReport: null,
-      productivityReport: null,
-      employeeReport: null,
-      pendingLeavesCount: 0,
-      attendanceIssuesCount: 0,
       retryCount: 0,
-      showPerformanceModal: false,
-      performanceData: {
-        rating: 0,
-        productivity: 0,
-        tasks_completed: 0,
-        notes: ''
+      
+      // Schedule Reports Data
+      showScheduleReportsModal: false,
+      showReportDetailsModal: false,
+      selectedReport: null,
+      recentScheduleReports: [],
+      scheduleReportsStats: {
+        total: 0,
+        submitted: 0,
+        reviewed: 0,
+        approved: 0,
+        rejected: 0
       }
     }
   },
@@ -327,7 +369,7 @@ export default {
   methods: {
     initializeComponent() {
       if (!this.authStore.isAuthenticated) {
-        this.error = 'Please log in to access team reports.'
+        this.error = 'Please log in to access schedule reports.'
         return
       }
       
@@ -340,12 +382,64 @@ export default {
     },
     
     handleEmployeeFilter() {
-      this.refreshReports()
+      this.fetchScheduleReports()
+    },
+    
+    filterByEmployee(employeeId) {
+      this.selectedEmployeeId = employeeId
+      this.fetchScheduleReports()
+    },
+    
+    clearEmployeeFilter() {
+      this.selectedEmployeeId = null
+      this.fetchScheduleReports()
+    },
+    
+    clearFilters() {
+      this.selectedEmployeeId = null
+      this.statusFilter = ''
+      this.fetchScheduleReports()
     },
     
     getEmployeeName(employeeId) {
       const employee = this.managedEmployees.find(emp => emp.id === employeeId)
-      return employee ? employee.name : ''
+      return employee ? employee.name : 'Unknown Employee'
+    },
+    
+    getReportEmployeeName(report) {
+      // Try multiple ways to get employee name
+      if (report.employee) {
+        // If employee object exists with name
+        if (report.employee.name) {
+          return report.employee.name
+        }
+        // Try to construct from first_name and last_name
+        if (report.employee.first_name || report.employee.last_name) {
+          return `${report.employee.first_name || ''} ${report.employee.last_name || ''}`.trim()
+        }
+      }
+      
+      // Fallback to looking up in managedEmployees
+      if (report.employee_id) {
+        const employee = this.managedEmployees.find(emp => emp.id === report.employee_id)
+        if (employee) {
+          return employee.name
+        }
+      }
+      
+      return 'Unknown Employee'
+    },
+    
+    getReportScheduleTitle(report) {
+      if (report.schedule && report.schedule.title) {
+        return report.schedule.title
+      }
+      return 'Untitled Schedule'
+    },
+    
+    hasReportMetadata(report) {
+      return report.metadata && 
+             (report.metadata.hours_worked || report.metadata.tasks_completed)
     },
     
     async fetchManagerData() {
@@ -355,21 +449,15 @@ export default {
       try {
         console.log('Fetching manager team data...')
         
-        const [employeesRes, leavesRes, attendanceRes] = await Promise.all([
-          axios.get('/api/manager/employees'),
-          axios.get('/api/manager/leaves/pending'),
-          axios.get('/api/manager/attendance')
-        ])
+        const employeesRes = await axios.get('/api/manager/employees')
         
         console.log('Managed employees response:', employeesRes.data)
-        console.log('Pending leaves response:', leavesRes.data)
-        console.log('Attendance response:', attendanceRes.data)
         
         this.managedEmployees = this.processEmployeesData(employeesRes.data)
-        this.pendingLeavesCount = this.processLeavesData(leavesRes.data)
-        const attendanceData = this.processAttendanceData(attendanceRes.data)
-        this.calculateTeamStats(attendanceData)
-        await this.refreshReports()
+        
+        console.log('Processed employees:', this.managedEmployees)
+        
+        await this.fetchScheduleReports()
         
       } catch (err) {
         console.error('Fetch error:', err)
@@ -379,285 +467,220 @@ export default {
       }
     },
     
-    async refreshReports() {
-      await Promise.all([
-        this.generateTeamReport(),
-        this.generateProductivityReport()
-      ])
-      
-      if (this.selectedEmployeeId) {
-        await this.generateEmployeeReport()
-      }
-    },
-    
-    async generateTeamReport() {
-      this.generatingReport = true
+    async fetchScheduleReports() {
       try {
-        const params = { employee_id: this.selectedEmployeeId || null }
-        const response = await axios.get('/api/manager/reports/team', { params })
-        this.teamReport = this.processTeamReportData(response.data)
-        
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Team report generated successfully!'
-        })
-      } catch (error) {
-        console.error('Error generating team report:', error)
-        this.$notify({
-          type: 'error',
-          title: 'Error',
-          text: 'Failed to generate team report.'
-        })
-      } finally {
-        this.generatingReport = false
-      }
-    },
-    
-    async generateProductivityReport() {
-      this.generatingReport = true
-      try {
-        const params = { 
+        const params = {
           employee_id: this.selectedEmployeeId || null,
-          start_date: new Date().toISOString().split('T')[0],
-          end_date: new Date().toISOString().split('T')[0]
+          status: this.statusFilter || null,
+          per_page: 10,
+          sort_by: 'created_at',
+          sort_order: 'desc'
         }
-        const response = await axios.get('/api/manager/reports/productivity', { params })
-        this.productivityReport = this.processProductivityData(response.data)
+        
+        console.log('Fetching schedule reports with params:', params)
+        
+        const response = await axios.get('/api/schedule-reports', { params })
+        
+        console.log('Schedule reports response:', response.data)
+        
+        // Process reports to ensure employee data is available
+        const reports = response.data.reports?.data || []
+        this.recentScheduleReports = reports.map(report => {
+          // Ensure employee name is set properly
+          if (report.employee) {
+            if (!report.employee.name && (report.employee.first_name || report.employee.last_name)) {
+              report.employee.name = `${report.employee.first_name || ''} ${report.employee.last_name || ''}`.trim()
+            }
+          }
+          return report
+        })
+        
+        console.log('Processed reports:', this.recentScheduleReports)
+        
+        this.scheduleReportsStats = response.data.stats || {
+          total: 0,
+          submitted: 0,
+          reviewed: 0,
+          approved: 0,
+          rejected: 0
+        }
+      } catch (error) {
+        console.error('Error fetching schedule reports:', error)
+        this.$notify({
+          type: 'error',
+          title: 'Error',
+          text: 'Failed to load schedule reports.'
+        })
+      }
+    },
+    
+    viewScheduleReports() {
+      this.showScheduleReportsModal = true
+    },
+    
+    viewReportDetails(report) {
+      this.selectedReport = report
+      this.showReportDetailsModal = true
+    },
+    
+    async quickReview(report, status) {
+      try {
+        await axios.put(`/api/schedule-reports/${report.id}/review`, {
+          status,
+          review_comments: status === 'approved' ? 'Quick approved' : 'Requires revision'
+        })
         
         this.$notify({
           type: 'success',
           title: 'Success',
-          text: 'Productivity report generated successfully!'
+          text: `Report ${status} successfully!`
         })
+        
+        await this.fetchScheduleReports()
       } catch (error) {
-        console.error('Error generating productivity report:', error)
+        console.error('Error reviewing report:', error)
         this.$notify({
           type: 'error',
           title: 'Error',
-          text: 'Failed to generate productivity report.'
+          text: 'Failed to review report.'
         })
-      } finally {
-        this.generatingReport = false
       }
     },
     
-    async generateEmployeeReport() {
-      this.generatingReport = true
+    async handleReviewReport(reportId, status, comments) {
       try {
-        const params = { 
-          employee_id: this.selectedEmployeeId,
-          start_date: new Date().toISOString().split('T')[0],
-          end_date: new Date().toISOString().split('T')[0]
-        }
-        // Fetch comprehensive employee report combining attendance, tasks, leaves
-        const [attendanceRes, tasksRes, leavesRes, productivityRes] = await Promise.all([
-          axios.get('/api/reports/attendance', { params }),
-          axios.get(`/api/manager/employees/${this.selectedEmployeeId}/tasks`, { params }),
-          axios.get('/api/reports/leave', { params }),
-          axios.get('/api/manager/reports/productivity', { params })
-        ])
-        
-        this.employeeReport = {
-          period_start: params.start_date,
-          period_end: params.end_date,
-          tasks_completed: tasksRes.data.data?.length || 0,
-          total_hours: attendanceRes.data.summary?.total_hours || 0,
-          attendance_rate: attendanceRes.data.summary?.attendance_rate || 0,
-          productivity_score: productivityRes.data.summary?.average_productivity_score || 0,
-          leave_days: leavesRes.data.summary?.total_days || 0
-        }
+        await axios.put(`/api/schedule-reports/${reportId}/review`, {
+          status,
+          review_comments: comments
+        })
         
         this.$notify({
           type: 'success',
           title: 'Success',
-          text: 'Employee report generated successfully!'
+          text: 'Report reviewed successfully!'
         })
+        
+        await this.fetchScheduleReports()
+        this.showReportDetailsModal = false
       } catch (error) {
-        console.error('Error generating employee report:', error)
+        console.error('Error reviewing report:', error)
         this.$notify({
           type: 'error',
           title: 'Error',
-          text: 'Failed to generate employee report.'
+          text: 'Failed to review report.'
         })
-      } finally {
-        this.generatingReport = false
       }
     },
     
-    editPerformanceMetrics(employeeId) {
-      // Load current metrics for the employee
-      this.selectedEmployeeId = employeeId
-      this.loadPerformanceData(employeeId)
-      this.showPerformanceModal = true
-    },
-    
-    async loadPerformanceData(employeeId) {
+    async handleDownloadReport(reportId) {
       try {
-        const response = await axios.get(`/api/manager/employees/${employeeId}/performance`)
-        const data = response.data
-        this.performanceData = {
-          rating: data.rating || 0,
-          productivity: data.productivity || 0,
-          tasks_completed: data.tasks_completed || 0,
-          notes: data.notes || ''
+        const response = await axios.get(`/api/schedule-reports/${reportId}/download`, {
+          responseType: 'blob'
+        })
+        
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        
+        const contentDisposition = response.headers['content-disposition']
+        let filename = 'report.pdf'
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="?(.+)"?/)
+          if (filenameMatch) {
+            filename = filenameMatch[1]
+          }
         }
+        
+        link.setAttribute('download', filename)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        window.URL.revokeObjectURL(url)
       } catch (error) {
-        console.error('Error loading performance data:', error)
-        this.performanceData = { rating: 0, productivity: 0, tasks_completed: 0, notes: '' }
-      }
-    },
-    
-    async savePerformanceMetrics() {
-      try {
-        await axios.post(`/api/manager/employees/${this.selectedEmployeeId}/performance`, this.performanceData)
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Performance metrics updated successfully!'
-        })
-        this.closePerformanceModal()
-        // Refresh reports to include updated metrics
-        await this.refreshReports()
-      } catch (error) {
-        console.error('Error saving performance metrics:', error)
+        console.error('Error downloading report:', error)
         this.$notify({
           type: 'error',
           title: 'Error',
-          text: 'Failed to update performance metrics.'
+          text: 'Failed to download report file.'
         })
       }
     },
     
-    closePerformanceModal() {
-      this.showPerformanceModal = false
-      this.performanceData = { rating: 0, productivity: 0, tasks_completed: 0, notes: '' }
+    handleReportReviewed() {
+      this.fetchScheduleReports()
     },
     
-    viewTeamReport() {
-      if (this.teamReport) {
-        this.$router.push({ 
-          name: 'report-details', 
-          query: { type: 'team', manager: true, employee_id: this.selectedEmployeeId } 
-        })
+    getReportStatusClass(status) {
+      const classes = {
+        submitted: 'status-submitted',
+        reviewed: 'status-reviewed',
+        approved: 'status-approved',
+        rejected: 'status-rejected'
       }
+      return classes[status] || 'status-submitted'
     },
     
-    viewProductivityReport() {
-      if (this.productivityReport) {
-        this.$router.push({ 
-          name: 'report-details', 
-          query: { type: 'productivity', manager: true, employee_id: this.selectedEmployeeId } 
-        })
+    formatReportStatus(status) {
+      return status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown'
+    },
+    
+    formatReportType(type) {
+      const types = {
+        text: 'Text',
+        file: 'File',
+        both: 'Text & File'
       }
+      return types[type] || type
     },
     
-    viewEmployeeReport() {
-      if (this.employeeReport) {
-        this.$router.push({ 
-          name: 'report-details', 
-          query: { type: 'employee', manager: true, employee_id: this.selectedEmployeeId } 
-        })
-      }
-    },
-    
-    // ... (other methods remain the same: processEmployeesData, processLeavesData, etc.)
     processEmployeesData(data) {
-      const employees = data.data || data || []
-      return employees.map(emp => ({
-        id: emp.id,
-        name: `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'Unknown Employee',
-        position: emp.position || emp.job_title || 'Employee',
-        department: emp.department || 'General',
-        email: emp.email,
-        status: 'present'
-      }))
-    },
-    
-    processLeavesData(data) {
-      if (Array.isArray(data)) {
-        return data.length
-      } else if (data.data && Array.isArray(data.data)) {
-        return data.data.length
-      } else if (typeof data === 'object' && data.pending_leaves !== undefined) {
-        return data.pending_leaves
-      }
-      return 0
-    },
-    
-    processAttendanceData(data) {
-      const today = new Date().toISOString().split('T')[0]
+      console.log('Processing employees data:', data)
       
-      let attendances = []
+      // Handle different response formats
+      let employees = []
+      
       if (Array.isArray(data)) {
-        attendances = data
+        employees = data
       } else if (data.data && Array.isArray(data.data)) {
-        attendances = data.data
-      } else if (data.attendances) {
-        attendances = data.attendances
+        employees = data.data
+      } else if (data.employees && Array.isArray(data.employees)) {
+        employees = data.employees
       }
       
-      const todayAttendances = attendances.filter(att => {
-        const attDate = new Date(att.date || att.created_at).toISOString().split('T')[0]
-        return attDate === today
+      console.log('Extracted employees array:', employees)
+      
+      // Process each employee
+      const processed = employees.map(emp => {
+        // Build full name
+        let fullName = ''
+        
+        if (emp.name) {
+          fullName = emp.name
+        } else if (emp.first_name || emp.last_name) {
+          fullName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim()
+        } else if (emp.user && (emp.user.first_name || emp.user.last_name)) {
+          fullName = `${emp.user.first_name || ''} ${emp.user.last_name || ''}`.trim()
+        }
+        
+        // If still no name, use email or ID
+        if (!fullName) {
+          fullName = emp.email || `Employee #${emp.id}`
+        }
+        
+        return {
+          id: emp.id,
+          name: fullName,
+          position: emp.position || emp.job_title || 'Employee',
+          department: emp.department || 'General',
+          email: emp.email || '',
+          first_name: emp.first_name || '',
+          last_name: emp.last_name || ''
+        }
       })
       
-      return {
-        todayAttendances,
-        totalAttendances: attendances,
-        summary: data.summary || {}
-      }
-    },
-    
-    calculateTeamStats(attendanceData) {
-      const { todayAttendances, summary } = attendanceData
+      console.log('Processed employees:', processed)
       
-      const presentEmployees = todayAttendances.filter(att => 
-        att.status === 'present' || att.status === 'completed'
-      ).length
-      
-      const lateEmployees = todayAttendances.filter(att => 
-        att.status === 'late'
-      ).length
-      
-      this.managedEmployees.forEach(employee => {
-        const employeeAttendance = todayAttendances.find(att => 
-          att.employee_id === employee.id || att.employee?.id === employee.id
-        )
-        employee.status = employeeAttendance ? employeeAttendance.status : 'absent'
-      })
-      
-      this.attendanceIssuesCount = this.managedEmployees.filter(emp => 
-        ['absent', 'late'].includes(emp.status)
-      ).length
-      
-      this.teamStats = {
-        team_size: this.managedEmployees.length,
-        present_today: presentEmployees + lateEmployees,
-        pending_leaves: this.pendingLeavesCount,
-        avg_productivity: summary.avg_productivity || 
-                         Math.round((presentEmployees / this.managedEmployees.length) * 100) || 0
-      }
-    },
-    
-    processProductivityData(data) {
-      return {
-        generated_at: data.generated_at || new Date().toISOString(),
-        avg_productivity: data.avg_productivity || data.average_productivity || 0,
-        total_tasks_completed: data.total_tasks_completed || data.completed_tasks || 0,
-        avg_attendance_rate: data.avg_attendance_rate || data.average_attendance || 0
-      }
-    },
-    
-    processTeamReportData(data) {
-      return {
-        period_start: data.period_start || data.start_date,
-        period_end: data.period_end || data.end_date,
-        total_employees: data.total_employees || data.team_size,
-        active_employees: data.active_employees || data.present_employees,
-        on_leave: data.on_leave || data.leave_count,
-        attendance_rate: data.attendance_rate || data.attendance_percentage
-      }
+      return processed
     },
     
     getInitials(name) {
@@ -670,40 +693,12 @@ export default {
         .substring(0, 2)
     },
     
-    getEmployeeStatus(employee) {
-      return employee.status || 'absent'
-    },
-    
-    getEmployeeStatusText(employee) {
-      const status = this.getEmployeeStatus(employee)
-      const statusMap = {
-        present: 'Present',
-        completed: 'Present',
-        absent: 'Absent',
-        late: 'Late',
-        'on_leave': 'On Leave'
-      }
-      return statusMap[status] || 'Unknown'
-    },
-    
-    viewAllTeamMembers() {
-      this.$router.push({ name: 'manager-team' })
-    },
-    
-    viewPendingLeaves() {
-      this.$router.push({ name: 'manager-leaves' })
-    },
-    
-    viewAttendanceIssues() {
-      this.$router.push({ name: 'manager-attendance' })
-    },
-    
     retryFetch() {
       this.retryCount++
       if (this.retryCount <= 3) {
         this.fetchManagerData()
       } else {
-        this.error = 'Max retries exceeded. Check your network or server.'
+        this.error = 'Max retries exceeded. Please check your network or server.'
       }
     },
     
@@ -727,191 +722,121 @@ export default {
     
     formatDate(date) {
       if (!date) return 'N/A'
-      return new Date(date).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-      })
+      try {
+        return new Date(date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      } catch (e) {
+        console.error('Date formatting error:', e)
+        return 'Invalid Date'
+      }
     }
   }
 }
 </script>
 
 <style scoped>
-/* Existing styles remain the same, add new ones for modal and filters */
-
-.filter-section {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.filter-group label {
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.filter-group select {
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: white;
-}
-
-.filter-info {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  margin: 0;
-}
-
-.btn-success {
-  background: var(--success-gradient);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.btn-success:hover {
-  background: linear-gradient(135deg, #059669 0%, #047857 100%);
-}
-
-.btn-info {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.btn-info:hover {
-  background: #2563eb;
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-card {
-  background: white;
-  border-radius: 12px;
-  max-width: 500px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  color: #2d3748;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: #718096;
-  padding: 0.5rem;
-}
-
-.modal-body {
-  padding: 1.5rem;
-}
-
-.form-group {
-  margin-bottom: 1.5rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #2d3748;
-}
-
-.form-group input,
-.form-group textarea {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 1rem;
-}
-
-.form-group textarea {
-  resize: vertical;
-  min-height: 100px;
-}
-
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  padding: 1.5rem;
-  border-top: 1px solid #e2e8f0;
-}
-
-/* Rest of existing styles... */
+/* Same styles as before - keeping them identical */
 .reports-management {
   padding: 2rem;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
 .page-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 2rem;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 2rem;
-  border-radius: 20px;
-  box-shadow: var(--shadow-lg);
+  border-radius: 16px;
+  color: white;
 }
 
 .header-content {
   flex: 1;
+}
+
+.header-content h1 {
+  margin: 0 0 0.5rem 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin: 0 0 1.5rem 0;
+  opacity: 0.9;
+  font-size: 1rem;
+}
+
+.filter-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.filter-group label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.filter-group select {
+  padding: 0.5rem 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 200px;
+}
+
+.filter-group select option {
+  color: #2d3748;
+}
+
+.filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.clear-filter {
+  background: rgba(255, 255, 255, 0.3);
+  border: none;
+  color: white;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+}
+
+.clear-filter:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .header-actions {
@@ -919,62 +844,74 @@ export default {
   gap: 1rem;
 }
 
-.btn-primary, .btn-secondary {
+.btn-primary {
   padding: 0.75rem 1.5rem;
+  background: white;
+  color: #667eea;
   border: none;
   border-radius: 8px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.btn-primary {
-  background: #667eea;
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background: #5a6fd8;
-}
-
-.btn-secondary {
-  background: #e2e8f0;
-  color: #4a5568;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: #cbd5e0;
-}
-
-.btn-primary:disabled, .btn-secondary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
 .error-message {
-  background: #fed7d7;
-  color: #c53030;
-  padding: 1rem;
-  border-radius: 8px;
-  text-align: center;
+  background: white;
+  border-left: 4px solid #ef4444;
+  padding: 2rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
   margin: 2rem 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.error-icon {
+  font-size: 2rem;
+}
+
+.error-message h3 {
+  margin: 0 0 0.5rem 0;
+  color: #c53030;
+}
+
+.error-message p {
+  margin: 0 0 1rem 0;
+  color: #718096;
+}
+
+.btn-retry {
+  padding: 0.5rem 1rem;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .loading {
   text-align: center;
-  padding: 3rem;
+  padding: 4rem;
   color: #718096;
 }
 
 .spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #667eea;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #667eea;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 50px;
+  height: 50px;
   animation: spin 1s linear infinite;
   margin: 0 auto 1rem;
 }
@@ -982,6 +919,26 @@ export default {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.manager-info {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.manager-info-content h2 {
+  margin: 0 0 0.5rem 0;
+  color: #2d3748;
+  font-size: 1.5rem;
+}
+
+.manager-subtitle {
+  margin: 0;
+  color: #718096;
+  font-size: 1rem;
 }
 
 .stats-grid {
@@ -999,10 +956,33 @@ export default {
   display: flex;
   align-items: center;
   gap: 1rem;
+  border-left: 4px solid #cbd5e0;
+  transition: all 0.2s;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+.stat-card.total {
+  border-left-color: #667eea;
+}
+
+.stat-card.pending {
+  border-left-color: #f59e0b;
+}
+
+.stat-card.approved {
+  border-left-color: #10b981;
+}
+
+.stat-card.rejected {
+  border-left-color: #ef4444;
 }
 
 .stat-icon {
-  font-size: 2rem;
+  font-size: 2.5rem;
 }
 
 .stat-content h3 {
@@ -1010,132 +990,325 @@ export default {
   color: #718096;
   font-size: 0.875rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .stat-value {
-  margin: 0;
-  font-size: 2rem;
+  margin: 0 0 0.25rem 0;
+  font-size: 2.5rem;
   font-weight: 700;
   color: #2d3748;
 }
 
 .stat-label {
   margin: 0;
-  color: #718096;
+  color: #a0aec0;
   font-size: 0.875rem;
+}
+
+.schedule-reports-section {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  padding: 2rem;
+  margin-bottom: 2rem;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
 }
 
-.section-header h2 {
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-title h2 {
   margin: 0;
   color: #2d3748;
+  font-size: 1.25rem;
 }
 
-.btn-view {
-  background: none;
-  border: 1px solid #667eea;
-  color: #667eea;
+.section-count {
+  padding: 0.25rem 0.75rem;
+  background: #f7fafc;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  color: #718096;
+  font-weight: 600;
+}
+
+.btn-view-all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 6px;
+  background: none;
+  border: 2px solid #667eea;
+  color: #667eea;
+  border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.btn-view:hover {
+.btn-view-all:hover {
   background: #667eea;
   color: white;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: #718096;
-  background: #f7fafc;
-  border-radius: 8px;
+.status-filters {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
 }
 
-.report-sections {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 2rem;
-  margin-bottom: 2rem;
-}
-
-.report-section {
+.filter-pill {
+  padding: 0.5rem 1rem;
+  border: 2px solid #e2e8f0;
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  padding: 1.5rem;
+  color: #718096;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
-.report-preview {
+.filter-pill:hover {
+  border-color: #cbd5e0;
   background: #f7fafc;
-  border-radius: 8px;
-  padding: 1.5rem;
 }
 
-.preview-content h4 {
-  margin: 0 0 1rem 0;
+.filter-pill.active {
+  border-color: #667eea;
+  background: #667eea;
+  color: white;
+}
+
+.filter-pill.submitted.active {
+  border-color: #f59e0b;
+  background: #f59e0b;
+}
+
+.filter-pill.reviewed.active {
+  border-color: #8b5cf6;
+  background: #8b5cf6;
+}
+
+.filter-pill.approved.active {
+  border-color: #10b981;
+  background: #10b981;
+}
+
+.filter-pill.rejected.active {
+  border-color: #ef4444;
+  background: #ef4444;
+}
+
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.report-item {
+  padding: 1.5rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.report-item:hover {
+  border-color: #667eea;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+}
+
+.report-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 1rem;
+}
+
+.report-item-title h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.125rem;
+  font-weight: 700;
   color: #2d3748;
 }
 
-.preview-stats {
+.report-employee {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.preview-stat {
-  color: #4a5568;
+  align-items: center;
+  gap: 0.375rem;
   font-size: 0.875rem;
-}
-
-.empty-preview {
-  text-align: center;
-  padding: 2rem;
   color: #718096;
 }
 
-.manager-info {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.5rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
+.report-status-badge {
+  padding: 0.375rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.manager-info h2 {
+.status-submitted {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-reviewed {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.status-approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.report-item-meta {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #f7fafc;
+}
+
+.report-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: #718096;
+}
+
+.report-metadata {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.metadata-badge {
+  padding: 0.375rem 0.75rem;
+  background: #f7fafc;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #4a5568;
+  font-weight: 600;
+}
+
+.report-quick-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f7fafc;
+}
+
+.quick-action-btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.quick-action-btn.view {
+  background: #f7fafc;
+  color: #4a5568;
+}
+
+.quick-action-btn.view:hover {
+  background: #e2e8f0;
+}
+
+.quick-action-btn.approve {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.quick-action-btn.approve:hover {
+  background: #a7f3d0;
+}
+
+.quick-action-btn.reject {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.quick-action-btn.reject:hover {
+  background: #fecaca;
+}
+
+.empty-reports {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #718096;
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+  opacity: 0.3;
+}
+
+.empty-reports h3 {
   margin: 0 0 0.5rem 0;
-  font-size: 1.5rem;
+  color: #2d3748;
 }
 
-.manager-subtitle {
-  margin: 0;
-  opacity: 0.9;
-  font-size: 1rem;
+.empty-reports p {
+  margin: 0 0 1.5rem 0;
+}
+
+.btn-secondary {
+  padding: 0.75rem 1.5rem;
+  background: #e2e8f0;
+  color: #4a5568;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+  background: #cbd5e0;
 }
 
 .team-members-section {
   background: white;
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  padding: 1.5rem;
-  margin-bottom: 2rem;
+  padding: 2rem;
 }
 
 .team-members-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
-  margin-top: 1rem;
+  margin-top: 1.5rem;
 }
 
 .team-member-card {
@@ -1143,14 +1316,16 @@ export default {
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
 .team-member-card:hover {
   border-color: #667eea;
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
 }
 
 .member-avatar {
@@ -1167,13 +1342,18 @@ export default {
   flex-shrink: 0;
 }
 
+.member-info {
+  flex: 1;
+}
+
 .member-info h4 {
   margin: 0 0 0.25rem 0;
   color: #2d3748;
+  font-size: 1rem;
 }
 
 .member-position {
-  margin: 0 0 0.25rem 0;
+  margin: 0 0 0.125rem 0;
   color: #667eea;
   font-weight: 600;
   font-size: 0.875rem;
@@ -1181,157 +1361,70 @@ export default {
 
 .member-department {
   margin: 0;
-  color: #718096;
+  color: #a0aec0;
   font-size: 0.875rem;
-}
-
-.member-status {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.status-dot.present, .status-dot.completed {
-  background: #28a745;
-}
-
-.status-dot.absent {
-  background: #dc3545;
-}
-
-.status-dot.late {
-  background: #ffc107;
-}
-
-.status-dot.on_leave {
-  background: #17a2b8;
-}
-
-.status-text {
-  font-size: 0.875rem;
-  color: #718096;
 }
 
 .more-members {
-  grid-column: 1 / -1;
-  text-align: center;
-  padding: 2rem;
-  color: #718096;
-  border: 2px dashed #e2e8f0;
-  border-radius: 8px;
-}
-
-.pending-actions {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.actions-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-top: 1rem;
-}
-
-.action-card {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1.5rem;
-  border: 1px solid #e2e8f0;
+  justify-content: center;
+  padding: 2rem;
+  border: 2px dashed #e2e8f0;
+  border-radius: 12px;
+  color: #718096;
+  font-weight: 600;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem;
+  color: #718096;
+  background: #f7fafc;
   border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.action-card:hover {
-  border-color: #667eea;
-  transform: translateY(-2px);
-}
-
-.action-icon {
-  font-size: 2rem;
-}
-
-.action-content h3 {
-  margin: 0 0 0.5rem 0;
-  color: #2d3748;
-}
-
-.action-count {
-  margin: 0 0 1rem 0;
-  color: #667eea;
-  font-weight: 600;
-  font-size: 1.25rem;
-}
-
-.btn-action {
-  background: #667eea;
-  color: white;
-  border: none;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-action:hover {
-  background: #5a6fd8;
 }
 
 @media (max-width: 768px) {
   .page-header {
     flex-direction: column;
-    gap: 1rem;
-    align-items: flex-start;
+    gap: 1.5rem;
   }
   
   .header-actions {
     width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
   }
   
-  .team-members-grid {
-    grid-template-columns: 1fr;
+  .btn-primary {
+    width: 100%;
+    justify-content: center;
   }
   
-  .team-member-card {
+  .filter-section {
     flex-direction: column;
-    text-align: center;
+    align-items: stretch;
   }
   
-  .member-status {
-    margin-left: 0;
-    margin-top: 0.5rem;
-  }
-  
-  .action-card {
+  .filter-group {
     flex-direction: column;
-    text-align: center;
+    align-items: stretch;
   }
   
-  .report-sections {
-    grid-template-columns: 1fr;
+  .filter-group select {
+    width: 100%;
   }
   
   .stats-grid {
     grid-template-columns: 1fr;
   }
-
-  .filter-section {
-    flex-direction: column;
-    align-items: stretch;
+  
+  .status-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+  
+  .team-members-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -6,6 +6,7 @@ use App\Http\Requests\Leave\ApproveLeaveRequest;
 use App\Http\Requests\Leave\StoreLeaveRequest;
 use App\Http\Resources\LeaveResource;
 use App\Models\Leave;
+use App\Models\UserNotification;
 use App\Services\LeaveBalanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -69,7 +70,26 @@ class LeaveController extends Controller
             'reason' => $request->reason,
             'status' => 'pending',
         ]);
-        
+       
+
+        // ✨ SEND PUSH NOTIFICATION TO MANAGER
+        if ($employee->manager_id) {
+            UserNotification::create([
+                'user_id' => $employee->manager_id,
+                'type' => 'leave_request',
+                'title' => 'New Leave Request',
+                'message' => "{$employee->full_name} has requested leave from {$leave->start_date} to {$leave->end_date}",
+                'action' => '/leave-requests',
+                'data' => [
+                    'leave_id' => $leave->id,
+                    'employee_id' => $employee->id,
+                    'employee_name' => $employee->full_name,
+                    'leave_type' => $leave->type,
+                    'total_days' => $leave->total_days
+                ]
+            ]);
+        }
+
         return response()->json([
             'leave' => new LeaveResource($leave->load(['employee.user', 'manager'])),
             'message' => 'Leave application submitted successfully'
@@ -99,11 +119,40 @@ class LeaveController extends Controller
         ]);
         
         if ($validated['status'] === 'approved') {
+UserNotification::create([
+                'user_id' => $leave->employee->user_id,
+                'type' => 'leave_request',
+                'title' => 'Leave Request Approved',
+                'message' => "Your leave request from {$leave->start_date} to {$leave->end_date} has been approved",
+                'action' => '/leave-requests',
+                'data' => [
+                    'leave_id' => $leave->id,
+                    'leave_type' => $leave->type,
+                    'approved_by' => auth()->user()->name,
+                    'manager_notes' => $validated['manager_notes']
+                ]
+            ]);
+
             $this->leaveBalanceService->deductBalance(
                 $leave->employee_id,
                 $leave->type,
                 $leave->total_days
             );
+        }elseif ($validated['status'] === 'rejected') {
+            // ✨ SEND REJECTION NOTIFICATION
+            UserNotification::create([
+                'user_id' => $leave->employee->user_id,
+                'type' => 'leave_request',
+                'title' => 'Leave Request Rejected',
+                'message' => "Your leave request from {$leave->start_date} to {$leave->end_date} has been rejected",
+                'action' => '/leave-requests',
+                'data' => [
+                    'leave_id' => $leave->id,
+                    'leave_type' => $leave->type,
+                    'rejected_by' => auth()->user()->name,
+                    'manager_notes' => $validated['manager_notes']
+                ]
+            ]);
         }
         
         event(new \App\Events\LeaveStatusUpdated($leave));

@@ -4,7 +4,7 @@
       @click="togglePanel" 
       class="notification-button"
       :class="{ 'has-unread': unreadCount > 0 }"
-      title="Notifications"
+      :title="`${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}`"
       ref="bellButton"
     >
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -33,7 +33,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useAuthStore } from '@/stores/auth'
 import NotificationPanel from './NotificationPanel.vue'
@@ -51,6 +51,10 @@ export default {
     const loading = ref(false)
     const bellButton = ref(null)
     const buttonPosition = ref({ top: 0, right: 0 })
+    const previousUnreadCount = ref(0)
+    
+    // Create audio instance for notification sound
+    const notificationAudio = ref(null)
     
     let pollInterval = null
     let isComponentActive = ref(true)
@@ -60,6 +64,43 @@ export default {
     
     const displayCount = computed(() => {
       return unreadCount.value > 99 ? '99+' : unreadCount.value
+    })
+    
+    // Initialize notification sound
+    const initNotificationSound = () => {
+      try {
+        notificationAudio.value = new Audio(require('@/assets/notification.mp3'))
+        notificationAudio.value.volume = 0.5 // Set volume to 50%
+      } catch (error) {
+        console.warn('⚠️ Failed to load notification sound:', error)
+      }
+    }
+    
+    // Play notification sound
+    const playNotificationSound = () => {
+      if (notificationAudio.value) {
+        try {
+          // Reset audio to start if it's already playing
+          notificationAudio.value.currentTime = 0
+          notificationAudio.value.play().catch(error => {
+            console.warn('⚠️ Could not play notification sound:', error)
+          })
+        } catch (error) {
+          console.warn('⚠️ Error playing notification sound:', error)
+        }
+      }
+    }
+    
+    // Watch for unread count changes to play sound
+    watch(unreadCount, (newCount, oldCount) => {
+      // Only play sound if:
+      // 1. Component is active
+      // 2. New count is greater than old count (new notification arrived)
+      // 3. Old count was initialized (not the first load)
+      if (isComponentActive.value && newCount > oldCount && oldCount !== undefined) {
+        console.log('🔔 New notification detected, playing sound...')
+        playNotificationSound()
+      }
     })
     
     const calculateButtonPosition = () => {
@@ -170,6 +211,13 @@ export default {
       }
       
       showPanel.value = false
+      
+      // Cleanup audio
+      if (notificationAudio.value) {
+        notificationAudio.value.pause()
+        notificationAudio.value = null
+      }
+      
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('scroll', handleResize, true)
     }
@@ -178,26 +226,46 @@ export default {
       cleanup()
     }
     
-    const startPolling = () => {
-  if (!authStore.isAuthenticated) return
-  
-  // Initial fetch
-  fetchUnreadCount()
-  
-  // Poll every 15 seconds (reduced from 30)
-  pollInterval = setInterval(() => {
-    if (isComponentActive.value && authStore.isAuthenticated && !authStore.isLoggingOut) {
-      fetchUnreadCount()
+    // Listen for push notifications received
+    const handlePushNotificationReceived = async () => {
+      console.log('📬 Push notification received, refreshing count...')
+      await fetchUnreadCount()
+      
+      // If panel is open, refresh full list
+      if (showPanel.value) {
+        await fetchNotifications()
+      }
     }
-  }, 15000) // Changed from 30000 to 15000
-}
+    
+    const startPolling = () => {
+      if (!authStore.isAuthenticated) return
+      
+      // Initial fetch
+      fetchUnreadCount()
+      
+      // Poll every 15 seconds for new notifications
+      pollInterval = setInterval(() => {
+        if (isComponentActive.value && authStore.isAuthenticated && !authStore.isLoggingOut) {
+          fetchUnreadCount()
+        }
+      }, 15000)
+    }
     
     onMounted(() => {
       console.log('📢 NotificationBell mounted')
       isComponentActive.value = true
       
+      // Initialize notification sound
+      initNotificationSound()
+      
+      // Set initial unread count
+      previousUnreadCount.value = unreadCount.value
+      
       // Listen for logout event
       window.addEventListener('user-logging-out', handleLogout)
+      
+      // Listen for push notifications
+      window.addEventListener('push-notification-received', handlePushNotificationReceived)
       
       // Listen for resize and scroll to reposition panel
       window.addEventListener('resize', handleResize)
@@ -210,6 +278,7 @@ export default {
       console.log('📢 NotificationBell unmounting')
       cleanup()
       window.removeEventListener('user-logging-out', handleLogout)
+      window.removeEventListener('push-notification-received', handlePushNotificationReceived)
     })
     
     return {

@@ -3,18 +3,26 @@ import employeeRoutes from './employee'
 import managerRoutes from './manager'
 import adminRoutes from './admin'
 import notificationChannelRoutes from './notification-channel'
-
 export default [
   // Landing page (public, no auth required)
   {
     path: '/',
     name: 'Landing',
     component: () => import('@/views/Landing.vue'),
-    meta: { 
+    meta: {
       public: true // Mark as public route
     }
   },
-  // In router/index.js
+
+// Business Group Routes
+{
+  path: '/business-groups',
+  name: 'BusinessGroups',
+  component: () => import('@/components/BusinessGroups/BusinessGroupList.vue'),
+  meta: {
+    requiresAuth: true
+  }
+},
 {
   path: '/invitations',
   name: 'Invitations',
@@ -23,16 +31,35 @@ export default [
     requiresAuth: true
   }
 },
-
+{
+  path: '/group-tickets',
+  name: 'GroupTickets',
+  component: () => import('@/components/BusinessGroups/GroupTickets.vue'),
+  meta: {
+    requiresAuth: true
+  }
+},
+{
+  path: '/group-tasks',
+  name: 'GroupTasks',
+  component: () => import('@/components/BusinessGroups/GroupTasks.vue'),
+  meta: {
+    requiresAuth: true
+  }
+},
+{
+  path: '/settings/notifications',
+  name: 'NotificationPreferences',
+  component: () => import('@/components/NotificationPreferences.vue'),
+  meta: { requiresAuth: true }
+},
   // Auth routes (guest only)
   ...authRoutes,
-
   // Protected routes (require auth)
   ...employeeRoutes,
   ...managerRoutes,
   ...adminRoutes,
   ...notificationChannelRoutes,
-
   // Error pages
   {
     path: '/unauthorized',

@@ -1219,10 +1219,13 @@ const canResolveTicket = (ticket) => {
 
 const canReopenTicket = (ticket) => {
   if (!currentUser.value || !ticket) return false
+  
   const isAdmin = currentUser.value.role === 'admin'
+  const isCreator = ticket.user_id === currentUser.value.id
   const canReopen = ['resolved', 'closed'].includes(ticket.status)
   
-  return isAdmin && canReopen
+  // Allow both admins AND ticket creators to reopen
+  return (isAdmin || isCreator) && canReopen
 }
 
 const getApproverName = (ticket) => {

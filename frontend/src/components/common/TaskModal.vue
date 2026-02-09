@@ -59,17 +59,40 @@
               :disabled="loading || loadingEmployees"
             >
               <option value="">Select team member</option>
-              <option
-                v-for="employee in employees"
-                :key="employee.id"
-                :value="employee.id"
-              >
-                {{ getEmployeeDisplayName(employee) }}
-                <span v-if="employee.position">- {{ employee.position }}</span>
-                <span v-if="employee.department">({{ employee.department }})</span>
-                <span v-if="employee.role !== 'employee'">[{{ employee.role }}]</span>
-              </option>
+              
+              <!-- Current Business Employees -->
+              <optgroup v-if="currentBusinessEmployees.length > 0" label="Your Business">
+                <option
+                  v-for="employee in currentBusinessEmployees"
+                  :key="employee.id"
+                  :value="employee.id"
+                >
+                  {{ getEmployeeDisplayName(employee) }}
+                  <span v-if="employee.position"> - {{ employee.position }}</span>
+                  <span v-if="employee.department"> ({{ employee.department }})</span>
+                </option>
+              </optgroup>
+              
+              <!-- Partner Business Employees -->
+              <optgroup v-if="externalBusinessEmployees.length > 0" label="Partner Businesses">
+                <option
+                  v-for="employee in externalBusinessEmployees"
+                  :key="employee.id"
+                  :value="employee.id"
+                  class="external-option"
+                >
+                  {{ getEmployeeDisplayName(employee) }}
+                  <span v-if="employee.business_name"> [{{ employee.business_name }}]</span>
+                  <span v-if="employee.position"> - {{ employee.position }}</span>
+                </option>
+              </optgroup>
             </select>
+            
+            <!-- Info message about external employees -->
+            <div v-if="externalBusinessEmployees.length > 0 && !loadingEmployees" class="info-text">
+              ℹ️ You can assign tasks to {{ externalBusinessEmployees.length }} employee(s) from partner businesses
+            </div>
+            
             <div v-if="loadingEmployees" class="loading-text">
               Loading team members...
             </div>
@@ -164,6 +187,15 @@ const currentUser = computed(() => {
   };
 });
 
+// NEW: Separate current business and external employees
+const currentBusinessEmployees = computed(() => {
+  return employees.value.filter(emp => !emp.is_from_other_business);
+});
+
+const externalBusinessEmployees = computed(() => {
+  return employees.value.filter(emp => emp.is_from_other_business);
+});
+
 // Get today's date in YYYY-MM-DD format for the min attribute
 const minDate = computed(() => {
   const today = new Date();
@@ -197,6 +229,8 @@ const fetchEmployees = async () => {
     const employeesData = response.data.employees || [];
     
     console.log('Employees fetched:', employeesData);
+    console.log('Current business employees:', employeesData.filter(e => !e.is_from_other_business).length);
+    console.log('External business employees:', employeesData.filter(e => e.is_from_other_business).length);
     
     // If no employees returned, include current user
     if (employeesData.length === 0) {
@@ -397,6 +431,8 @@ const handleSubmit = async () => {
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.2s;
+  background-color: white;
+  color: #1a202c;
 }
 
 .form-control:focus {
@@ -409,6 +445,27 @@ const handleSubmit = async () => {
   background-color: #f7fafc;
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+/* NEW: Optgroup styling for business separation */
+optgroup {
+  font-weight: 600;
+  font-size: 13px;
+  color: #2d3748;
+  background-color: #f7fafc;
+}
+
+optgroup[label="Your Business"] {
+  background-color: #f0fff4;
+}
+
+optgroup[label="Partner Businesses"] {
+  background-color: #ebf8ff;
+}
+
+.external-option {
+  padding-left: 8px;
+  font-style: italic;
 }
 
 /* Style for date input with past dates disabled */
@@ -487,11 +544,15 @@ input[type="date"]:valid {
   margin-top: 4px;
 }
 
+/* NEW: Info text styling */
 .info-text {
   font-size: 12px;
-  color: #718096;
+  color: #2c5282;
   margin-top: 4px;
   font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .hint-text {

@@ -52,7 +52,15 @@ class User extends Authenticatable
     {
         return in_array($this->role, ['admin', 'super_admin', 'owner']);
     }
-    
+    public function pushSubscriptions()
+{
+    return $this->hasMany(PushSubscription::class);
+}
+
+public function notificationPreferences()
+{
+    return $this->hasOne(NotificationPreference::class);
+}
     /**
      * Check if user is a manager
      * Returns true ONLY for manager role (not admin)

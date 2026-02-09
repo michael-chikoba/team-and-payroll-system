@@ -111,6 +111,29 @@ class ShiftAssignmentController extends Controller
 
             $result = $this->shiftService->assignShift($validated);
 
+              if ($result['success']) {
+            $assignment = $result['shift'];
+            $employee = Employee::find($assignment->employee_id);
+            
+            // ✨ SEND PUSH NOTIFICATION TO EMPLOYEE
+            if ($employee && $employee->user_id) {
+                UserNotification::create([
+                    'user_id' => $employee->user_id,
+                    'type' => 'schedule_updated', // You can create 'shift_assigned' type
+                    'title' => 'New Shift Assigned',
+                    'message' => "You have been assigned a {$assignment->shift_type} shift on {$assignment->shift_date}",
+                    'action' => '/shifts',
+                    'data' => [
+                        'shift_id' => $assignment->id,
+                        'shift_date' => $assignment->shift_date,
+                        'shift_type' => $assignment->shift_type,
+                        'start_time' => $assignment->start_time,
+                        'end_time' => $assignment->end_time,
+                        'assigned_by' => $request->user()->name
+                    ]
+                ]);
+            }
+        }
             if (!$result['success']) {
                 return response()->json([
                     'success' => false,
@@ -863,7 +886,24 @@ class ShiftAssignmentController extends Controller
 
             $assignment->accept();
             $assignment->load(['assignedBy']);
-
+// ✨ NOTIFY PERSON WHO ASSIGNED THE SHIFT
+        if ($assignment->assigned_by && $assignment->assigned_by != $user->id) {
+            $assignedByUser = User::find($assignment->assigned_by);
+            if ($assignedByUser) {
+                UserNotification::create([
+                    'user_id' => $assignment->assigned_by,
+                    'type' => 'schedule_updated',
+                    'title' => 'Shift Accepted',
+                    'message' => "{$user->name} has accepted the shift on {$assignment->shift_date}",
+                    'action' => '/shifts',
+                    'data' => [
+                        'shift_id' => $assignment->id,
+                        'shift_date' => $assignment->shift_date,
+                        'accepted_by' => $user->name
+                    ]
+                ]);
+            }
+        }
             return response()->json([
                 'message' => 'Shift accepted successfully',
                 'assignment' => $assignment
@@ -910,7 +950,25 @@ class ShiftAssignmentController extends Controller
 
             $assignment->reject($request->reason);
             $assignment->load(['assignedBy']);
-
+ // ✨ NOTIFY PERSON WHO ASSIGNED THE SHIFT
+        if ($assignment->assigned_by && $assignment->assigned_by != $user->id) {
+            $assignedByUser = User::find($assignment->assigned_by);
+            if ($assignedByUser) {
+                UserNotification::create([
+                    'user_id' => $assignment->assigned_by,
+                    'type' => 'schedule_updated',
+                    'title' => 'Shift Rejected',
+                    'message' => "{$user->name} has rejected the shift on {$assignment->shift_date}",
+                    'action' => '/shifts',
+                    'data' => [
+                        'shift_id' => $assignment->id,
+                        'shift_date' => $assignment->shift_date,
+                        'rejected_by' => $user->name,
+                        'reason' => $request->reason
+                    ]
+                ]);
+            }
+        }
             return response()->json([
                 'message' => 'Shift rejected',
                 'assignment' => $assignment

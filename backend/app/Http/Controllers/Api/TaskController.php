@@ -14,6 +14,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\EmployeeResource;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Log;
+use App\Models\UserNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class TaskController extends Controller
@@ -53,34 +55,86 @@ class TaskController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get();
             } else {
-                // Get all user IDs for employees within the same business
-                $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
-                    ->pluck('user_id')
-                    ->toArray();
+                $business = $userEmployee->business;
                 
-                Log::info('Business employees', [
+                // Get business group IDs where cross-business task assignment is allowed
+                $groupIds = $business->activeBusinessGroups()
+                    ->wherePivot('can_assign_cross_business_tasks', true)
+                    ->pluck('business_groups.id');
+                
+                Log::info('Business groups with cross-business task permission', [
                     'business_id' => $userEmployee->business_id,
-                    'employee_user_ids' => $businessEmployeeUserIds,
-                    'user_role' => $user->role
+                    'group_ids' => $groupIds->toArray()
                 ]);
                 
-                // ALL USERS in the same business can see all tasks in that business
-                $tasks = Task::with([
-                    'assignedTo.employee', 
-                    'createdBy', 
-                    'comments.user',
-                    'subtasks.assignee',
-                    'workLogs.user',
-                    'history.user',
-                    'linkedItems.linkedTask'
-                ])
-                ->where(function($query) use ($businessEmployeeUserIds) {
-                    $query->whereIn('assigned_to', $businessEmployeeUserIds)
-                          ->orWhereIn('created_by', $businessEmployeeUserIds);
-                })
-                ->orderBy('deadline', 'asc')
-                ->orderBy('created_at', 'desc')
-                ->get();
+                if ($groupIds->isNotEmpty()) {
+                    // Get other business IDs in the same groups
+                    $otherBusinessIds = DB::table('business_group_memberships')
+                        ->whereIn('business_group_id', $groupIds)
+                        ->where('business_id', '!=', $userEmployee->business_id)
+                        ->where('status', 'active')
+                        ->pluck('business_id');
+                    
+                    // Get user IDs from current business AND grouped businesses
+                    $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
+                        ->pluck('user_id')
+                        ->toArray();
+                    
+                    $groupBusinessUserIds = [];
+                    if ($otherBusinessIds->isNotEmpty()) {
+                        $groupBusinessUserIds = Employee::whereIn('business_id', $otherBusinessIds)
+                            ->pluck('user_id')
+                            ->toArray();
+                    }
+                    
+                    $allAccessibleUserIds = array_merge($businessEmployeeUserIds, $groupBusinessUserIds);
+                    
+                    Log::info('Cross-business task access', [
+                        'current_business_users' => count($businessEmployeeUserIds),
+                        'group_business_users' => count($groupBusinessUserIds),
+                        'total_accessible_users' => count($allAccessibleUserIds)
+                    ]);
+                    
+                    // Show tasks from current business AND cross-business tasks
+                    $tasks = Task::with([
+                        'assignedTo.employee.business', 
+                        'createdBy.employee.business', 
+                        'comments.user',
+                        'subtasks.assignee',
+                        'workLogs.user',
+                        'history.user',
+                        'linkedItems.linkedTask'
+                    ])
+                    ->where(function($query) use ($allAccessibleUserIds) {
+                        $query->whereIn('assigned_to', $allAccessibleUserIds)
+                              ->orWhereIn('created_by', $allAccessibleUserIds);
+                    })
+                    ->orderBy('deadline', 'asc')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+                } else {
+                    // No groups - show only current business tasks
+                    $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
+                        ->pluck('user_id')
+                        ->toArray();
+                    
+                    $tasks = Task::with([
+                        'assignedTo.employee', 
+                        'createdBy', 
+                        'comments.user',
+                        'subtasks.assignee',
+                        'workLogs.user',
+                        'history.user',
+                        'linkedItems.linkedTask'
+                    ])
+                    ->where(function($query) use ($businessEmployeeUserIds) {
+                        $query->whereIn('assigned_to', $businessEmployeeUserIds)
+                              ->orWhereIn('created_by', $businessEmployeeUserIds);
+                    })
+                    ->orderBy('deadline', 'asc')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+                }
             }
             
             Log::info('Tasks fetched', [
@@ -91,6 +145,7 @@ class TaskController extends Controller
             // Format tasks with additional employee info
             $formattedTasks = $tasks->map(function ($task) {
                 $assignedUserEmployee = $task->assignedTo->employee ?? null;
+                $createdByEmployee = $task->createdBy->employee ?? null;
              
                 return [
                     'id' => $task->id,
@@ -110,6 +165,8 @@ class TaskController extends Controller
                         'employee_id' => $assignedUserEmployee->employee_id ?? null,
                         'position' => $assignedUserEmployee->position ?? null,
                         'department' => $assignedUserEmployee->department ?? null,
+                        'business_id' => $assignedUserEmployee->business_id ?? null,
+                        'business_name' => $assignedUserEmployee->business->name ?? null,
                     ],
                     'created_by' => [
                         'id' => $task->createdBy->id,
@@ -117,6 +174,8 @@ class TaskController extends Controller
                         'last_name' => $task->createdBy->last_name,
                         'email' => $task->createdBy->email,
                         'name' => $task->createdBy->first_name . ' ' . $task->createdBy->last_name,
+                        'business_id' => $createdByEmployee->business_id ?? null,
+                        'business_name' => $createdByEmployee->business->name ?? null,
                     ],
                     'comments' => $task->comments ?? [],
                     'subtasks' => $task->subtasks ?? [],
@@ -164,7 +223,7 @@ class TaskController extends Controller
             ]);
 
             // Verify the assigned user has an employee record
-            $assignedUser = User::with('employee')->find($validated['assigned_to']);
+            $assignedUser = User::with('employee.business')->find($validated['assigned_to']);
            
             if (!$assignedUser) {
                 return response()->json([
@@ -192,23 +251,54 @@ class TaskController extends Controller
                 ], 400);
             }
 
-            // Verify both users are in the same business
-            if ($currentUserEmployee->business_id !== $assignedUser->employee->business_id) {
-                Log::warning('Business mismatch', [
+            // Check if assignment is allowed
+            $canAssign = false;
+            
+            // Same business - always allowed
+            if ($currentUserEmployee->business_id === $assignedUser->employee->business_id) {
+                $canAssign = true;
+                Log::info('Same business assignment');
+            } else {
+                // Check cross-business permission via business groups
+                $business = $currentUserEmployee->business;
+                $groupIds = $business->activeBusinessGroups()
+                    ->wherePivot('can_assign_cross_business_tasks', true)
+                    ->pluck('business_groups.id');
+                
+                if ($groupIds->isNotEmpty()) {
+                    // Check if assigned user's business is in any of these groups
+                    $assignedUserInGroup = DB::table('business_group_memberships')
+                        ->whereIn('business_group_id', $groupIds)
+                        ->where('business_id', $assignedUser->employee->business_id)
+                        ->where('status', 'active')
+                        ->exists();
+                    
+                    if ($assignedUserInGroup) {
+                        $canAssign = true;
+                        Log::info('Cross-business assignment via group', [
+                            'creator_business_id' => $currentUserEmployee->business_id,
+                            'assignee_business_id' => $assignedUser->employee->business_id
+                        ]);
+                    }
+                }
+            }
+            
+            if (!$canAssign) {
+                Log::warning('Cross-business assignment not allowed', [
                     'current_user_business_id' => $currentUserEmployee->business_id,
                     'assigned_user_business_id' => $assignedUser->employee->business_id
                 ]);
                 return response()->json([
-                    'message' => 'You can only assign tasks to employees within your business'
+                    'message' => 'You can only assign tasks to employees within your business or connected business groups'
                 ], 403);
             }
 
-            // ALL USERS CAN CREATE TASKS - No role restrictions
             Log::info('Creating task', [
                 'title' => $validated['title'],
                 'created_by' => $currentUser->id,
                 'assigned_to' => $validated['assigned_to'],
-                'business_id' => $currentUserEmployee->business_id
+                'creator_business_id' => $currentUserEmployee->business_id,
+                'assignee_business_id' => $assignedUser->employee->business_id
             ]);
 
             // Create the task
@@ -228,15 +318,33 @@ class TaskController extends Controller
                 'assigned_to_employee_id' => $assignedUser->employee->employee_id,
                 'created_by' => $task->created_by,
                 'created_by_role' => $currentUser->role,
-                'business_id' => $currentUserEmployee->business_id
+                'creator_business_id' => $currentUserEmployee->business_id,
+                'assignee_business_id' => $assignedUser->employee->business_id
             ]);
 
-            // Dispatch event to trigger notification
+            // ✨ CREATE PUSH NOTIFICATION
+            UserNotification::create([
+                'user_id' => $task->assigned_to,
+                'type' => 'task_assigned',
+                'title' => 'New Task Assigned',
+                'message' => "{$currentUser->first_name} {$currentUser->last_name} assigned you a task: {$task->title}",
+                'action' => "/tasks/{$task->id}",
+                'data' => [
+                    'task_id' => $task->id,
+                    'task_title' => $task->title,
+                    'priority' => $task->priority,
+                    'deadline' => $task->deadline,
+                    'assigned_by' => $currentUser->first_name . ' ' . $currentUser->last_name,
+                ]
+            ]);
+            // Push notification is automatically sent via UserNotification boot method!
+
+            // Dispatch event to trigger other notifications (email, etc.)
             event(new TaskAssigned($task));
 
             return response()->json([
                 'message' => 'Task created successfully',
-                'task' => $task->load('assignedTo.employee', 'createdBy', 'comments')
+                'task' => $task->load('assignedTo.employee.business', 'createdBy.employee.business', 'comments')
             ], 201);
            
         } catch (\Exception $e) {
@@ -264,17 +372,42 @@ class TaskController extends Controller
             if ($task->created_by === $user->id || $task->assigned_to === $user->id) {
                 $canView = true;
             } else {
-                // Check if both users are in the same business
+                // Check if users are in the same business or connected via groups
                 $userEmployee = $user->employee;
                 $taskAssignedEmployee = $task->assignedTo->employee ?? null;
                 $taskCreatorEmployee = $task->createdBy->employee ?? null;
                 
                 if ($userEmployee && $userEmployee->business_id) {
+                    // Same business check
                     if ($taskAssignedEmployee && $taskAssignedEmployee->business_id === $userEmployee->business_id) {
                         $canView = true;
                     }
                     if ($taskCreatorEmployee && $taskCreatorEmployee->business_id === $userEmployee->business_id) {
                         $canView = true;
+                    }
+                    
+                    // Cross-business check via groups
+                    if (!$canView) {
+                        $business = $userEmployee->business;
+                        $groupIds = $business->activeBusinessGroups()
+                            ->wherePivot('can_assign_cross_business_tasks', true)
+                            ->pluck('business_groups.id');
+                        
+                        if ($groupIds->isNotEmpty()) {
+                            // Check if task's assigned user or creator is in a connected business
+                            $connectedBusinessIds = DB::table('business_group_memberships')
+                                ->whereIn('business_group_id', $groupIds)
+                                ->where('status', 'active')
+                                ->pluck('business_id')
+                                ->toArray();
+                            
+                            if ($taskAssignedEmployee && in_array($taskAssignedEmployee->business_id, $connectedBusinessIds)) {
+                                $canView = true;
+                            }
+                            if ($taskCreatorEmployee && in_array($taskCreatorEmployee->business_id, $connectedBusinessIds)) {
+                                $canView = true;
+                            }
+                        }
                     }
                 }
             }
@@ -292,7 +425,7 @@ class TaskController extends Controller
             }
 
             return response()->json([
-                'task' => $task->load('assignedTo.employee', 'createdBy', 'comments', 'subtasks', 'history', 'workLogs', 'linkedItems')
+                'task' => $task->load('assignedTo.employee.business', 'createdBy.employee.business', 'comments', 'subtasks', 'history', 'workLogs', 'linkedItems')
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to fetch task', ['error' => $e->getMessage()]);
@@ -300,7 +433,7 @@ class TaskController extends Controller
         }
     }
 
-    public function update(Request $request, Task $task)
+     public function update(Request $request, Task $task)
     {
         try {
             $user = Auth::user();
@@ -356,9 +489,20 @@ class TaskController extends Controller
                 'status' => 'sometimes|in:todo,in_progress,under_review,completed',
             ]);
 
-            // If updating assigned_to, verify employee record exists and business match
-            if (isset($validated['assigned_to'])) {
-                $assignedUser = User::with('employee')->find($validated['assigned_to']);
+            // Track what changed
+            $changes = [];
+            foreach ($validated as $key => $value) {
+                if ($task->$key != $value) {
+                    $changes[$key] = [
+                        'old' => $task->$key,
+                        'new' => $value
+                    ];
+                }
+            }
+
+            // If updating assigned_to, verify employee record exists and assignment is allowed
+            if (isset($validated['assigned_to']) && $validated['assigned_to'] != $task->assigned_to) {
+                $assignedUser = User::with('employee.business')->find($validated['assigned_to']);
              
                 if (!$assignedUser || !$assignedUser->employee) {
                     return response()->json([
@@ -366,12 +510,70 @@ class TaskController extends Controller
                     ], 400);
                 }
                 
-                // Verify business match
+                // Verify assignment is allowed
                 $userEmployee = $user->employee;
-                if ($userEmployee && $assignedUser->employee->business_id !== $userEmployee->business_id) {
+                $canAssign = false;
+                
+                if ($userEmployee && $assignedUser->employee->business_id === $userEmployee->business_id) {
+                    $canAssign = true;
+                } else if ($userEmployee) {
+                    // Check cross-business permission
+                    $business = $userEmployee->business;
+                    $groupIds = $business->activeBusinessGroups()
+                        ->wherePivot('can_assign_cross_business_tasks', true)
+                        ->pluck('business_groups.id');
+                    
+                    if ($groupIds->isNotEmpty()) {
+                        $assignedUserInGroup = DB::table('business_group_memberships')
+                            ->whereIn('business_group_id', $groupIds)
+                            ->where('business_id', $assignedUser->employee->business_id)
+                            ->where('status', 'active')
+                            ->exists();
+                        
+                        if ($assignedUserInGroup) {
+                            $canAssign = true;
+                        }
+                    }
+                }
+                
+                if (!$canAssign) {
                     return response()->json([
-                        'message' => 'You can only assign tasks to employees within your business'
+                        'message' => 'You can only assign tasks to employees within your business or connected business groups'
                     ], 403);
+                }
+
+                // ✨ SEND NOTIFICATION TO NEW ASSIGNEE
+                UserNotification::create([
+                    'user_id' => $validated['assigned_to'],
+                    'type' => 'task_assigned',
+                    'title' => 'Task Reassigned to You',
+                    'message' => "{$user->first_name} {$user->last_name} assigned you a task: {$task->title}",
+                    'action' => "/tasks/{$task->id}",
+                    'data' => [
+                        'task_id' => $task->id,
+                        'task_title' => $task->title,
+                        'priority' => $task->priority,
+                        'reassigned_by' => $user->first_name . ' ' . $user->last_name,
+                    ]
+                ]);
+            }
+
+            // If status changed to completed
+            if (isset($validated['status']) && $validated['status'] === 'completed' && $task->status !== 'completed') {
+                // Notify task creator
+                if ($task->created_by !== $user->id) {
+                    UserNotification::create([
+                        'user_id' => $task->created_by,
+                        'type' => 'task_assigned', // Using task_assigned type for consistency
+                        'title' => 'Task Completed',
+                        'message' => "{$user->first_name} {$user->last_name} completed the task: {$task->title}",
+                        'action' => "/tasks/{$task->id}",
+                        'data' => [
+                            'task_id' => $task->id,
+                            'task_title' => $task->title,
+                            'completed_by' => $user->first_name . ' ' . $user->last_name,
+                        ]
+                    ]);
                 }
             }
 
@@ -381,12 +583,13 @@ class TaskController extends Controller
                 'task_id' => $task->id,
                 'updated_by' => $user->id,
                 'updated_by_role' => $user->role,
-                'updated_fields' => array_keys($validated)
+                'updated_fields' => array_keys($validated),
+                'changes' => $changes
             ]);
 
             return response()->json([
                 'message' => 'Task updated successfully',
-                'task' => $task->fresh(['assignedTo.employee', 'createdBy', 'comments'])
+                'task' => $task->fresh(['assignedTo.employee.business', 'createdBy.employee.business', 'comments'])
             ]);
            
         } catch (\Exception $e) {
@@ -455,7 +658,7 @@ class TaskController extends Controller
 
             return response()->json([
                 'message' => 'Task status updated successfully',
-                'task' => $task->fresh(['assignedTo.employee', 'createdBy', 'comments'])
+                'task' => $task->fresh(['assignedTo.employee.business', 'createdBy.employee.business', 'comments'])
             ]);
            
         } catch (\Exception $e) {
@@ -508,7 +711,7 @@ class TaskController extends Controller
 
     /**
      * Get simple employee list for task assignment dropdown
-     * Returns user_id as 'id' for task assignment
+     * UPDATED: Includes users from connected business groups
      */
     public function getSimpleEmployees()
     {
@@ -534,12 +737,17 @@ class TaskController extends Controller
                         'position' => $user->employee->position ?? null,
                         'department' => $user->employee->department ?? null,
                         'is_self' => true,
-                        'role' => $user->role
+                        'role' => $user->role,
+                        'business_id' => null,
+                        'business_name' => null,
+                        'is_from_other_business' => false
                     ];
                 });
             } else {
-                // Get all employees in the same business
-                $employees = Employee::with('user')
+                $business = $userEmployee->business;
+                
+                // Get employees from current business
+                $currentBusinessEmployees = Employee::with('user')
                     ->where('business_id', $userEmployee->business_id)
                     ->get()
                     ->filter(function ($employee) {
@@ -557,10 +765,63 @@ class TaskController extends Controller
                             'position' => $employee->position,
                             'department' => $employee->department,
                             'is_self' => $isSelf,
-                            'role' => $employee->user->role
+                            'role' => $employee->user->role,
+                            'business_id' => $employee->business_id,
+                            'business_name' => $employee->business->name ?? null,
+                            'is_from_other_business' => false
                         ];
-                    })
-                    ->values();
+                    });
+                
+                // Get business groups with cross-business task permission
+                $groupIds = $business->activeBusinessGroups()
+                    ->wherePivot('can_assign_cross_business_tasks', true)
+                    ->pluck('business_groups.id');
+                
+                $groupBusinessEmployees = collect([]);
+                
+                if ($groupIds->isNotEmpty()) {
+                    // Get other business IDs in the same groups
+                    $otherBusinessIds = DB::table('business_group_memberships')
+                        ->whereIn('business_group_id', $groupIds)
+                        ->where('business_id', '!=', $userEmployee->business_id)
+                        ->where('status', 'active')
+                        ->pluck('business_id');
+                    
+                    if ($otherBusinessIds->isNotEmpty()) {
+                        $groupBusinessEmployees = Employee::with(['user', 'business'])
+                            ->whereIn('business_id', $otherBusinessIds)
+                            ->get()
+                            ->filter(function ($employee) {
+                                return $employee->user !== null;
+                            })
+                            ->map(function ($employee) {
+                                return [
+                                    'id' => $employee->user->id,
+                                    'first_name' => $employee->user->first_name,
+                                    'last_name' => $employee->user->last_name,
+                                    'full_name' => $employee->full_name . ' (' . ($employee->business->name ?? 'External') . ')',
+                                    'email' => $employee->user->email,
+                                    'employee_id' => $employee->employee_id,
+                                    'position' => $employee->position,
+                                    'department' => $employee->department,
+                                    'is_self' => false,
+                                    'role' => $employee->user->role,
+                                    'business_id' => $employee->business_id,
+                                    'business_name' => $employee->business->name ?? null,
+                                    'is_from_other_business' => true
+                                ];
+                            });
+                    }
+                }
+                
+                // Merge both collections
+                $employees = $currentBusinessEmployees->merge($groupBusinessEmployees)->values();
+                
+                Log::info('TASK_CONTROLLER: Employee list fetched with cross-business support', [
+                    'current_business_employees' => $currentBusinessEmployees->count(),
+                    'group_business_employees' => $groupBusinessEmployees->count(),
+                    'total_employees' => $employees->count()
+                ]);
             }
 
             Log::info('TASK_CONTROLLER: Simple employee list fetched', [
@@ -583,6 +844,7 @@ class TaskController extends Controller
             ], 500);
         }
     }
+
     /**
      * Get employees for task assignment
      */

@@ -12,6 +12,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use App\Models\UserNotification;
+
 
 class ScheduleController extends Controller
 {
@@ -80,7 +82,25 @@ class ScheduleController extends Controller
                 'assigned_to' => $schedule->assigned_to,
                 'created_by' => $schedule->created_by
             ]);
-
+// ✨ SEND PUSH NOTIFICATION TO ASSIGNED EMPLOYEE
+        $employee = Employee::find($validated['assigned_to']);
+        if ($employee && $employee->user_id) {
+            UserNotification::create([
+                'user_id' => $employee->user_id,
+                'type' => 'schedule_updated',
+                'title' => 'New Schedule Assigned',
+                'message' => "You have been assigned a new schedule: {$schedule->title}",
+                'action' => '/schedule',
+                'data' => [
+                    'schedule_id' => $schedule->id,
+                    'schedule_title' => $schedule->title,
+                    'schedule_type' => $schedule->type,
+                    'due_date' => $schedule->due_date,
+                    'priority' => $schedule->priority,
+                    'assigned_by' => auth()->user()->name
+                ]
+            ]);
+        }
             // Dispatch event to trigger notification
             event(new ScheduleAssigned($schedule));
 
@@ -151,7 +171,41 @@ class ScheduleController extends Controller
                 'schedule_id' => $schedule->id,
                 'updated_fields' => array_keys($updateData)
             ]);
-
+// ✨ SEND NOTIFICATION IF REASSIGNED OR UPDATED
+        if (isset($updateData['assigned_to']) && $oldAssignedTo != $updateData['assigned_to']) {
+            $employee = Employee::find($updateData['assigned_to']);
+            if ($employee && $employee->user_id) {
+                UserNotification::create([
+                    'user_id' => $employee->user_id,
+                    'type' => 'schedule_updated',
+                    'title' => 'Schedule Reassigned to You',
+                    'message' => "Schedule '{$schedule->title}' has been reassigned to you",
+                    'action' => '/schedule',
+                    'data' => [
+                        'schedule_id' => $schedule->id,
+                        'schedule_title' => $schedule->title,
+                        'reassigned_by' => auth()->user()->name
+                    ]
+                ]);
+            }
+        } else {
+            // Notify about update
+            $employee = Employee::find($schedule->assigned_to);
+            if ($employee && $employee->user_id && $employee->user_id != auth()->id()) {
+                UserNotification::create([
+                    'user_id' => $employee->user_id,
+                    'type' => 'schedule_updated',
+                    'title' => 'Schedule Updated',
+                    'message' => "Schedule '{$schedule->title}' has been updated",
+                    'action' => '/schedule',
+                    'data' => [
+                        'schedule_id' => $schedule->id,
+                        'schedule_title' => $schedule->title,
+                        'updated_by' => auth()->user()->name
+                    ]
+                ]);
+            }
+        }
             // Dispatch event to trigger notification
             event(new ScheduleUpdated($schedule));
 
@@ -284,7 +338,45 @@ class ScheduleController extends Controller
             ], 500);
         }
     }
-
+public function destroy($id)
+{
+    try {
+        $schedule = Schedule::findOrFail($id);
+        
+        // Optional: Check if user has permission to delete
+        // if ($schedule->created_by !== Auth::id() && !auth()->user()->hasRole('admin')) {
+        //     return response()->json(['message' => 'Unauthorized'], 403);
+        // }
+        
+        $schedule->delete();
+        
+        Log::info('Schedule deleted', [
+            'schedule_id' => $id,
+            'deleted_by' => Auth::id()
+        ]);
+        
+        return response()->json([
+            'message' => 'Schedule deleted successfully'
+        ]);
+        
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'message' => 'Schedule not found'
+        ], 404);
+        
+    } catch (\Exception $e) {
+        Log::error('Failed to delete schedule', [
+            'schedule_id' => $id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        
+        return response()->json([
+            'message' => 'Failed to delete schedule',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
     public function getCalendarData(Request $request)
     {
         try {

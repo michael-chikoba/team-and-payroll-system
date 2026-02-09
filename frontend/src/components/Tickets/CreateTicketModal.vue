@@ -272,66 +272,158 @@
                     <p v-if="errors.due_date" class="mt-2 text-sm text-red-500 bg-red-50 px-3 py-2 rounded-lg">{{ errors.due_date }}</p>
                   </div>
 
-                  <!-- Assignees Section -->
+                  <!-- Quick Assign (Self) -->
                   <div class="bg-gradient-to-br from-white to-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm">
-                    <label for="assigned_to" class="block text-sm font-semibold text-slate-700 mb-3">
-                      Assign To
+                    <label class="block text-sm font-semibold text-slate-700 mb-3">
+                      Quick Assign
+                    </label>
+                    <button
+                      type="button"
+                      @click="assignToSelf"
+                      :disabled="isSelfAssigned"
+                      :class="[
+                        'w-full flex items-center justify-center px-4 py-3 rounded-lg font-medium text-sm transition-all',
+                        isSelfAssigned
+                          ? 'bg-green-100 text-green-800 border-2 border-green-300 cursor-not-allowed'
+                          : 'bg-indigo-50 text-indigo-700 border-2 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300'
+                      ]"
+                    >
+                      <UserCircleIcon class="h-5 w-5 mr-2" />
+                      {{ isSelfAssigned ? 'Assigned to You' : 'Assign to Me' }}
+                    </button>
+                    <p class="mt-2 text-xs text-slate-500">
+                      Quickly assign this ticket to yourself
+                    </p>
+                  </div>
+                </div>
+
+                <!-- 🔥 ENHANCED: Cross-Business Assignment Section -->
+                <div class="bg-gradient-to-br from-white to-slate-50 p-6 rounded-xl border border-slate-100 shadow-sm">
+                  <div class="flex items-center justify-between mb-4">
+                    <label class="block text-sm font-semibold text-slate-700 flex items-center gap-2">
+                      <UserGroupIcon class="h-5 w-5 text-indigo-500" />
+                      Assign Team Members
                     </label>
                     
-                    <!-- Multiple select with modern styling -->
+                    <!-- Cross-Business Indicator -->
+                    <div v-if="canAssignCrossBusiness" class="flex items-center gap-2 px-3 py-1 bg-purple-100 rounded-full">
+                      <div class="h-2 w-2 rounded-full bg-purple-500 animate-pulse"></div>
+                      <span class="text-xs font-medium text-purple-700">Cross-business enabled</span>
+                    </div>
+                  </div>
+                  
+                  <!-- Current Business Users -->
+                  <div v-if="availableUsers.length > 0" class="mb-4">
+                    <div class="flex items-center gap-2 mb-2">
+                      <div class="h-1 w-8 bg-indigo-500 rounded-full"></div>
+                      <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">Your Business Team</p>
+                    </div>
                     <select
                       id="assigned_to"
                       v-model="form.assigned_to"
                       multiple
-                      class="block w-full px-4 py-3 border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-200 bg-white h-32"
-                      :class="{ 'border-red-300 focus:ring-red-500/20 focus:border-red-500': errors.assigned_to }"
+                      size="4"
+                      class="block w-full px-4 py-3 border-2 border-indigo-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all duration-200 bg-white"
                       :disabled="loadingUsers"
                     >
-                      <option value="" class="text-slate-400">Select team members (Ctrl+Click for multiple)</option>
                       <option
                         v-for="user in availableUsers"
                         :key="user.id"
                         :value="user.id"
-                        class="text-slate-700 py-2"
+                        class="py-2 hover:bg-indigo-50"
                       >
-                        {{ user.name }} ({{ user.email }})
+                        {{ user.name }} - {{ user.position || 'Employee' }} ({{ user.email }})
                       </option>
                     </select>
-                    
-                    <!-- Loading state -->
-                    <div v-if="loadingUsers" class="mt-3 flex items-center gap-3 px-4 py-3 bg-slate-50 rounded-lg">
-                      <div class="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent"></div>
-                      <span class="text-sm text-slate-600">Loading team members...</span>
+                  </div>
+                  
+                  <!-- 🔥 NEW: Cross-Business Users (if available) -->
+                  <div v-if="groupUsers.length > 0" class="mb-4">
+                    <div class="flex items-center gap-2 mb-2">
+                      <div class="h-1 w-8 bg-purple-500 rounded-full"></div>
+                      <p class="text-xs font-semibold uppercase tracking-wide text-purple-600 flex items-center gap-1">
+                        <UserGroupIcon class="h-4 w-4" />
+                        Business Group Members
+                      </p>
                     </div>
-                    
-                    <!-- Selected assignees as chips -->
-                    <div v-if="selectedAssignees.length > 0" class="mt-4">
-                      <p class="text-sm font-medium text-slate-700 mb-2">Selected Assignees:</p>
-                      <div class="flex flex-wrap gap-2">
-                        <div 
-                          v-for="user in selectedAssignees" 
-                          :key="user.id" 
-                          class="inline-flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-800 rounded-lg text-sm font-medium border border-indigo-200"
-                        >
-                          <UserCircleIcon class="h-4 w-4" />
-                          {{ user.name }}
-                          <button
-                            type="button"
-                            @click="removeAssignee(user.id)"
-                            class="ml-1 text-indigo-600 hover:text-indigo-900 transition-colors"
-                          >
-                            <XMarkIcon class="h-3 w-3" />
-                          </button>
+                    <select
+                      v-model="form.assigned_to"
+                      multiple
+                      size="4"
+                      class="block w-full px-4 py-3 border-2 border-purple-200 rounded-lg shadow-sm focus:outline-none focus:ring-3 focus:ring-purple-500/30 focus:border-purple-400 transition-all duration-200 bg-gradient-to-br from-purple-50 to-white"
+                      :disabled="loadingUsers"
+                    >
+                      <option
+                        v-for="user in groupUsers"
+                        :key="user.id"
+                        :value="user.id"
+                        class="py-2 hover:bg-purple-100"
+                      >
+                        {{ user.name }} - {{ user.position || 'Employee' }} ({{ user.business_name }})
+                      </option>
+                    </select>
+                    <div class="mt-2 flex items-start gap-2 p-3 bg-purple-50 border border-purple-100 rounded-lg">
+                      <InformationCircleIcon class="h-4 w-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                      <p class="text-xs text-purple-700">
+                        <span class="font-semibold">Cross-business assignment:</span> These users are from other businesses in your business group. They will receive notifications when assigned.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <!-- Loading state -->
+                  <div v-if="loadingUsers" class="flex items-center gap-3 px-4 py-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div class="animate-spin rounded-full h-5 w-5 border-2 border-indigo-500 border-t-transparent"></div>
+                    <span class="text-sm text-slate-600">Loading team members...</span>
+                  </div>
+                  
+                  <!-- 🔥 ENHANCED: Selected assignees as chips with business indicators -->
+                  <div v-if="selectedAssignees.length > 0" class="mt-4">
+                    <p class="text-sm font-medium text-slate-700 mb-3">Selected Assignees ({{ selectedAssignees.length }}):</p>
+                    <div class="flex flex-wrap gap-2">
+                      <div 
+                        v-for="user in selectedAssignees" 
+                        :key="user.id" 
+                        :class="[
+                          'group inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-all hover:shadow-md',
+                          user.is_from_other_business
+                            ? 'bg-gradient-to-r from-purple-50 to-purple-100 text-purple-800 border-purple-300 hover:from-purple-100 hover:to-purple-200'
+                            : 'bg-gradient-to-r from-indigo-50 to-indigo-100 text-indigo-800 border-indigo-300 hover:from-indigo-100 hover:to-indigo-200'
+                        ]"
+                      >
+                        <div :class="[
+                          'h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold',
+                          user.is_from_other_business ? 'bg-purple-200 text-purple-700' : 'bg-indigo-200 text-indigo-700'
+                        ]">
+                          {{ getUserInitials(user) }}
                         </div>
+                        <div class="flex flex-col items-start">
+                          <span class="leading-none">{{ user.name }}</span>
+                          <span v-if="user.is_from_other_business" class="text-xs mt-0.5 px-1.5 py-0.5 bg-purple-200 rounded leading-none">
+                            {{ user.business_name }}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          @click="removeAssignee(user.id)"
+                          :class="[
+                            'ml-1 hover:scale-110 transition-transform',
+                            user.is_from_other_business ? 'text-purple-600 hover:text-purple-900' : 'text-indigo-600 hover:text-indigo-900'
+                          ]"
+                        >
+                          <XMarkIcon class="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
-                    
-                    <p class="mt-3 text-xs text-slate-500">
-                      <InformationCircleIcon class="inline h-4 w-4 mr-1" />
-                      Hold Ctrl (or Cmd on Mac) to select multiple team members
-                    </p>
-                    <p v-if="errors.assigned_to" class="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.assigned_to }}</p>
                   </div>
+                  
+                  <div class="mt-4 flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <InformationCircleIcon class="h-4 w-4 text-slate-500 flex-shrink-0 mt-0.5" />
+                    <p class="text-xs text-slate-600">
+                      Hold <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-xs">Ctrl</kbd> (or <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-xs">Cmd</kbd> on Mac) to select multiple team members
+                    </p>
+                  </div>
+                  
+                  <p v-if="errors.assigned_to" class="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{{ errors.assigned_to }}</p>
                 </div>
 
                 <!-- APPROVER SECTION -->
@@ -526,7 +618,8 @@ import {
   PaperClipIcon,
   CalendarDaysIcon,
   InformationCircleIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  UserGroupIcon
 } from '@heroicons/vue/24/outline'
 
 // Props
@@ -573,7 +666,10 @@ const loadingApprovers = ref(false)
 const ticketTypes = ref([])
 const departments = ref([])
 const users = ref([])
+const groupUsers = ref([]) // 🔥 NEW: Users from other businesses in the group
 const internalApprovers = ref([])
+const canAssignCrossBusiness = ref(false) // 🔥 NEW: Flag for cross-business capability
+const currentUserId = ref(null)
 
 // Computed Properties
 const minDate = computed(() => {
@@ -597,17 +693,21 @@ const selectedTypeSubcategories = computed(() => {
   return selectedTicketType.value?.subcategories || []
 })
 
+// 🔥 UPDATED: Filter to show only current business users
 const availableUsers = computed(() => {
-  return props.assignableUsers.length > 0 ? props.assignableUsers : users.value
+  return users.value.filter(u => !u.is_from_other_business)
 })
 
+// 🔥 UPDATED: Combine users from both sources for selection display
 const selectedAssignees = computed(() => {
   if (!form.value.assigned_to || form.value.assigned_to.length === 0) return []
-  return availableUsers.value.filter(user => form.value.assigned_to.includes(user.id))
+  
+  const allUsers = [...users.value, ...groupUsers.value]
+  return allUsers.filter(user => form.value.assigned_to.includes(user.id))
 })
 
-const processedAssignedTo = computed(() => {
-  return prepareAssignedToArray(form.value.assigned_to)
+const isSelfAssigned = computed(() => {
+  return currentUserId.value && form.value.assigned_to.includes(currentUserId.value)
 })
 
 const titlePlaceholder = computed(() => {
@@ -661,8 +761,19 @@ const selectTicketType = (type) => {
   }
 }
 
+const assignToSelf = () => {
+  if (currentUserId.value && !form.value.assigned_to.includes(currentUserId.value)) {
+    form.value.assigned_to.push(currentUserId.value)
+  }
+}
+
 const removeAssignee = (userId) => {
   form.value.assigned_to = form.value.assigned_to.filter(id => id !== userId)
+}
+
+const getUserInitials = (user) => {
+  if (!user || !user.name) return '??'
+  return user.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
 const formatFileSize = (bytes) => {
@@ -671,6 +782,39 @@ const formatFileSize = (bytes) => {
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// 🔥 UPDATED: Fetch both current business and group users
+const fetchUsers = async () => {
+  loadingUsers.value = true
+  try {
+    const response = await axios.get('/api/tickets/assignable-users')
+    
+    console.log('Assignable users response:', response.data)
+    
+    if (response.data) {
+      users.value = response.data.assignable_users || []
+      groupUsers.value = response.data.group_users || [] // 🔥 NEW
+      canAssignCrossBusiness.value = response.data.can_assign_cross_business || false // 🔥 NEW
+      
+      // Also update approvers if included
+      if (response.data.approvers) {
+        internalApprovers.value = response.data.approvers
+      }
+      
+      console.log('Loaded users:', {
+        currentBusiness: users.value.length,
+        groupUsers: groupUsers.value.length,
+        canAssignCrossBusiness: canAssignCrossBusiness.value
+      })
+    }
+  } catch (error) {
+    console.error('Error fetching users:', error)
+    users.value = []
+    groupUsers.value = []
+  } finally {
+    loadingUsers.value = false
+  }
 }
 
 const fetchApprovers = async () => {
@@ -711,26 +855,10 @@ const fetchApprovers = async () => {
     internalApprovers.value = processedList
     
   } catch (error) {
+    console.error('Error fetching approvers:', error)
     internalApprovers.value = []
   } finally {
     loadingApprovers.value = false
-  }
-}
-
-const fetchUsers = async () => {
-  if (props.assignableUsers.length > 0) {
-    users.value = props.assignableUsers
-    return
-  }
-  
-  loadingUsers.value = true
-  try {
-    const response = await axios.get('/api/users/assignable')
-    users.value = response.data?.assignable_users || response.data?.data || response.data || []
-  } catch (error) {
-    users.value = []
-  } finally {
-    loadingUsers.value = false
   }
 }
 
@@ -745,6 +873,7 @@ const fetchTicketTypes = async () => {
       fetchCategories(ticketTypes.value[0].slug)
     }
   } catch (error) {
+    console.error('Error fetching ticket types:', error)
     ticketTypes.value = []
   } finally {
     loadingTicketTypes.value = false
@@ -762,7 +891,7 @@ const fetchCategories = async (typeSlug) => {
       }
     }
   } catch (error) {
-    // Handle error silently
+    console.error('Error fetching categories:', error)
   }
 }
 
@@ -772,9 +901,20 @@ const fetchDepartments = async () => {
     const response = await axios.get('/api/tickets/departments')
     departments.value = response.data || []
   } catch (error) {
+    console.error('Error fetching departments:', error)
     departments.value = []
   } finally {
     loadingDepartments.value = false
+  }
+}
+
+const getCurrentUser = async () => {
+  try {
+    const response = await axios.get('/api/user')
+    const userData = response.data.user || response.data
+    currentUserId.value = userData.id
+  } catch (error) {
+    console.error('Error fetching current user:', error)
   }
 }
 
@@ -924,6 +1064,8 @@ const handleSubmit = async () => {
   try {
     const data = prepareFormData()
     
+    console.log('Submitting ticket with data:', data)
+    
     if (form.value.attachments.length > 0) {
       const formData = new FormData()
       
@@ -963,6 +1105,8 @@ const handleSubmit = async () => {
       }
     }
   } catch (error) {
+    console.error('Error creating ticket:', error)
+    
     if (error.response?.data?.errors) {
       errors.value = error.response.data.errors
     } else if (error.response?.data?.message) {
@@ -978,6 +1122,8 @@ const handleSubmit = async () => {
 // Watchers
 watch(() => props.show, (newVal) => {
   if (newVal) {
+    getCurrentUser()
+    
     if (props.approvers && props.approvers.length > 0) {
       internalApprovers.value = props.approvers
       loadingApprovers.value = false
@@ -987,12 +1133,7 @@ watch(() => props.show, (newVal) => {
     
     fetchTicketTypes()
     fetchDepartments()
-    
-    if (props.assignableUsers.length === 0) {
-      fetchUsers()
-    } else {
-      users.value = props.assignableUsers
-    }
+    fetchUsers() // 🔥 This now fetches both current business and group users
     
     resetForm()
   } else {
@@ -1053,5 +1194,10 @@ select[multiple]::-webkit-scrollbar-thumb {
 
 select[multiple]::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Keyboard shortcut styling */
+kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 </style>

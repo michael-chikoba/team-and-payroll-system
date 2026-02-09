@@ -115,8 +115,8 @@ const filters = ref({
 
 const filteredSchedules = computed(() => {
   return props.schedules.filter(schedule => {
-    // FIXED: Check both schedule_type and type fields
-    const scheduleType = schedule.schedule_type || schedule.type;
+    // Backend returns 'type', but we normalize to both 'type' and 'schedule_type'
+    const scheduleType = schedule.type || schedule.schedule_type;
     
     if (filters.value.type && scheduleType !== filters.value.type) return false;
     if (filters.value.status && schedule.status !== filters.value.status) return false;
@@ -127,7 +127,7 @@ const filteredSchedules = computed(() => {
 
 const getFilteredSchedulesByType = (type) => {
   return filteredSchedules.value.filter(s => {
-    const scheduleType = s.schedule_type || s.type;
+    const scheduleType = s.type || s.schedule_type;
     return scheduleType === type && s.status !== 'completed';
   });
 };

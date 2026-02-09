@@ -9,12 +9,13 @@ use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class ProductivityController extends Controller
 {
     /**
-     * Get productivity data with proper filtering
+     * Get productivity data with proper SLA tracking
      */
     public function index(Request $request)
     {
@@ -40,7 +41,7 @@ class ProductivityController extends Controller
             $startDate = $dateRange['start'];
             $endDate = $dateRange['end'];
 
-            Log::info('Fetching productivity data', [
+            Log::info('Fetching productivity data with SLA tracking', [
                 'user_id' => $user->id,
                 'start_date' => $startDate->toDateString(),
                 'end_date' => $endDate->toDateString()
@@ -138,7 +139,6 @@ class ProductivityController extends Controller
                         'end' => Carbon::parse($end)->endOfDay()
                     ];
                 }
-                // Fallback to last 30 days if custom dates not provided
                 return [
                     'start' => Carbon::now()->subDays(30)->startOfDay(),
                     'end' => Carbon::now()->endOfDay()
@@ -153,7 +153,7 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Get employee productivity data with date filtering
+     * Get employee productivity data with SLA metrics
      */
     private function getEmployeeData($user, $startDate, $endDate)
     {
@@ -177,20 +177,20 @@ class ProductivityController extends Controller
             }
 
             return $employees->map(function ($employee) use ($startDate, $endDate) {
-                // Get task counts with date filtering
-                $taskCounts = $this->getEmployeeTaskCounts($employee->user_id, $startDate, $endDate);
+                // Get task metrics with SLA tracking
+                $taskMetrics = $this->getEmployeeTaskMetrics($employee->user_id, $startDate, $endDate);
                 
-                // Get ticket metrics
+                // Get ticket metrics with SLA tracking
                 $ticketMetrics = $this->getEmployeeTicketMetrics($employee->user_id, $startDate, $endDate);
                 
-                // Calculate SLA compliance
-                $slaCompliance = $this->calculateEmployeeSlaCompliance($employee->user_id, $startDate, $endDate);
+                // Calculate combined SLA compliance
+                $slaCompliance = $this->calculateEmployeeSlaCompliance($taskMetrics, $ticketMetrics);
                 
                 // Calculate efficiency
                 $efficiency = $this->calculateEmployeeEfficiency($employee->user_id, $startDate, $endDate);
                 
                 // Calculate productivity score
-                $productivityScore = $this->calculateProductivityScore($taskCounts, $ticketMetrics, $slaCompliance);
+                $productivityScore = $this->calculateProductivityScore($taskMetrics, $ticketMetrics, $slaCompliance);
                 
                 return [
                     'id' => $employee->id,
@@ -199,23 +199,41 @@ class ProductivityController extends Controller
                     'full_name' => $employee->user->name ?? $employee->full_name ?? 'Unknown',
                     'department' => $employee->department ?? 'Not Set',
                     'position' => $employee->position ?? 'Not Set',
-                    'tasks_completed' => $taskCounts['completed'],
-                    'total_tasks' => $taskCounts['total'],
-                    'completed_tasks' => $taskCounts['completed'],
-                    'in_progress_tasks' => $taskCounts['in_progress'],
-                    'pending_tasks' => $taskCounts['pending'],
-                    'overdue_tasks' => $taskCounts['overdue'],
-                    'on_time_rate' => $this->calculatePercentage($taskCounts['on_time'], $taskCounts['completed']),
+                    
+                    // Task metrics
+                    'tasks_completed' => $taskMetrics['completed'],
+                    'total_tasks' => $taskMetrics['total'],
+                    'completed_tasks' => $taskMetrics['completed'],
+                    'in_progress_tasks' => $taskMetrics['in_progress'],
+                    'pending_tasks' => $taskMetrics['pending'],
+                    'overdue_tasks' => $taskMetrics['overdue'],
+                    'on_time_rate' => $taskMetrics['on_time_rate'],
+                    'task_sla_compliance' => $taskMetrics['sla_compliance'],
+                    
+                    // Ticket metrics
+                    'total_tickets' => $ticketMetrics['total'],
+                    'resolved_tickets' => $ticketMetrics['resolved'],
+                    'response_time_rate' => $ticketMetrics['response_sla_rate'],
+                    'resolution_rate' => $ticketMetrics['resolution_sla_rate'],
+                    'ticket_sla_compliance' => $ticketMetrics['overall_sla_compliance'],
+                    
+                    // Overall metrics
                     'sla_compliance' => $slaCompliance,
                     'efficiency_rate' => $efficiency,
                     'productivity_score' => $productivityScore,
                     'performance_level' => $this->getPerformanceLevel($productivityScore),
+                    
+                    // Time metrics
                     'hours_worked' => $this->calculateHoursWorked($employee->user_id, $startDate, $endDate),
-                    'avg_completion_time' => $this->calculateAvgCompletionTime($employee->user_id, $startDate, $endDate),
-                    'response_time_rate' => $ticketMetrics['response_rate'],
-                    'resolution_rate' => $ticketMetrics['resolution_rate'],
+                    'avg_completion_time' => $taskMetrics['avg_completion_time'],
+                    'avg_response_time' => $ticketMetrics['avg_response_time'],
+                    'avg_resolution_time' => $ticketMetrics['avg_resolution_time'],
+                    
+                    // Trend data
                     'trend' => $this->calculateTrend($employee->user_id, $startDate, $endDate),
                     'trend_percentage' => $this->calculateTrendPercentage($employee->user_id, $startDate, $endDate),
+                    
+                    // Period info
                     'period_start' => $startDate->toDateString(),
                     'period_end' => $endDate->toDateString()
                 ];
@@ -231,34 +249,77 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Get task counts with date filtering
+     * Get task metrics with SLA tracking - UPDATED
      */
-    private function getEmployeeTaskCounts($userId, $startDate, $endDate)
+    private function getEmployeeTaskMetrics($userId, $startDate, $endDate)
     {
         try {
-            $tasks = Task::where('assigned_to', $userId)
+            $allTasks = Task::where('assigned_to', $userId)
                 ->whereBetween('created_at', [$startDate, $endDate])
                 ->get();
 
-            $total = $tasks->count();
-            $completed = $tasks->where('status', 'completed')->count();
-            $in_progress = $tasks->where('status', 'in_progress')->count();
-            $pending = $tasks->whereIn('status', ['todo', 'pending'])->count();
+            $total = $allTasks->count();
             
-            // Calculate overdue tasks
-            $overdue = $tasks->filter(function ($task) {
+            if ($total === 0) {
+                return [
+                    'total' => 0,
+                    'completed' => 0,
+                    'in_progress' => 0,
+                    'pending' => 0,
+                    'overdue' => 0,
+                    'on_time' => 0,
+                    'on_time_rate' => 0,
+                    'sla_met' => 0,
+                    'sla_compliance' => 0,
+                    'avg_completion_time' => 0
+                ];
+            }
+
+            // Completed tasks
+            $completedTasks = $allTasks->where('status', 'completed');
+            $completed = $completedTasks->count();
+            
+            // In progress
+            $in_progress = $allTasks->where('status', 'in_progress')->count();
+            
+            // Pending
+            $pending = $allTasks->whereIn('status', ['todo', 'pending'])->count();
+            
+            // Overdue (not completed and past deadline)
+            $overdue = $allTasks->filter(function ($task) {
                 return $task->deadline && 
                        Carbon::parse($task->deadline) < now() && 
                        !in_array($task->status, ['completed', 'cancelled']);
             })->count();
 
-            // Calculate on-time completed tasks
-            $on_time = $tasks->filter(function ($task) {
-                return $task->status === 'completed' && 
-                       $task->completed_at && 
-                       $task->deadline && 
-                       Carbon::parse($task->completed_at) <= Carbon::parse($task->deadline);
+            // On-time completed (completed before deadline) - using completed_on_time field
+            $on_time = $completedTasks->filter(function ($task) {
+                return $task->completed_on_time === true || 
+                       ($task->deadline && 
+                        $task->completed_at && 
+                        Carbon::parse($task->completed_at) <= Carbon::parse($task->deadline));
             })->count();
+
+            // SLA compliance - using sla_breached field
+            $sla_met = $completedTasks->filter(function ($task) {
+                return $task->sla_breached === false;
+            })->count();
+
+            // Average completion time
+            $avg_completion_time = 0;
+            if ($completed > 0) {
+                $total_time = $completedTasks->sum(function ($task) {
+                    if ($task->actual_completion_time) {
+                        return $task->actual_completion_time;
+                    }
+                    if ($task->completed_at && $task->created_at) {
+                        return Carbon::parse($task->created_at)
+                            ->diffInHours(Carbon::parse($task->completed_at));
+                    }
+                    return 0;
+                });
+                $avg_completion_time = round($total_time / $completed, 1);
+            }
 
             return [
                 'total' => $total,
@@ -266,11 +327,15 @@ class ProductivityController extends Controller
                 'in_progress' => $in_progress,
                 'pending' => $pending,
                 'overdue' => $overdue,
-                'on_time' => $on_time
+                'on_time' => $on_time,
+                'on_time_rate' => $this->calculatePercentage($on_time, $completed),
+                'sla_met' => $sla_met,
+                'sla_compliance' => $this->calculatePercentage($sla_met, $completed),
+                'avg_completion_time' => $avg_completion_time
             ];
 
         } catch (\Exception $e) {
-            Log::error('Failed to get task counts', [
+            Log::error('Failed to get task metrics', [
                 'user_id' => $userId, 
                 'error' => $e->getMessage()
             ]);
@@ -280,20 +345,26 @@ class ProductivityController extends Controller
                 'in_progress' => 0,
                 'pending' => 0,
                 'overdue' => 0,
-                'on_time' => 0
+                'on_time' => 0,
+                'on_time_rate' => 0,
+                'sla_met' => 0,
+                'sla_compliance' => 0,
+                'avg_completion_time' => 0
             ];
         }
     }
 
     /**
-     * Get ticket metrics for an employee
+     * Get ticket metrics with SLA tracking - UPDATED
      */
     private function getEmployeeTicketMetrics($userId, $startDate, $endDate)
     {
         try {
-            $tickets = Ticket::where('assigned_to', $userId)
-                ->whereBetween('created_at', [$startDate, $endDate])
-                ->get();
+            $tickets = Ticket::whereHas('assignedUsers', function ($query) use ($userId) {
+                $query->where('user_id', $userId);
+            })
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->get();
 
             $total = $tickets->count();
             
@@ -301,42 +372,64 @@ class ProductivityController extends Controller
                 return [
                     'total' => 0,
                     'resolved' => 0,
-                    'response_rate' => 0,
-                    'resolution_rate' => 0
+                    'response_sla_met' => 0,
+                    'response_sla_rate' => 0,
+                    'resolution_sla_met' => 0,
+                    'resolution_sla_rate' => 0,
+                    'overall_sla_compliance' => 0,
+                    'avg_response_time' => 0,
+                    'avg_resolution_time' => 0
                 ];
             }
 
-            $resolved = $tickets->where('status', 'resolved')->count();
+            // Resolved tickets
+            $resolvedTickets = $tickets->whereIn('status', ['resolved', 'closed']);
+            $resolved = $resolvedTickets->count();
             
-            // Calculate response time compliance (responded within SLA)
-            $responseOnTime = $tickets->filter(function ($ticket) {
-                if (!$ticket->first_response_at || !$ticket->response_sla_minutes) {
+            // Response SLA compliance - using response_sla_breached field
+            $response_sla_met = $tickets->filter(function ($ticket) {
+                // Only count tickets that have a first response
+                if (!$ticket->first_response_at) {
                     return false;
                 }
-                
-                $responseTime = Carbon::parse($ticket->created_at)
-                    ->diffInMinutes(Carbon::parse($ticket->first_response_at));
-                
-                return $responseTime <= $ticket->response_sla_minutes;
+                return $ticket->response_sla_breached === false;
             })->count();
 
-            // Calculate resolution time compliance
-            $resolvedOnTime = $tickets->filter(function ($ticket) {
-                if ($ticket->status !== 'resolved' || !$ticket->resolved_at || !$ticket->resolution_sla_minutes) {
-                    return false;
-                }
-                
-                $resolutionTime = Carbon::parse($ticket->created_at)
-                    ->diffInMinutes(Carbon::parse($ticket->resolved_at));
-                
-                return $resolutionTime <= $ticket->resolution_sla_minutes;
+            // Count tickets with first response for response rate calculation
+            $tickets_with_response = $tickets->filter(function ($ticket) {
+                return $ticket->first_response_at !== null;
             })->count();
+
+            // Resolution SLA compliance - using resolution_sla_breached field
+            $resolution_sla_met = $resolvedTickets->filter(function ($ticket) {
+                return $ticket->resolution_sla_breached === false;
+            })->count();
+
+            // Average response time - using actual_response_time field
+            $avg_response_time = $tickets->filter(function ($ticket) {
+                return $ticket->actual_response_time !== null;
+            })->avg('actual_response_time') ?? 0;
+
+            // Average resolution time - using actual_resolution_time field
+            $avg_resolution_time = $resolvedTickets->filter(function ($ticket) {
+                return $ticket->actual_resolution_time !== null;
+            })->avg('actual_resolution_time') ?? 0;
+
+            // Overall SLA compliance (weighted average)
+            $response_rate = $this->calculatePercentage($response_sla_met, $tickets_with_response);
+            $resolution_rate = $this->calculatePercentage($resolution_sla_met, $resolved);
+            $overall_sla = ($response_rate + $resolution_rate) / 2;
 
             return [
                 'total' => $total,
                 'resolved' => $resolved,
-                'response_rate' => $this->calculatePercentage($responseOnTime, $total),
-                'resolution_rate' => $this->calculatePercentage($resolvedOnTime, $resolved)
+                'response_sla_met' => $response_sla_met,
+                'response_sla_rate' => $response_rate,
+                'resolution_sla_met' => $resolution_sla_met,
+                'resolution_sla_rate' => $resolution_rate,
+                'overall_sla_compliance' => round($overall_sla, 1),
+                'avg_response_time' => round($avg_response_time, 1),
+                'avg_resolution_time' => round($avg_resolution_time, 1)
             ];
 
         } catch (\Exception $e) {
@@ -347,35 +440,41 @@ class ProductivityController extends Controller
             return [
                 'total' => 0,
                 'resolved' => 0,
-                'response_rate' => 0,
-                'resolution_rate' => 0
+                'response_sla_met' => 0,
+                'response_sla_rate' => 0,
+                'resolution_sla_met' => 0,
+                'resolution_sla_rate' => 0,
+                'overall_sla_compliance' => 0,
+                'avg_response_time' => 0,
+                'avg_resolution_time' => 0
             ];
         }
     }
 
     /**
-     * Calculate SLA compliance for an employee
+     * Calculate combined SLA compliance
      */
-    private function calculateEmployeeSlaCompliance($userId, $startDate, $endDate)
+    private function calculateEmployeeSlaCompliance($taskMetrics, $ticketMetrics)
     {
-        try {
-            $taskCounts = $this->getEmployeeTaskCounts($userId, $startDate, $endDate);
-            $ticketMetrics = $this->getEmployeeTicketMetrics($userId, $startDate, $endDate);
-            
-            // Weighted average of task on-time rate and ticket metrics
-            $taskOnTimeRate = $this->calculatePercentage($taskCounts['on_time'], $taskCounts['completed']);
-            $avgTicketRate = ($ticketMetrics['response_rate'] + $ticketMetrics['resolution_rate']) / 2;
-            
-            // 60% weight to tasks, 40% to tickets
-            return round(($taskOnTimeRate * 0.6) + ($avgTicketRate * 0.4), 1);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to calculate SLA compliance', [
-                'user_id' => $userId,
-                'error' => $e->getMessage()
-            ]);
-            return 0;
+        $task_sla = $taskMetrics['sla_compliance'];
+        $ticket_sla = $ticketMetrics['overall_sla_compliance'];
+        
+        // If both have data, weighted average (60% tasks, 40% tickets)
+        if ($taskMetrics['completed'] > 0 && $ticketMetrics['total'] > 0) {
+            return round(($task_sla * 0.6) + ($ticket_sla * 0.4), 1);
         }
+        
+        // If only tasks
+        if ($taskMetrics['completed'] > 0) {
+            return $task_sla;
+        }
+        
+        // If only tickets
+        if ($ticketMetrics['total'] > 0) {
+            return $ticket_sla;
+        }
+        
+        return 0;
     }
 
     /**
@@ -387,32 +486,25 @@ class ProductivityController extends Controller
             $tasks = Task::where('assigned_to', $userId)
                 ->where('status', 'completed')
                 ->whereBetween('completed_at', [$startDate, $endDate])
-                ->whereNotNull('completed_at')
-                ->whereNotNull('created_at')
+                ->whereNotNull('estimated_hours')
+                ->whereNotNull('actual_hours')
                 ->get();
 
             if ($tasks->isEmpty()) {
                 return 0;
             }
 
-            // Calculate average time to complete vs estimated time
-            $efficiencyScores = $tasks->map(function ($task) {
-                $actualTime = Carbon::parse($task->created_at)
-                    ->diffInHours(Carbon::parse($task->completed_at));
-                
-                // Assume 8 hours as default estimated time if not set
-                $estimatedTime = $task->estimated_hours ?? 8;
-                
-                if ($estimatedTime == 0) {
-                    return 100;
-                }
-                
-                // Calculate efficiency (100% if completed in estimated time or less)
-                $efficiency = min(100, ($estimatedTime / max(1, $actualTime)) * 100);
-                return $efficiency;
-            });
-
-            return round($efficiencyScores->average(), 1);
+            $totalEstimated = $tasks->sum('estimated_hours');
+            $totalActual = $tasks->sum('actual_hours');
+            
+            if ($totalActual == 0) {
+                return 100;
+            }
+            
+            // Efficiency: if actual <= estimated, 100%; otherwise penalize
+            $efficiency = min(100, ($totalEstimated / $totalActual) * 100);
+            
+            return round($efficiency, 1);
 
         } catch (\Exception $e) {
             Log::error('Failed to calculate efficiency', [
@@ -426,14 +518,14 @@ class ProductivityController extends Controller
     /**
      * Calculate overall productivity score
      */
-    private function calculateProductivityScore($taskCounts, $ticketMetrics, $slaCompliance)
+    private function calculateProductivityScore($taskMetrics, $ticketMetrics, $slaCompliance)
     {
-        if ($taskCounts['total'] === 0 && $ticketMetrics['total'] === 0) {
+        if ($taskMetrics['total'] === 0 && $ticketMetrics['total'] === 0) {
             return 0;
         }
 
-        $completionRate = $this->calculatePercentage($taskCounts['completed'], $taskCounts['total']);
-        $onTimeRate = $this->calculatePercentage($taskCounts['on_time'], $taskCounts['completed']);
+        $completionRate = $this->calculatePercentage($taskMetrics['completed'], $taskMetrics['total']);
+        $onTimeRate = $taskMetrics['on_time_rate'];
         
         // Weighted average: 30% completion, 30% on-time, 40% SLA
         return round(
@@ -445,11 +537,22 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Calculate hours worked (based on task completion times)
+     * Calculate hours worked
      */
     private function calculateHoursWorked($userId, $startDate, $endDate)
     {
         try {
+            // Use actual_hours field if available, otherwise calculate
+            $totalHours = Task::where('assigned_to', $userId)
+                ->where('status', 'completed')
+                ->whereBetween('completed_at', [$startDate, $endDate])
+                ->sum('actual_hours');
+
+            if ($totalHours > 0) {
+                return round($totalHours, 1);
+            }
+
+            // Fallback: calculate from timestamps
             $tasks = Task::where('assigned_to', $userId)
                 ->where('status', 'completed')
                 ->whereBetween('completed_at', [$startDate, $endDate])
@@ -471,51 +574,20 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Calculate average completion time
-     */
-    private function calculateAvgCompletionTime($userId, $startDate, $endDate)
-    {
-        try {
-            $tasks = Task::where('assigned_to', $userId)
-                ->where('status', 'completed')
-                ->whereBetween('completed_at', [$startDate, $endDate])
-                ->whereNotNull('completed_at')
-                ->whereNotNull('created_at')
-                ->get();
-
-            if ($tasks->isEmpty()) {
-                return 0;
-            }
-
-            $totalHours = $tasks->sum(function ($task) {
-                return Carbon::parse($task->created_at)
-                    ->diffInHours(Carbon::parse($task->completed_at));
-            });
-
-            return round($totalHours / $tasks->count(), 1);
-
-        } catch (\Exception $e) {
-            return 0;
-        }
-    }
-
-    /**
-     * Calculate trend (up/down/neutral)
+     * Calculate trend
      */
     private function calculateTrend($userId, $startDate, $endDate)
     {
         try {
-            // Get current period score
-            $currentCounts = $this->getEmployeeTaskCounts($userId, $startDate, $endDate);
-            $currentScore = $this->calculatePercentage($currentCounts['completed'], $currentCounts['total']);
+            $currentMetrics = $this->getEmployeeTaskMetrics($userId, $startDate, $endDate);
+            $currentScore = $this->calculatePercentage($currentMetrics['completed'], $currentMetrics['total']);
             
-            // Get previous period score
             $periodDays = $startDate->diffInDays($endDate);
             $prevStart = $startDate->copy()->subDays($periodDays);
             $prevEnd = $startDate->copy();
             
-            $prevCounts = $this->getEmployeeTaskCounts($userId, $prevStart, $prevEnd);
-            $prevScore = $this->calculatePercentage($prevCounts['completed'], $prevCounts['total']);
+            $prevMetrics = $this->getEmployeeTaskMetrics($userId, $prevStart, $prevEnd);
+            $prevScore = $this->calculatePercentage($prevMetrics['completed'], $prevMetrics['total']);
             
             if ($currentScore > $prevScore + 5) {
                 return 'up';
@@ -535,15 +607,15 @@ class ProductivityController extends Controller
     private function calculateTrendPercentage($userId, $startDate, $endDate)
     {
         try {
-            $currentCounts = $this->getEmployeeTaskCounts($userId, $startDate, $endDate);
-            $currentScore = $this->calculatePercentage($currentCounts['completed'], $currentCounts['total']);
+            $currentMetrics = $this->getEmployeeTaskMetrics($userId, $startDate, $endDate);
+            $currentScore = $this->calculatePercentage($currentMetrics['completed'], $currentMetrics['total']);
             
             $periodDays = $startDate->diffInDays($endDate);
             $prevStart = $startDate->copy()->subDays($periodDays);
             $prevEnd = $startDate->copy();
             
-            $prevCounts = $this->getEmployeeTaskCounts($userId, $prevStart, $prevEnd);
-            $prevScore = $this->calculatePercentage($prevCounts['completed'], $prevCounts['total']);
+            $prevMetrics = $this->getEmployeeTaskMetrics($userId, $prevStart, $prevEnd);
+            $prevScore = $this->calculatePercentage($prevMetrics['completed'], $prevMetrics['total']);
             
             if ($prevScore == 0) {
                 return 0;
@@ -565,6 +637,7 @@ class ProductivityController extends Controller
             return $this->getDefaultOverview();
         }
 
+        $count = count($employees);
         $totalProductivity = array_sum(array_column($employees, 'productivity_score'));
         $totalTasksCompleted = array_sum(array_column($employees, 'completed_tasks'));
         $totalTasks = array_sum(array_column($employees, 'total_tasks'));
@@ -575,16 +648,15 @@ class ProductivityController extends Controller
         $totalPending = array_sum(array_column($employees, 'pending_tasks'));
         $totalHours = array_sum(array_column($employees, 'hours_worked'));
         
-        $count = count($employees);
-        $avgProductivity = round($totalProductivity / $count, 1);
-        $avgSla = round($totalSlaCompliance / $count, 1);
-        $avgOnTime = round($totalOnTimeRate / $count, 1);
-        $avgEfficiency = round($totalEfficiency / $count, 1);
+        $avgProductivity = $count > 0 ? round($totalProductivity / $count, 1) : 0;
+        $avgSla = $count > 0 ? round($totalSlaCompliance / $count, 1) : 0;
+        $avgOnTime = $count > 0 ? round($totalOnTimeRate / $count, 1) : 0;
+        $avgEfficiency = $count > 0 ? round($totalEfficiency / $count, 1) : 0;
 
         return [
             'avgProductivityScore' => $avgProductivity,
             'totalTasksCompleted' => $totalTasksCompleted,
-            'totalHoursWorked' => $totalHours,
+            'totalHoursWorked' => round($totalHours, 1),
             'completionRate' => $this->calculatePercentage($totalTasksCompleted, $totalTasks),
             'slaCompliance' => $avgSla,
             'onTimeRate' => $avgOnTime,
@@ -597,12 +669,12 @@ class ProductivityController extends Controller
             'completedTasks' => $totalTasksCompleted,
             'avgHoursPerTask' => $totalTasksCompleted > 0 ? round($totalHours / $totalTasksCompleted, 1) : 0,
             'trend' => $avgProductivity >= 80 ? 'up' : ($avgProductivity >= 60 ? 'neutral' : 'down'),
-            'trend_percentage' => round(($avgProductivity - 70) / 10, 1)
+            'trend_percentage' => round(abs($avgProductivity - 70), 1)
         ];
     }
 
     /**
-     * Calculate SLA details across all employees
+     * Calculate SLA details - UPDATED
      */
     private function calculateSlaDetails($user, $startDate, $endDate)
     {
@@ -612,9 +684,13 @@ class ProductivityController extends Controller
                 return $this->getDefaultSlaDetails();
             }
 
-            // Get all tickets for the business in date range
-            $tickets = Ticket::whereHas('assignedUser.employee', function($query) use ($userEmployee) {
-                $query->where('business_id', $userEmployee->business_id);
+            $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
+                ->pluck('user_id')
+                ->toArray();
+
+            // Get all tickets
+            $tickets = Ticket::whereHas('assignedUsers', function($query) use ($businessEmployeeUserIds) {
+                $query->whereIn('user_id', $businessEmployeeUserIds);
             })
             ->whereBetween('created_at', [$startDate, $endDate])
             ->get();
@@ -625,81 +701,57 @@ class ProductivityController extends Controller
                 return $this->getDefaultSlaDetails();
             }
 
-            // Response time metrics
-            $responseTimeMet = $tickets->filter(function ($ticket) {
-                if (!$ticket->first_response_at || !$ticket->response_sla_minutes) {
-                    return false;
-                }
-                $responseTime = Carbon::parse($ticket->created_at)
-                    ->diffInMinutes(Carbon::parse($ticket->first_response_at));
-                return $responseTime <= $ticket->response_sla_minutes;
+            // Response time metrics using new fields
+            $ticketsWithResponse = $tickets->filter(function ($ticket) {
+                return $ticket->first_response_at !== null;
+            });
+            $responseTotal = $ticketsWithResponse->count();
+            
+            $responseTimeMet = $ticketsWithResponse->filter(function ($ticket) {
+                return $ticket->response_sla_breached === false;
             })->count();
 
-            $avgResponseTime = $tickets->filter(function ($ticket) {
-                return $ticket->first_response_at;
-            })->avg(function ($ticket) {
-                return Carbon::parse($ticket->created_at)
-                    ->diffInMinutes(Carbon::parse($ticket->first_response_at)) / 60;
-            });
+            $avgResponseTime = $ticketsWithResponse->avg('actual_response_time') ?? 0;
 
-            // Resolution time metrics
-            $resolvedTickets = $tickets->where('status', 'resolved');
+            // Resolution time metrics using new fields
+            $resolvedTickets = $tickets->whereIn('status', ['resolved', 'closed']);
             $resolutionTotal = $resolvedTickets->count();
             
             $resolutionMet = $resolvedTickets->filter(function ($ticket) {
-                if (!$ticket->resolved_at || !$ticket->resolution_sla_minutes) {
-                    return false;
-                }
-                $resolutionTime = Carbon::parse($ticket->created_at)
-                    ->diffInMinutes(Carbon::parse($ticket->resolved_at));
-                return $resolutionTime <= $ticket->resolution_sla_minutes;
+                return $ticket->resolution_sla_breached === false;
             })->count();
 
-            $avgResolutionTime = $resolvedTickets->filter(function ($ticket) {
-                return $ticket->resolved_at;
-            })->avg(function ($ticket) {
-                return Carbon::parse($ticket->created_at)
-                    ->diffInMinutes(Carbon::parse($ticket->resolved_at)) / 60;
-            });
+            $avgResolutionTime = $resolvedTickets->avg('actual_resolution_time') ?? 0;
 
-            // Task completion metrics
-            $tasks = Task::whereHas('assignedUser.employee', function($query) use ($userEmployee) {
-                $query->where('business_id', $userEmployee->business_id);
-            })
-            ->where('status', 'completed')
-            ->whereBetween('completed_at', [$startDate, $endDate])
-            ->get();
+            // Task completion metrics using new fields
+            $tasks = Task::whereIn('assigned_to', $businessEmployeeUserIds)
+                ->where('status', 'completed')
+                ->whereBetween('completed_at', [$startDate, $endDate])
+                ->get();
 
             $completionTotal = $tasks->count();
             
             $completionMet = $tasks->filter(function ($task) {
-                return $task->deadline && 
-                       $task->completed_at && 
-                       Carbon::parse($task->completed_at) <= Carbon::parse($task->deadline);
+                return $task->completed_on_time === true;
             })->count();
 
             $avgDelay = $tasks->filter(function ($task) {
-                return $task->deadline && 
-                       $task->completed_at && 
-                       Carbon::parse($task->completed_at) > Carbon::parse($task->deadline);
-            })->avg(function ($task) {
-                return Carbon::parse($task->deadline)
-                    ->diffInHours(Carbon::parse($task->completed_at));
-            });
+                return $task->completed_on_time === false && $task->actual_completion_time;
+            })->avg('actual_completion_time') ?? 0;
 
             return [
-                'responseTimeRate' => $this->calculatePercentage($responseTimeMet, $totalTickets),
+                'responseTimeRate' => $this->calculatePercentage($responseTimeMet, $responseTotal),
                 'responseTimeMet' => $responseTimeMet,
-                'responseTimeTotal' => $totalTickets,
+                'responseTimeTotal' => $responseTotal,
                 'resolutionRate' => $this->calculatePercentage($resolutionMet, $resolutionTotal),
                 'resolutionMet' => $resolutionMet,
                 'resolutionTotal' => $resolutionTotal,
                 'completionRate' => $this->calculatePercentage($completionMet, $completionTotal),
                 'completionMet' => $completionMet,
                 'completionTotal' => $completionTotal,
-                'avgResponseTime' => round($avgResponseTime ?? 0, 1),
-                'avgResolutionTime' => round($avgResolutionTime ?? 0, 1),
-                'avgDelay' => round($avgDelay ?? 0, 1)
+                'avgResponseTime' => round($avgResponseTime, 1),
+                'avgResolutionTime' => round($avgResolutionTime, 1),
+                'avgDelay' => round($avgDelay, 1)
             ];
 
         } catch (\Exception $e) {
@@ -711,7 +763,7 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Calculate task analysis metrics
+     * Calculate task analysis - UPDATED
      */
     private function calculateTaskAnalysis($user, $startDate, $endDate)
     {
@@ -721,41 +773,37 @@ class ProductivityController extends Controller
                 return $this->getDefaultTaskAnalysis();
             }
 
-            $tasks = Task::whereHas('assignedUser.employee', function($query) use ($userEmployee) {
-                $query->where('business_id', $userEmployee->business_id);
-            })
-            ->where('status', 'completed')
-            ->whereBetween('completed_at', [$startDate, $endDate])
-            ->get();
+            $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
+                ->pluck('user_id')
+                ->toArray();
+
+            $tasks = Task::whereIn('assigned_to', $businessEmployeeUserIds)
+                ->where('status', 'completed')
+                ->whereBetween('completed_at', [$startDate, $endDate])
+                ->get();
 
             if ($tasks->isEmpty()) {
                 return $this->getDefaultTaskAnalysis();
             }
 
-            // On-time rate
+            // On-time rate using completed_on_time field
             $onTime = $tasks->filter(function ($task) {
-                return $task->deadline && 
-                       Carbon::parse($task->completed_at) <= Carbon::parse($task->deadline);
+                return $task->completed_on_time === true;
             })->count();
 
             $onTimeRate = $this->calculatePercentage($onTime, $tasks->count());
 
-            // Average completion time
-            $avgCompletionTime = $tasks->avg(function ($task) {
-                return Carbon::parse($task->created_at)
-                    ->diffInHours(Carbon::parse($task->completed_at));
-            });
+            // Average completion time using actual_completion_time field
+            $avgCompletionTime = $tasks->avg('actual_completion_time') ?? 0;
 
-            // Quality score (based on reopening)
-            $reopened = Task::whereHas('assignedUser.employee', function($query) use ($userEmployee) {
-                $query->where('business_id', $userEmployee->business_id);
-            })
-            ->where('reopened', true)
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->count();
+            // Quality score (inverse of reopen rate)
+            $allTasks = Task::whereIn('assigned_to', $businessEmployeeUserIds)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->get();
 
-            $qualityScore = max(0, 100 - ($this->calculatePercentage($reopened, $tasks->count())));
-            $reopenRate = $this->calculatePercentage($reopened, $tasks->count());
+            $reopened = $allTasks->where('status', 'reopened')->count();
+            $qualityScore = max(0, 100 - $this->calculatePercentage($reopened, $allTasks->count()));
+            $reopenRate = $this->calculatePercentage($reopened, $allTasks->count());
 
             return [
                 'onTimeRate' => $onTimeRate,
@@ -781,7 +829,7 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Generate chart data
+     * Generate chart data - UPDATED
      */
     private function generateChartData($user, $startDate, $endDate)
     {
@@ -791,53 +839,60 @@ class ProductivityController extends Controller
                 return $this->getDefaultChartData();
             }
 
-            // SLA Trend (weekly)
+            $businessEmployeeUserIds = Employee::where('business_id', $userEmployee->business_id)
+                ->pluck('user_id')
+                ->toArray();
+
+            $periodDays = $startDate->diffInDays($endDate);
+            $numWeeks = max(1, ceil($periodDays / 7));
+            
             $weeks = [];
             $slaData = [];
+            $productivityData = [];
             $currentDate = $startDate->copy();
             
-            while ($currentDate <= $endDate) {
+            while ($currentDate <= $endDate && count($weeks) < $numWeeks) {
                 $weekEnd = min($currentDate->copy()->addDays(6), $endDate);
                 $weeks[] = $currentDate->format('M d');
                 
-                $weekTasks = Task::whereHas('assignedUser.employee', function($query) use ($userEmployee) {
-                    $query->where('business_id', $userEmployee->business_id);
-                })
-                ->where('status', 'completed')
-                ->whereBetween('completed_at', [$currentDate, $weekEnd])
-                ->get();
+                // Task SLA compliance for this week
+                $weekTasks = Task::whereIn('assigned_to', $businessEmployeeUserIds)
+                    ->where('status', 'completed')
+                    ->whereBetween('completed_at', [$currentDate, $weekEnd])
+                    ->get();
                 
-                $weekOnTime = $weekTasks->filter(function ($task) {
-                    return $task->deadline && 
-                           Carbon::parse($task->completed_at) <= Carbon::parse($task->deadline);
+                $weekSlaCompliant = $weekTasks->filter(function ($task) {
+                    return $task->sla_breached === false;
                 })->count();
                 
-                $slaData[] = $this->calculatePercentage($weekOnTime, $weekTasks->count());
+                $slaData[] = $this->calculatePercentage($weekSlaCompliant, $weekTasks->count());
+                
+                // Productivity score
+                $weekCompleted = $weekTasks->count();
+                $weekTotal = Task::whereIn('assigned_to', $businessEmployeeUserIds)
+                    ->whereBetween('created_at', [$currentDate, $weekEnd])
+                    ->count();
+                
+                $productivityData[] = $this->calculatePercentage($weekCompleted, $weekTotal);
+                
                 $currentDate->addDays(7);
             }
 
-            // Task Distribution
-            $allTasks = Task::whereHas('assignedUser.employee', function($query) use ($userEmployee) {
-                $query->where('business_id', $userEmployee->business_id);
-            })
-            ->whereBetween('created_at', [$startDate, $endDate])
-            ->get();
+            // Task distribution
+            $allTasks = Task::whereIn('assigned_to', $businessEmployeeUserIds)
+                ->whereBetween('created_at', [$startDate, $endDate])
+                ->get();
 
             $onTimeTasks = $allTasks->filter(function ($task) {
-                return $task->status === 'completed' && 
-                       $task->deadline && 
-                       $task->completed_at &&
-                       Carbon::parse($task->completed_at) <= Carbon::parse($task->deadline);
+                return $task->status === 'completed' && $task->completed_on_time === true;
             })->count();
 
             $lateTasks = $allTasks->filter(function ($task) {
-                return $task->status === 'completed' && 
-                       $task->deadline && 
-                       $task->completed_at &&
-                       Carbon::parse($task->completed_at) > Carbon::parse($task->deadline);
+                return $task->status === 'completed' && $task->completed_on_time === false;
             })->count();
 
             $inProgressTasks = $allTasks->where('status', 'in_progress')->count();
+            
             $overdueTasks = $allTasks->filter(function ($task) {
                 return $task->deadline && 
                        Carbon::parse($task->deadline) < now() && 
@@ -855,12 +910,12 @@ class ProductivityController extends Controller
                 ],
                 'weekly_performance' => [
                     'labels' => $weeks,
-                    'completed' => array_fill(0, count($weeks), 0), // Would need more complex logic
-                    'sla_met' => array_fill(0, count($weeks), 0)
+                    'completed' => array_fill(0, count($weeks), 0), // Would need week-by-week data
+                    'sla_met' => $slaData
                 ],
                 'timeline' => [
                     'labels' => $weeks,
-                    'productivity' => $slaData,
+                    'productivity' => $productivityData,
                     'sla' => $slaData
                 ]
             ];
@@ -874,7 +929,7 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Helper method to calculate percentage safely
+     * Helper methods
      */
     private function calculatePercentage($numerator, $denominator, $decimals = 1)
     {
@@ -884,9 +939,6 @@ class ProductivityController extends Controller
         return round(($numerator / $denominator) * 100, $decimals);
     }
 
-    /**
-     * Get performance level based on score
-     */
     private function getPerformanceLevel($score)
     {
         if ($score >= 90) return 'excellent';
@@ -896,9 +948,6 @@ class ProductivityController extends Controller
         return 'poor';
     }
 
-    /**
-     * Default empty structures
-     */
     private function getDefaultOverview()
     {
         return [
@@ -982,7 +1031,7 @@ class ProductivityController extends Controller
     }
 
     /**
-     * Alias methods for different endpoints
+     * Alias methods
      */
     public function adminIndex(Request $request)
     {

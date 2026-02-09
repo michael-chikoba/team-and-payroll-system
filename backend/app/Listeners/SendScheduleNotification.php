@@ -6,6 +6,7 @@ use App\Events\ScheduleAssigned;
 use App\Events\ScheduleUpdated;
 use App\Models\UserNotification;
 use App\Models\ScheduleNotification;
+use App\Jobs\SendPushNotification;
 use Illuminate\Support\Facades\Log;
 
 class SendScheduleNotification
@@ -36,13 +37,17 @@ class SendScheduleNotification
 
             // Determine the user ID to notify
             $notifyUserId = null;
+            $notifyUser = null;
+            
             if ($assignedEmployee && $assignedEmployee->user_id) {
                 $notifyUserId = $assignedEmployee->user_id;
+                $notifyUser = $assignedEmployee->user;
             } elseif ($assignedUser) {
                 $notifyUserId = $assignedUser->id;
+                $notifyUser = $assignedUser;
             }
             
-            if (!$notifyUserId) {
+            if (!$notifyUserId || !$notifyUser) {
                 Log::warning('Schedule notification skipped - assigned employee has no user account', [
                     'schedule_id' => $schedule->id,
                     'employee_id' => $assignedEmployee->id ?? null
@@ -64,7 +69,7 @@ class SendScheduleNotification
                 : sprintf('%s assigned you a new schedule: "%s"', $creatorName, $schedule->title);
             
             // Create UserNotification
-            UserNotification::create([
+            $notification = UserNotification::create([
                 'user_id' => $notifyUserId,
                 'type' => $type,
                 'title' => $title,
@@ -98,12 +103,15 @@ class SendScheduleNotification
                 ]);
             }
             
-            Log::info('Schedule notification created', [
+            // Dispatch push notification job
+            SendPushNotification::dispatch($notifyUser, $notification);
+            
+            Log::info('Schedule notification created and push queued', [
                 'schedule_id' => $schedule->id,
                 'type' => $type,
                 'user_id' => $notifyUserId,
                 'employee_id' => $assignedEmployee->id ?? null,
-                'creator' => $creatorName
+                'notification_id' => $notification->id
             ]);
             
         } catch (\Exception $e) {

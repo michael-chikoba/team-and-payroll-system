@@ -202,7 +202,7 @@ const unreadCount = computed(() => {
 const createEmptySchedule = () => {
   try {
     const today = new Date();
-    const dateStr = isNaN(today.getTime()) ? new Date().toISOString().split('T')[0] : today.toISOString().split('T')[0];
+    const dateStr = today.toISOString().split('T')[0];
     
     return {
       title: '',
@@ -210,27 +210,27 @@ const createEmptySchedule = () => {
       type: 'banner_creation', // Frontend uses 'type'
       priority: 'moderate',
       due_date: dateStr,
-      scheduled_date: dateStr, // Also set scheduled_date
-      assigned_to: '',
+      scheduled_date: dateStr,
+      assigned_to: null,
       meta_data: {},
+      notes: '',
       status: 'pending'
     };
   } catch (err) {
     console.error('Error creating empty schedule:', err);
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    const fallbackDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     
     return {
       title: '',
       description: '',
       type: 'banner_creation',
       priority: 'moderate',
-      due_date: `${year}-${month}-${day}`,
-      scheduled_date: `${year}-${month}-${day}`,
-      assigned_to: '',
+      due_date: fallbackDate,
+      scheduled_date: fallbackDate,
+      assigned_to: null,
       meta_data: {},
+      notes: '',
       status: 'pending'
     };
   }
@@ -291,8 +291,21 @@ const loadInitialData = async () => {
 // --- API Calls ---
 const fetchEmployees = async () => {
   try {
-    const response = await axios.get('/api/manager/employees');
+    // Try manager endpoint first, fall back to admin endpoint if needed
+    let response;
+    try {
+      response = await axios.get('/api/manager/employees');
+    } catch (err) {
+      if (err.response?.status === 403 || err.response?.status === 404) {
+        // Try admin endpoint
+        response = await axios.get('/api/admin/employees');
+      } else {
+        throw err;
+      }
+    }
+    
     employees.value = response.data.data || response.data || [];
+    console.log('Employees loaded:', employees.value.length);
   } catch (err) { 
     console.error('Failed to fetch employees:', err);
     employees.value = [];
@@ -302,24 +315,44 @@ const fetchEmployees = async () => {
 const fetchSchedules = async () => {
   try {
     const response = await axios.get('/api/schedules');
-    const rawSchedules = response.data.schedules || [];
+    console.log('Raw API Response:', response.data);
     
-    // Validate and sanitize schedule dates, and normalize field names
-    schedules.value = rawSchedules.map(schedule => ({
-      ...schedule,
-      // Normalize field names (backend uses schedule_type, frontend uses type)
-      type: schedule.schedule_type || schedule.type,
-      schedule_type: schedule.schedule_type || schedule.type,
-      // Validate dates
-      due_date: validateDate(schedule.due_date) || validateDate(schedule.scheduled_date),
-      scheduled_date: validateDate(schedule.scheduled_date) || validateDate(schedule.due_date),
-      created_at: validateDate(schedule.created_at),
-      updated_at: validateDate(schedule.updated_at)
-    }));
+    // Handle different possible response structures
+    let rawSchedules = [];
+    if (response.data.schedules) {
+      rawSchedules = response.data.schedules;
+    } else if (response.data.data) {
+      rawSchedules = response.data.data;
+    } else if (Array.isArray(response.data)) {
+      rawSchedules = response.data;
+    }
     
-    console.log('Schedules loaded:', schedules.value.length);
+    // Normalize and validate schedules
+    schedules.value = rawSchedules.map(schedule => {
+      const normalized = {
+        ...schedule,
+        // Normalize field names (backend may use 'type', frontend normalizes to both)
+        type: schedule.type || schedule.schedule_type || 'other',
+        schedule_type: schedule.type || schedule.schedule_type || 'other',
+        // Validate dates
+        due_date: validateDate(schedule.due_date) || validateDate(schedule.scheduled_date) || new Date().toISOString().split('T')[0],
+        scheduled_date: validateDate(schedule.scheduled_date) || validateDate(schedule.due_date) || new Date().toISOString().split('T')[0],
+        created_at: validateDate(schedule.created_at),
+        updated_at: validateDate(schedule.updated_at),
+        // Ensure meta_data is an object
+        meta_data: schedule.meta_data || {},
+        // Ensure assigned_to is properly formatted
+        assigned_to: schedule.assigned_to || null
+      };
+      
+      return normalized;
+    });
+    
+    console.log('Schedules loaded and normalized:', schedules.value.length);
   } catch (err) {
     console.error('Failed to fetch schedules:', err);
+    console.error('Error details:', err.response?.data);
+    error.value = 'Failed to load schedules: ' + (err.response?.data?.message || err.message);
     schedules.value = [];
   }
 };
@@ -327,7 +360,7 @@ const fetchSchedules = async () => {
 const fetchNotifications = async () => {
   try {
     const response = await axios.get('/api/notifications');
-    const rawNotifications = response.data.notifications || [];
+    const rawNotifications = response.data.notifications || response.data.data || [];
     
     notifications.value = rawNotifications.map(notif => ({
       ...notif,
@@ -374,7 +407,7 @@ const saveSchedule = async (scheduleData) => {
   try {
     // Validate required fields
     if (!scheduleData.title || !scheduleData.due_date) {
-      alert('Please fill in all required fields');
+      alert('Please fill in all required fields (Title and Due Date)');
       return;
     }
 
@@ -385,15 +418,15 @@ const saveSchedule = async (scheduleData) => {
       return;
     }
 
-    // Prepare data for backend - map frontend fields to backend fields
+    // Prepare data for backend - backend expects 'type' field
     const dataToSend = {
       title: scheduleData.title,
       description: scheduleData.description || '',
-      type: scheduleData.type || scheduleData.schedule_type, // Backend expects 'type'
-      priority: scheduleData.priority,
+      type: scheduleData.type || scheduleData.schedule_type || 'other', // Backend expects 'type'
+      priority: scheduleData.priority || 'moderate',
       due_date: validatedDate,
       scheduled_date: scheduleData.scheduled_date || validatedDate,
-      assigned_to: scheduleData.assigned_to,
+      assigned_to: scheduleData.assigned_to || null,
       meta_data: scheduleData.meta_data || {},
       notes: scheduleData.notes || '',
       status: scheduleData.status || 'pending'
@@ -402,23 +435,31 @@ const saveSchedule = async (scheduleData) => {
     console.log('Saving schedule:', dataToSend);
 
     // Check if ID exists to determine update vs create
+    let response;
     if (scheduleData.id) {
-      await axios.put(`/api/schedules/${scheduleData.id}`, dataToSend);
+      response = await axios.put(`/api/schedules/${scheduleData.id}`, dataToSend);
+      console.log('Schedule updated:', response.data);
     } else {
-      await axios.post('/api/schedules', dataToSend);
+      response = await axios.post('/api/schedules', dataToSend);
+      console.log('Schedule created:', response.data);
     }
     
     await fetchSchedules();
     closeModal();
   } catch (err) {
     console.error('Failed to save schedule:', err);
+    console.error('Error response:', err.response?.data);
+    
     if (err.response?.data?.errors) {
       console.error('Validation errors:', err.response.data.errors);
       const errorMessages = Object.values(err.response.data.errors).flat().join('\n');
       alert('Validation failed:\n' + errorMessages);
+    } else if (err.response?.data?.message) {
+      error.value = err.response.data.message;
+      alert('Error: ' + err.response.data.message);
     } else {
       error.value = 'Failed to save schedule. Please try again.';
-      alert('Failed to save. Please check inputs.');
+      alert('Failed to save. Please check your inputs and try again.');
     }
   } finally {
     isSaving.value = false;
@@ -430,10 +471,10 @@ const completeSchedule = async (scheduleId) => {
   try {
     await axios.post(`/api/schedules/${scheduleId}/complete`);
     await fetchSchedules();
-    if(selectedSchedule.value?.id === scheduleId) showDetailModal.value = false;
+    if (selectedSchedule.value?.id === scheduleId) showDetailModal.value = false;
   } catch (err) {
     console.error('Failed to complete schedule:', err);
-    alert('Error completing schedule');
+    alert('Error completing schedule: ' + (err.response?.data?.message || err.message));
   }
 };
 
@@ -441,8 +482,8 @@ const editSchedule = (schedule) => {
   // Deep clone and normalize fields
   const clonedSchedule = JSON.parse(JSON.stringify(schedule));
   // Ensure both type and schedule_type are set
-  clonedSchedule.type = clonedSchedule.schedule_type || clonedSchedule.type;
-  clonedSchedule.schedule_type = clonedSchedule.schedule_type || clonedSchedule.type;
+  clonedSchedule.type = clonedSchedule.type || clonedSchedule.schedule_type || 'other';
+  clonedSchedule.schedule_type = clonedSchedule.type || clonedSchedule.schedule_type || 'other';
   
   editingSchedule.value = clonedSchedule;
   showCreateModal.value = true;
@@ -450,14 +491,14 @@ const editSchedule = (schedule) => {
 };
 
 const deleteSchedule = async (scheduleId) => {
-  if (!confirm('Delete this schedule?')) return;
+  if (!confirm('Are you sure you want to delete this schedule? This action cannot be undone.')) return;
   try {
     await axios.delete(`/api/schedules/${scheduleId}`);
     await fetchSchedules();
     showDetailModal.value = false;
   } catch (err) {
     console.error('Failed to delete schedule:', err);
-    alert('Error deleting schedule');
+    alert('Error deleting schedule: ' + (err.response?.data?.message || err.message));
   }
 };
 
@@ -470,9 +511,11 @@ const toggleBannerRegion = async (schedule, region) => {
   
   try {
     await axios.put(`/api/schedules/${schedule.id}/meta`, { meta_data: newMeta });
+    console.log('Banner region toggled successfully');
   } catch (err) {
     console.error('Failed to toggle banner region:', err);
     schedule.meta_data = oldMeta;
+    alert('Failed to update banner region');
   }
 };
 
@@ -492,10 +535,10 @@ const toggleNotifications = () => {
 };
 
 const handleNotificationClick = async (notif) => {
-  if(!notif.is_read) await markAsRead(notif.id);
-  if(notif.schedule_id) {
-     const sched = schedules.value.find(s => s.id === notif.schedule_id);
-     if(sched) openScheduleDetail(sched);
+  if (!notif.is_read) await markAsRead(notif.id);
+  if (notif.schedule_id) {
+    const sched = schedules.value.find(s => s.id === notif.schedule_id);
+    if (sched) openScheduleDetail(sched);
   }
   showNotifications.value = false;
 };
@@ -503,8 +546,8 @@ const handleNotificationClick = async (notif) => {
 const markAsRead = async (id) => {
   try {
     const idx = notifications.value.findIndex(n => n.id === id);
-    if(idx !== -1) notifications.value[idx].is_read = true;
-    await axios.put(`/api/notifications/${id}/read`);
+    if (idx !== -1) notifications.value[idx].is_read = true;
+    await axios.post(`/api/notifications/${id}/read`);
   } catch (err) { 
     console.error('Failed to mark as read:', err);
   }
@@ -512,7 +555,7 @@ const markAsRead = async (id) => {
 
 const markAllRead = async () => {
   try {
-    await axios.put('/api/notifications/read-all');
+    await axios.post('/api/notifications/read-all');
     notifications.value.forEach(n => n.is_read = true);
   } catch (err) { 
     console.error('Failed to mark all as read:', err);

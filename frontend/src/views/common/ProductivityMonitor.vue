@@ -1,11 +1,22 @@
 <template>
   <div class="productivity-monitor">
-    <div class="page-header">
-      <h1>Team Productivity Monitor</h1>
+    <div class="header-card">
+      <div class="card-header">
+        <h1 class="card-title">Team Productivity Monitor</h1>
+        <button 
+          @click="exportReport" 
+          class="btn-export" 
+          :disabled="loading || productivityData.length === 0"
+        >
+          📊 Export Report
+        </button>
+      </div>
+      
       <div class="header-subtitle">
         <span class="role-badge">{{ userRole }}</span>
         <span class="business-info" v-if="businessName">{{ businessName }}</span>
       </div>
+      
       <div class="header-actions">
         <div class="period-selector">
           <select v-model="selectedPeriod" @change="onPeriodChange">
@@ -15,15 +26,18 @@
             <option value="last_month">Last Month</option>
             <option value="custom">Custom Range</option>
           </select>
+
           <div v-if="selectedPeriod === 'custom'" class="custom-date-range">
             <input type="date" v-model="customStartDate" @change="onCustomDateChange" :max="today">
             <span>to</span>
             <input type="date" v-model="customEndDate" @change="onCustomDateChange" :max="today" :min="customStartDate">
           </div>
         </div>
-        <button @click="exportReport" class="btn-export" :disabled="loading || productivityData.length === 0">
-          📊 Export Report
-        </button>
+        
+        <div v-if="periodInfo" class="period-info">
+          <span class="period-label">Showing data from:</span>
+          <strong>{{ periodInfo.start }}</strong> to <strong>{{ periodInfo.end }}</strong>
+        </div>
       </div>
     </div>
 
@@ -69,13 +83,6 @@
 
     <!-- Main Content -->
     <div v-if="!loading && !error && authStore.isAuthenticated" class="productivity-content">
-      
-      <!-- Period Info -->
-      <div v-if="periodInfo" class="period-info">
-        <span class="period-label">Showing data from:</span>
-        <strong>{{ periodInfo.start }}</strong> to <strong>{{ periodInfo.end }}</strong>
-      </div>
-
       <!-- Productivity Overview -->
       <div class="overview-section">
         <div class="overview-grid">
@@ -1099,21 +1106,61 @@ export default {
 </script>
 
 <style scoped>
-/* Existing styles remain unchanged - keeping all your CSS */
 .productivity-monitor {
   padding: 2rem;
   max-width: 1600px;
   margin: 0 auto;
 }
 
-.page-header {
-  margin-bottom: 2rem;
+/* Updated Header Card Styles */
+.header-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  margin-bottom: 24px;
 }
 
-.page-header h1 {
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 16px;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
   color: #2d3748;
-  font-size: 2rem;
-  margin: 0 0 0.5rem 0;
+  flex: 1;
+}
+
+.btn-export {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  font-size: 0.95rem;
+  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+}
+
+.btn-export:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.btn-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #a0aec0;
+  box-shadow: none;
 }
 
 .header-subtitle {
@@ -1125,19 +1172,21 @@ export default {
 }
 
 .role-badge {
-  background: #3b82f6;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
   color: white;
-  padding: 0.25rem 0.75rem;
+  padding: 6px 16px;
   border-radius: 20px;
   font-size: 0.875rem;
   font-weight: 600;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
 }
 
 .business-info {
   background: #f3f4f6;
-  padding: 0.25rem 0.75rem;
-  border-radius: 6px;
+  padding: 6px 16px;
+  border-radius: 8px;
   font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .header-actions {
@@ -1146,69 +1195,120 @@ export default {
   align-items: center;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-top: 1.5rem;
+  margin-top: 1rem;
 }
 
 .period-selector {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .period-selector select {
-  padding: 0.5rem 1rem;
+  padding: 8px 16px;
   border: 1px solid #e2e8f0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: white;
   color: #4a5568;
   font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.period-selector select:hover {
+  border-color: #cbd5e1;
+}
+
+.period-selector select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
 .custom-date-range {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
 .custom-date-range input {
-  padding: 0.5rem;
+  padding: 8px 12px;
   border: 1px solid #e2e8f0;
-  border-radius: 4px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+  color: #4a5568;
+  cursor: pointer;
+}
+
+.custom-date-range input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.custom-date-range span {
+  color: #6b7280;
   font-size: 0.875rem;
 }
 
 .period-info {
-  background: #f0f9ff;
-  border: 1px solid #bae7ff;
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  margin-bottom: 1.5rem;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  padding: 12px 16px;
+  border-radius: 8px;
   font-size: 0.875rem;
   color: #0369a1;
+  font-weight: 500;
 }
 
 .period-label {
-  margin-right: 0.5rem;
+  margin-right: 8px;
+  color: #0c4a6e;
 }
 
-.btn-export {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s;
+/* Responsive design for smaller screens */
+@media (max-width: 768px) {
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .btn-export {
+    align-self: stretch;
+    width: 100%;
+    justify-content: center;
+    display: flex;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .period-selector {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .custom-date-range {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
-.btn-export:hover:not(:disabled) {
-  transform: translateY(-2px);
+/* Rest of the existing styles remain unchanged */
+.page-header {
+  margin-bottom: 2rem;
 }
 
-.btn-export:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.page-header h1 {
+  color: #2d3748;
+  font-size: 2rem;
+  margin: 0 0 0.5rem 0;
 }
 
 .loading {

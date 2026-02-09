@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -6,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Carbon\Carbon;
 
 class Ticket extends Model
 {
@@ -31,6 +33,23 @@ class Ticket extends Model
         'approved_at',
         'resolved_at',
         'closed_at',
+        'first_response_at',
+        'response_sla_hours',
+        'resolution_sla_hours',
+        'response_sla_breached',
+        'resolution_sla_breached',
+        'actual_response_time',
+        'actual_resolution_time',
+        'use_business_hours',
+        'started_at',
+        'business_id',
+        'business_group_id',
+        'is_group_ticket',
+        'assigned_business_id',
+        'response_time_hours',
+        'resolution_time_hours',
+        'meets_response_sla',
+        'meets_resolution_sla',
     ];
 
     protected $casts = [
@@ -41,6 +60,20 @@ class Ticket extends Model
         'attachments' => 'array',
         'estimated_hours' => 'decimal:2',
         'actual_hours' => 'decimal:2',
+        'first_response_at' => 'datetime',
+        'response_sla_breached' => 'boolean',
+        'resolution_sla_breached' => 'boolean',
+        'use_business_hours' => 'boolean',
+        'started_at' => 'datetime',
+        'meets_response_sla' => 'boolean',
+        'meets_resolution_sla' => 'boolean',
+        'response_time_hours' => 'integer',
+        'resolution_time_hours' => 'integer',
+        'is_group_ticket' => 'boolean',
+        'response_sla_hours' => 'float',
+        'resolution_sla_hours' => 'float',
+        'actual_response_time' => 'float',
+        'actual_resolution_time' => 'float',
     ];
 
     protected $appends = [
@@ -49,10 +82,9 @@ class Ticket extends Model
         'type_label',
         'is_overdue',
         'time_spent',
-        'sla_status',
     ];
 
-    protected $with = ['user', 'approver', 'department', 'assignedUsers'];
+    protected $with = ['user', 'approver', 'assignedUsers'];
 
     // Status constants
     const STATUS_DRAFT = 'draft';
@@ -77,8 +109,320 @@ class Ticket extends Model
     const TYPE_REQUEST = 'request';
     const TYPE_CHANGE_REQUEST = 'change_request';
 
-     /**
-     * Add these relationships to the existing model
+    /**
+     * Boot method to auto-track SLA metrics
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        // Auto-set SLA defaults when ticket is created
+        static::creating(function ($ticket) {
+            // Set SLA defaults if not already set
+            if (!$ticket->response_sla_hours) {
+                $ticket->response_sla_hours = $ticket->getDefaultResponseSLA();
+            }
+            
+            if (!$ticket->resolution_sla_hours) {
+                $ticket->resolution_sla_hours = $ticket->getDefaultResolutionSLA();
+            }
+        });
+
+        // Track status changes
+        static::updating(function ($ticket) {
+            if ($ticket->isDirty('status')) {
+                $newStatus = $ticket->status;
+
+                // Track when work starts
+                if ($newStatus === 'in_progress' && !$ticket->started_at) {
+                    $ticket->started_at = now();
+                }
+
+                // Track resolution
+                if (in_array($newStatus, ['resolved', 'closed']) && !$ticket->resolved_at) {
+                    $ticket->resolved_at = now();
+                    $ticket->calculateResolutionMetrics();
+                }
+            }
+        });
+
+        // After ticket is created, set meets_sla flags (opposite of breached flags)
+        static::created(function ($ticket) {
+            $ticket->meets_response_sla = !$ticket->response_sla_breached;
+            $ticket->meets_resolution_sla = !$ticket->resolution_sla_breached;
+            $ticket->saveQuietly();
+        });
+    }
+
+    /**
+     * Get default response SLA based on priority and type
+     */
+    public function getDefaultResponseSLA(): float
+    {
+        return (float) match($this->priority) {
+            'critical' => 2,   // 2 hours
+            'high' => 4,       // 4 hours
+            'medium' => 24,    // 24 hours (1 day)
+            'low' => 48,       // 48 hours (2 days)
+            default => 24,
+        };
+    }
+
+    /**
+     * Get default resolution SLA based on priority and type
+     */
+    public function getDefaultResolutionSLA(): float
+    {
+        $baseSLA = (float) match($this->priority) {
+            'critical' => 8,    // 8 hours
+            'high' => 24,       // 24 hours (1 day)
+            'medium' => 72,     // 72 hours (3 days)
+            'low' => 120,       // 120 hours (5 days)
+            default => 72,
+        };
+
+        // Multiply by type complexity
+        $multiplier = match($this->type) {
+            'issue' => 1.0,
+            'request' => 1.5,
+            'change_request' => 2.0,
+            default => 1.0,
+        };
+
+        return $baseSLA * $multiplier;
+    }
+
+    /**
+     * Record first response time
+     */
+    public function recordFirstResponse()
+    {
+        if (!$this->first_response_at) {
+            $this->first_response_at = now();
+            $this->calculateResponseMetrics();
+            $this->save();
+        }
+    }
+
+    /**
+     * Calculate response time metrics
+     */
+    protected function calculateResponseMetrics()
+    {
+        if (!$this->first_response_at) {
+            return;
+        }
+
+        $responseTime = $this->use_business_hours 
+            ? $this->calculateBusinessHours($this->created_at, $this->first_response_at)
+            : $this->created_at->diffInHours($this->first_response_at, true);
+
+        $this->actual_response_time = (float) round($responseTime, 2);
+        $this->response_time_hours = (int) round($responseTime);
+        
+        // Check if SLA was breached
+        if ($this->response_sla_hours && $this->actual_response_time > $this->response_sla_hours) {
+            $this->response_sla_breached = true;
+            $this->meets_response_sla = false;
+        } else {
+            $this->response_sla_breached = false;
+            $this->meets_response_sla = true;
+        }
+    }
+
+    /**
+     * Calculate resolution time metrics
+     */
+    protected function calculateResolutionMetrics()
+    {
+        if (!$this->resolved_at) {
+            return;
+        }
+
+        $resolutionTime = $this->use_business_hours
+            ? $this->calculateBusinessHours($this->created_at, $this->resolved_at)
+            : $this->created_at->diffInHours($this->resolved_at, true);
+
+        $this->actual_resolution_time = (float) round($resolutionTime, 2);
+        $this->resolution_time_hours = (int) round($resolutionTime);
+        
+        // Check if SLA was breached
+        if ($this->resolution_sla_hours && $this->actual_resolution_time > $this->resolution_sla_hours) {
+            $this->resolution_sla_breached = true;
+            $this->meets_resolution_sla = false;
+        } else {
+            $this->resolution_sla_breached = false;
+            $this->meets_resolution_sla = true;
+        }
+    }
+
+    /**
+     * Calculate business hours between two timestamps
+     * Business hours: Monday-Friday, 9 AM - 5 PM
+     */
+    protected function calculateBusinessHours(Carbon $start, Carbon $end): float
+    {
+        $businessHours = 0;
+        $current = $start->copy();
+
+        while ($current < $end) {
+            // Skip weekends
+            if ($current->isWeekend()) {
+                $current->addDay()->setTime(9, 0);
+                continue;
+            }
+
+            // Set to business hours
+            $dayStart = $current->copy()->setTime(9, 0);
+            $dayEnd = $current->copy()->setTime(17, 0);
+
+            // Calculate hours for this day
+            $periodStart = $current > $dayStart ? $current : $dayStart;
+            $periodEnd = $end < $dayEnd ? $end : $dayEnd;
+
+            if ($periodStart < $periodEnd) {
+                $businessHours += $periodStart->diffInHours($periodEnd, true);
+            }
+
+            // Move to next day
+            $current->addDay()->setTime(9, 0);
+        }
+
+        return $businessHours;
+    }
+
+    /**
+     * Get response time remaining (in hours)
+     */
+    public function getResponseTimeRemainingAttribute(): ?float
+    {
+        if ($this->first_response_at || !$this->response_sla_hours) {
+            return null;
+        }
+
+        // Ensure response_sla_hours is a float
+        $slaHours = (float) $this->response_sla_hours;
+        $deadline = $this->created_at->copy()->addHours($slaHours);
+        $remaining = now()->diffInHours($deadline, false);
+        
+        return round($remaining, 2);
+    }
+
+    /**
+     * Get resolution time remaining (in hours)
+     */
+    public function getResolutionTimeRemainingAttribute(): ?float
+    {
+        if ($this->resolved_at || !$this->resolution_sla_hours) {
+            return null;
+        }
+
+        // Ensure resolution_sla_hours is a float
+        $slaHours = (float) $this->resolution_sla_hours;
+        $deadline = $this->created_at->copy()->addHours($slaHours);
+        $remaining = now()->diffInHours($deadline, false);
+        
+        return round($remaining, 2);
+    }
+
+    /**
+     * Get response SLA status
+     */
+    public function getResponseSlaStatusAttribute(): string
+    {
+        if ($this->first_response_at) {
+            return $this->response_sla_breached ? 'breached' : 'met';
+        }
+
+        if (!$this->response_sla_hours) {
+            return 'no_sla';
+        }
+
+        $remaining = $this->response_time_remaining;
+        
+        if ($remaining === null) {
+            return 'met';
+        }
+
+        if ($remaining < 0) {
+            return 'breached';
+        }
+
+        $slaHours = (float) $this->response_sla_hours;
+        if ($remaining < ($slaHours * 0.25)) {
+            return 'critical';
+        }
+
+        if ($remaining < ($slaHours * 0.5)) {
+            return 'warning';
+        }
+
+        return 'on_track';
+    }
+
+    /**
+     * Get resolution SLA status
+     */
+    public function getResolutionSlaStatusAttribute(): string
+    {
+        if ($this->resolved_at) {
+            return $this->resolution_sla_breached ? 'breached' : 'met';
+        }
+
+        if (!$this->resolution_sla_hours) {
+            return 'no_sla';
+        }
+
+        $remaining = $this->resolution_time_remaining;
+        
+        if ($remaining === null) {
+            return 'met';
+        }
+
+        if ($remaining < 0) {
+            return 'breached';
+        }
+
+        $slaHours = (float) $this->resolution_sla_hours;
+        if ($remaining < ($slaHours * 0.25)) {
+            return 'critical';
+        }
+
+        if ($remaining < ($slaHours * 0.5)) {
+            return 'warning';
+        }
+
+        return 'on_track';
+    }
+
+    /**
+     * Check if response is overdue
+     */
+    public function getIsResponseOverdueAttribute(): bool
+    {
+        if ($this->first_response_at) {
+            return false;
+        }
+
+        $remaining = $this->response_time_remaining;
+        return $remaining !== null && $remaining < 0;
+    }
+
+    /**
+     * Check if resolution is overdue
+     */
+    public function getIsResolutionOverdueAttribute(): bool
+    {
+        if ($this->resolved_at) {
+            return false;
+        }
+
+        $remaining = $this->resolution_time_remaining;
+        return $remaining !== null && $remaining < 0;
+    }
+
+    /**
+     * Relationships
      */
     public function comments(): HasMany
     {
@@ -108,19 +452,17 @@ class Ticket extends Model
     {
         return $this->hasMany(TicketActivity::class)->orderBy('created_at', 'desc');
     }
-    /**
-     * Relationships
-     */
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id')
-            ->select(['id', 'first_name', 'last_name', 'email']); // Removed avatar
+            ->select(['id', 'first_name', 'last_name', 'email']);
     }
 
     public function approver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'approver_id')
-            ->select(['id', 'first_name', 'last_name', 'email']); // Removed avatar
+            ->select(['id', 'first_name', 'last_name', 'email']);
     }
 
     public function department(): BelongsTo
@@ -134,7 +476,7 @@ class Ticket extends Model
         return $this->belongsToMany(User::class, 'ticket_assignments')
             ->withTimestamps()
             ->withPivot(['role', 'assigned_at', 'completed_at'])
-            ->select(['users.id', 'first_name', 'last_name', 'email']); // Removed avatar
+            ->select(['users.id', 'first_name', 'last_name', 'email']);
     }
 
     /**
@@ -188,7 +530,7 @@ class Ticket extends Model
 
     public function getTimeSpentAttribute(): float
     {
-        return $this->actual_hours ?? 0;
+        return (float) ($this->actual_hours ?? 0);
     }
 
     public function getSlaStatusAttribute(): string
@@ -265,6 +607,25 @@ class Ticket extends Model
             ->where('priority', '!=', self::PRIORITY_LOW);
     }
 
+    public function scopeResponseSlaBreached($query)
+    {
+        return $query->where('response_sla_breached', true);
+    }
+
+    public function scopeResolutionSlaBreached($query)
+    {
+        return $query->where('resolution_sla_breached', true);
+    }
+
+    public function scopeAtRiskOfBreach($query)
+    {
+        return $query->whereNull('resolved_at')
+            ->where(function($q) {
+                $q->whereRaw('TIMESTAMPDIFF(HOUR, created_at, NOW()) > (response_sla_hours * 0.75)')
+                  ->orWhereRaw('TIMESTAMPDIFF(HOUR, created_at, NOW()) > (resolution_sla_hours * 0.75)');
+            });
+    }
+
     /**
      * Helper methods
      */
@@ -323,9 +684,6 @@ class Ticket extends Model
         return in_array($this->status, [self::STATUS_RESOLVED, self::STATUS_CLOSED]);
     }
 
-    /**
-     * Get available next statuses based on current status and type
-     */
     public function getAvailableStatuses(): array
     {
         $baseStatuses = [
@@ -338,7 +696,6 @@ class Ticket extends Model
             self::STATUS_REOPENED => 'Reopened',
         ];
 
-        // Different workflows based on type
         $workflows = [
             self::TYPE_ISSUE => [
                 self::STATUS_DRAFT => ['pending', 'in_progress'],

@@ -542,7 +542,35 @@ class Business extends Model
             'fiscal_year_start' => $this->fiscal_year_start,
         ];
     }
+// In App\Models\Business.php
 
+public function canAssignCrossBusinessTasks($businessGroupId = null)
+{
+    if ($businessGroupId) {
+        return $this->activeBusinessGroups()
+            ->where('business_groups.id', $businessGroupId)
+            ->wherePivot('can_assign_tasks', true)
+            ->exists();
+    }
+    
+    return $this->activeBusinessGroups()
+        ->wherePivot('can_assign_tasks', true)
+        ->exists();
+}
+
+public function canViewGroupTickets($businessGroupId = null)
+{
+    if ($businessGroupId) {
+        return $this->activeBusinessGroups()
+            ->where('business_groups.id', $businessGroupId)
+            ->wherePivot('can_view_all_tickets', true)
+            ->exists();
+    }
+    
+    return $this->activeBusinessGroups()
+        ->wherePivot('can_view_all_tickets', true)
+        ->exists();
+}
     /**
      * ========================================
      * SUPERADMIN METHODS
@@ -895,16 +923,7 @@ class Business extends Model
             ->exists();
     }
 
-    /**
-     * Check if business can assign cross-business tasks
-     */
-    public function canAssignCrossBusinessTasks(int $groupId): bool
-    {
-        return $this->activeBusinessGroups()
-            ->where('business_groups.id', $groupId)
-            ->wherePivot('can_assign_cross_business_tasks', true)
-            ->exists();
-    }
+   
 
     /**
      * Check if business can manage a group
@@ -1035,4 +1054,5 @@ class Business extends Model
     {
         $this->update(['allow_group_collaboration' => false]);
     }
+    
 }

@@ -47,6 +47,7 @@ use App\Http\Controllers\Api\BusinessGroupMembershipController;
 use App\Http\Controllers\Api\BusinessGroupInvitationController;
 use App\Http\Controllers\Api\GroupTicketController;
 use App\Http\Controllers\Api\GroupTaskController;
+use App\Http\Controllers\Api\ScheduleReportController;
 
 
 
@@ -980,4 +981,34 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('/{task}', [GroupTaskController::class, 'update']);
         Route::post('/{task}/assign-to-business', [GroupTaskController::class, 'assignToBusiness']);
     });
+});
+
+use App\Http\Controllers\Api\PushNotificationController;
+
+// Push notification routes
+Route::middleware(['auth:sanctum'])->prefix('push')->group(function () {
+    Route::post('/subscribe', [PushNotificationController::class, 'subscribe']);
+    Route::delete('/subscribe', [PushNotificationController::class, 'unsubscribe']);
+    Route::get('/preferences', [PushNotificationController::class, 'getPreferences']);
+    Route::put('/preferences', [PushNotificationController::class, 'updatePreferences']);
+    Route::get('/subscriptions', [PushNotificationController::class, 'getSubscriptions']);
+    Route::post('/test', [PushNotificationController::class, 'test']);
+});
+
+// Schedule Reports Routes
+Route::middleware('auth:sanctum')->group(function () {
+    // Employee routes
+    Route::post('/schedule-reports', [ScheduleReportController::class, 'store']);
+    Route::get('/my-reports', [ScheduleReportController::class, 'myReports']);
+    
+    // IMPORTANT: Specific routes MUST come BEFORE generic parameterized routes
+    // Change 'downloadFile' to 'download' to match the registered route
+    Route::get('/schedule-reports/{id}/download', [ScheduleReportController::class, 'download']);
+    
+    // Manager routes - authorization handled in controller
+    Route::get('/schedule-reports', [ScheduleReportController::class, 'index']);
+    Route::put('/schedule-reports/{id}/review', [ScheduleReportController::class, 'review']);
+    
+    // Shared route - this should be LAST
+    Route::get('/schedule-reports/{id}', [ScheduleReportController::class, 'show']);
 });

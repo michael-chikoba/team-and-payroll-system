@@ -7,6 +7,7 @@
       class="sidebar-overlay active"
       @click="closeSidebar"
     ></div>
+    
     <aside class="sidebar" :class="sidebarClasses">
       <div class="logo-section">
         <BriefcaseIcon class="logo-icon h-8 w-8" />
@@ -74,16 +75,10 @@
           <span class="nav-text">Tasks Management</span>
         </router-link>
        
-        <!-- Productivity Monitor - RESTRICTED -->
-        <router-link
-          v-if="canAccessRestrictedPages"
-          to="/admin/productivity"
-          class="nav-item"
-          @click="handleNavClick"
-        >
+        <!-- Productivity Monitor -->
+        <router-link to="/admin/productivity" class="nav-item" @click="handleNavClick">
           <ChartBarIcon class="nav-icon" />
           <span class="nav-text">Productivity Monitor</span>
-          <span class="super-admin-badge">Super Admin</span>
         </router-link>
        
         <router-link to="/admin/tax" class="nav-item" @click="handleNavClick">
@@ -231,7 +226,7 @@
        
         <!-- Profile Dropdown -->
         <div class="profile-dropdown-container" ref="profileDropdownRef">
-          <button class="profile-button" @click="toggleProfileDropdown">
+          <button class="profile-button" @click.stop="toggleProfileDropdown">
             <span class="avatar-placeholder">{{ getUserInitials }}</span>
             <span class="user-name-header">{{ user?.name || 'Admin User' }}</span>
             <ChevronDownIcon
@@ -242,7 +237,7 @@
          
           <!-- Profile dropdown menu -->
           <transition name="dropdown">
-            <div v-if="showProfileDropdown" class="dropdown-menu" @click.stop>
+            <div v-if="showProfileDropdown" class="dropdown-menu">
               <router-link
                 to="/admin/profile"
                 class="dropdown-item"
@@ -252,40 +247,11 @@
                 <span class="dropdown-text">My Profile</span>
               </router-link>
              
-              <router-link
-                to="/admin/tickets"
-                class="dropdown-item"
-                @click="handleDropdownItemClick"
-              >
-                <TicketIcon class="dropdown-icon h-5 w-5" />
-                <span class="dropdown-text">Ticket Management</span>
-                <span v-if="pendingTicketsCount > 0" class="dropdown-badge">{{ pendingTicketsCount }}</span>
-              </router-link>
-              <!-- Business Groups in Profile Dropdown -->
-              <div class="dropdown-section">
-                <div class="dropdown-section-header">Business Groups</div>
-                <router-link
-                  to="/admin/business-groups"
-                  class="dropdown-item"
-                  @click="handleDropdownItemClick"
-                >
-                  <BuildingLibraryIcon class="dropdown-icon h-5 w-5" />
-                  <span class="dropdown-text">All Groups</span>
-                </router-link>
-                <router-link
-                  to="/admin/business-groups/create"
-                  class="dropdown-item"
-                  @click="handleDropdownItemClick"
-                >
-                  <PlusCircleIcon class="dropdown-icon h-5 w-5" />
-                  <span class="dropdown-text">Create Group</span>
-                </router-link>
-              </div>
-             
               <div class="dropdown-divider"></div>
              
               <button
-                @click="logout"
+                type="button"
+                @click="handleLogout"
                 class="dropdown-item logout-dropdown-item"
               >
                 <ArrowLeftOnRectangleIcon class="dropdown-icon h-5 w-5" />
@@ -325,15 +291,10 @@
         </div>
       </transition>
     </div>
-   
-    <!-- Overlay to close dropdown when clicking outside -->
-    <div
-      v-if="showProfileDropdown"
-      class="dropdown-overlay"
-      @click="closeProfileDropdown"
-    ></div>
+    <!-- REMOVED: The problematic overlay div that was blocking clicks -->
   </div>
 </template>
+
 <script>
 import { useAuthStore } from '@/stores/auth'
 import { useRouter, useRoute } from 'vue-router'
@@ -366,9 +327,9 @@ import {
   ChatBubbleLeftRightIcon,
   XMarkIcon,
   PresentationChartLineIcon,
-  ListBulletIcon,
-  PlusCircleIcon
+  ListBulletIcon
 } from '@heroicons/vue/24/outline'
+
 export default {
   name: 'AdminLayout',
   components: {
@@ -399,8 +360,7 @@ export default {
     ChatBubbleLeftRightIcon,
     XMarkIcon,
     PresentationChartLineIcon,
-    ListBulletIcon,
-    PlusCircleIcon
+    ListBulletIcon
   },
   setup() {
     const authStore = useAuthStore()
@@ -463,15 +423,26 @@ export default {
       showBusinessGroups.value = !showBusinessGroups.value
     }
    
-    const logout = async () => {
+    // Enhanced Logout Function
+    const handleLogout = async () => {
       try {
+        console.log("Logout triggered"); // Debug log
+        closeProfileDropdown()
+        
         await authStore.logout()
-        window.location.href = '/auth/login'
-      } catch (error) {
-        console.error('Logout failed:', error)
+        
         localStorage.removeItem('token')
         localStorage.removeItem('user')
-        window.location.href = '/auth/login'
+        localStorage.removeItem('selectedBusiness')
+        
+        router.push('/auth/login')
+      } catch (error) {
+        console.error('Logout failed:', error)
+        // Fallback
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        localStorage.removeItem('selectedBusiness')
+        router.push('/auth/login')
       }
     }
    
@@ -524,16 +495,18 @@ export default {
     }
    
     const handleDropdownItemClick = () => {
-      // Close dropdown when a link is clicked
       closeProfileDropdown()
     }
    
     const handleClickOutside = (event) => {
+      // Logic for Profile Dropdown
       if (profileDropdownRef.value && !profileDropdownRef.value.contains(event.target)) {
-        closeProfileDropdown()
+        if (showProfileDropdown.value) {
+           closeProfileDropdown()
+        }
       }
      
-      // Close business groups dropdown if clicking outside
+      // Logic for Business Groups Dropdown
       const navGroup = document.querySelector('.nav-group')
       if (navGroup && !navGroup.contains(event.target) && showBusinessGroups.value) {
         showBusinessGroups.value = false
@@ -551,13 +524,11 @@ export default {
    
     const handleResize = () => {
       checkIfMobile()
-      // Close dropdowns on mobile
       if (isMobile.value) {
         showBusinessGroups.value = false
       }
     }
    
-    // Watch route changes to close dropdowns
     watch(() => route.path, () => {
       showBusinessGroups.value = false
       if (isMobile.value) {
@@ -566,16 +537,12 @@ export default {
     })
    
     onMounted(() => {
-      // Check if mobile on mount
       checkIfMobile()
-     
-      // Add event listeners
       document.addEventListener('click', handleClickOutside)
       document.addEventListener('keydown', handleEscapeKey)
       window.addEventListener('resize', handleResize)
      
       fetchPendingTicketsCount()
-     
       const ticketRefreshInterval = setInterval(fetchPendingTicketsCount, 300000)
      
       window.addEventListener('ticket-created', fetchPendingTicketsCount)
@@ -593,7 +560,7 @@ export default {
     })
    
     return {
-      logout,
+      handleLogout,
       user: authStore.user,
       showProfileDropdown,
       showChat,
@@ -616,7 +583,6 @@ export default {
       isBusinessGroupDetailsRoute,
       currentPageTitle,
       handleNavClick,
-      // Sidebar
       isSidebarOpen,
       isMobile,
       toggleSidebar,
@@ -626,167 +592,69 @@ export default {
   }
 }
 </script>
+
 <style scoped>
-/* Import centralized responsive layout styles */
 @import '@/assets/css/shared-layout-styles.css';
-/* Additional styles to ensure dropdown is clickable */
-.dropdown-menu {
-  position: relative;
-  z-index: 1001;
-  pointer-events: all;
-}
-.dropdown-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1000;
-  background: transparent;
-}
+
+/* 
+   Ensure the profile dropdown container is relative 
+   so the absolute menu positions correctly against it 
+*/
 .profile-dropdown-container {
   position: relative;
-  z-index: 1002;
+  z-index: 50; /* Ensure container is above general content */
 }
-.dropdown-item {
-  cursor: pointer;
-  pointer-events: all;
-  user-select: none;
-}
-.dropdown-item:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-/* Business Groups Dropdown Styles */
-.nav-group {
-  position: relative;
-}
-.nav-group-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  padding: 12px 16px;
-  color: #4b5563;
-  transition: background-color 0.2s;
-}
-.nav-group-button:hover {
-  background-color: rgba(59, 130, 246, 0.1);
-  color: #1f2937;
-}
-.nav-group.active .nav-group-button {
-  background-color: #3b82f6;
-  color: white;
-}
-.nav-group-menu {
-  background-color: #f9fafb;
-  border-left: 3px solid #3b82f6;
-  margin-left: 16px;
+
+/* 
+   Specific Dropdown Styles to guarantee clickability 
+   and correct stacking context 
+*/
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  width: 12rem; /* w-48 */
+  background-color: white;
+  border-radius: 0.375rem; /* rounded-md */
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+  z-index: 9999; /* Very high Z-index to float above everything else */
   overflow: hidden;
-  border-radius: 0 4px 4px 0;
 }
-.nav-group-item {
+
+.dropdown-item {
   display: flex;
   align-items: center;
-  padding: 10px 16px;
-  color: #4b5563;
+  width: 100%;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem; /* text-sm */
+  color: #374151; /* text-gray-700 */
   text-decoration: none;
   transition: background-color 0.2s;
-  border-left: 3px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  text-align: left;
 }
-.nav-group-item:hover {
-  background-color: #e5e7eb;
-  color: #1f2937;
+
+.dropdown-item:hover {
+  background-color: #f3f4f6; /* hover:bg-gray-100 */
+  color: #111827; /* hover:text-gray-900 */
 }
-.nav-group-item.active {
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-left-color: #3b82f6;
+
+.logout-dropdown-item {
+  color: #ef4444; /* text-red-500 */
 }
-.nav-group-icon {
-  width: 18px;
-  height: 18px;
-  margin-right: 12px;
-  flex-shrink: 0;
+
+.logout-dropdown-item:hover {
+  background-color: #fef2f2; /* hover:bg-red-50 */
+  color: #dc2626; /* hover:text-red-600 */
 }
-.nav-group-text {
-  font-size: 14px;
-  flex-grow: 1;
-}
-.current-group-item {
-  background-color: #f0f9ff;
-  border-left-color: #0ea5e9;
-}
-.current-badge {
-  background-color: #0ea5e9;
-  color: white;
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  margin-left: 8px;
-}
-/* Dropdown transition */
-.dropdown-enter-active,
-.dropdown-leave-active {
-  transition: all 0.3s ease;
-  max-height: 200px;
-  opacity: 1;
-}
-.dropdown-enter-from,
-.dropdown-leave-to {
-  max-height: 0;
-  opacity: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-/* Profile dropdown section */
-.dropdown-section {
-  padding: 8px 0;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
-  margin: 8px 0;
-}
-.dropdown-section-header {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: #6b7280;
-  padding: 8px 16px;
-  letter-spacing: 0.05em;
-}
-/* Super Admin Badge */
-.super-admin-badge {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 12px;
-  margin-left: 8px;
-  white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-/* Rotate transition for dropdown icon */
-.rotate-180 {
-  transform: rotate(180deg);
-}
-/* Mobile responsive adjustments */
-@media (max-width: 768px) {
-  .nav-group-menu {
-    margin-left: 8px;
-  }
- 
-  .nav-group-item {
-    padding: 8px 12px;
-  }
- 
-  .super-admin-badge {
-    font-size: 9px;
-    padding: 1px 6px;
-  }
+
+.dropdown-divider {
+  height: 1px;
+  background-color: #e5e7eb; /* border-gray-200 */
+  margin: 0.25rem 0;
 }
 </style>

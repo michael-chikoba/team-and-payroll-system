@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\UserNotification;
+use App\Jobs\SendPushNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\Controller;
@@ -206,6 +207,65 @@ class NotificationController extends Controller
 
             return response()->json([
                 'message' => 'Failed to delete notification',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new notification and optionally send push
+     * This method can be called from other parts of your application
+     */
+    public function create(Request $request)
+    {
+        try {
+            $request->validate([
+                'user_id' => 'required|exists:users,id',
+                'type' => 'required|string',
+                'title' => 'nullable|string',
+                'message' => 'required|string',
+                'action' => 'nullable|string',
+                'data' => 'nullable|array',
+                'send_push' => 'nullable|boolean'
+            ]);
+
+            $notification = UserNotification::create([
+                'user_id' => $request->user_id,
+                'type' => $request->type,
+                'title' => $request->title,
+                'message' => $request->message,
+                'action' => $request->action,
+                'data' => $request->data,
+                'is_read' => false
+            ]);
+
+            Log::info('Notification created', [
+                'notification_id' => $notification->id,
+                'user_id' => $request->user_id,
+                'type' => $request->type
+            ]);
+
+            // Send push notification if requested and queue is enabled
+            if ($request->input('send_push', true) && config('push-notifications.queue.enabled')) {
+                SendPushNotification::dispatch($notification->user, $notification);
+                
+                Log::info('Push notification job dispatched', [
+                    'notification_id' => $notification->id
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Notification created successfully',
+                'notification' => $notification
+            ], 201);
+        } catch (\Exception $e) {
+            Log::error('Failed to create notification', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to create notification',
                 'error' => $e->getMessage()
             ], 500);
         }
