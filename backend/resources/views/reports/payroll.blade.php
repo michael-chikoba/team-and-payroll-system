@@ -148,180 +148,106 @@
 </head>
 <body>
     @php
-        $currency = $report['currency'] ?? ($report['filters']['currency'] ?? 'KES');
-        $currencySymbol = $report['currency_symbol'] ?? ($report['filters']['currency_symbol'] ?? 'KES');
+        $countryName = $report['filters']['country'] ?? $report['country'] ?? null;
+        $currencyCode = $report['currency'] ?? $report['filters']['currency'] ?? null;
+        $currencySymbol = $report['currency_symbol'] ?? $report['filters']['currency_symbol'] ?? $currencyCode;
+        $periodStart = isset($report['period_start']) ? \Carbon\Carbon::parse($report['period_start']) : null;
+        $periodEnd = isset($report['period_end']) ? \Carbon\Carbon::parse($report['period_end']) : null;
     @endphp
 
     <div class="header">
-        <h1>💼 Comprehensive Payroll Report</h1>
+        <h1>Payroll Report @if($countryName)- {{ $countryName }}@endif</h1>
         <p><strong>Generated:</strong> {{ now()->format('F d, Y - H:i') }}</p>
-        <p><strong>Period:</strong> {{ \Carbon\Carbon::parse($report['period_start'] ?? now())->format('F d, Y') }} to {{ \Carbon\Carbon::parse($report['period_end'] ?? now())->format('F d, Y') }}</p>
+        
+        @if($periodStart && $periodEnd)
+            <p><strong>Period:</strong> {{ $periodStart->format('F d, Y') }} to {{ $periodEnd->format('F d, Y') }}</p>
+        @endif
+        
         @if(isset($report['department']) && $report['department'] !== 'All Departments')
             <p><strong>Department:</strong> {{ $report['department'] }}</p>
         @endif
+        
         @if(isset($report['filters']['business']))
             <p><strong>Business:</strong> {{ $report['filters']['business'] }}</p>
         @endif
-        @if(isset($report['filters']['country']))
-            <p><strong>Country:</strong> {{ $report['filters']['country'] }}</p>
+        
+        @if($countryName)
+            <p><strong>Country:</strong> {{ $countryName }}</p>
         @endif
-        <p><strong>Currency:</strong> {{ $currency }}</p>
+        
+        @if($currencyCode)
+            <p><strong>Currency:</strong> {{ $currencyCode }}</p>
+        @endif
     </div>
 
+    @if(isset($report['processed_employees']) && $report['processed_employees'] > 0)
     <div class="summary">
         <h2>Summary Overview</h2>
         <div class="summary-grid">
             <div class="summary-item">
                 <label>Total Employees</label>
-                <value>{{ $report['processed_employees'] ?? 0 }}</value>
+                <value>{{ $report['processed_employees'] }}</value>
             </div>
+            
+            @if(isset($report['total_gross_salary']))
             <div class="summary-item">
                 <label>Total Gross Salary</label>
-                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_gross_salary'] ?? 0, 2) }}</value>
+                <value class="currency">{{ $currencySymbol ?? '' }} {{ number_format($report['total_gross_salary'], 2) }}</value>
             </div>
+            @endif
+            
+            @if(isset($report['total_earnings']))
             <div class="summary-item">
                 <label>Total Earnings</label>
-                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_earnings'] ?? 0, 2) }}</value>
+                <value class="currency">{{ $currencySymbol ?? '' }} {{ number_format($report['total_earnings'], 2) }}</value>
             </div>
+            @endif
+            
+            @if(isset($report['total_all_deductions']) || isset($report['total_deductions']))
             <div class="summary-item">
                 <label>Total Deductions</label>
-                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_all_deductions'] ?? $report['total_deductions'] ?? 0, 2) }}</value>
+                <value class="currency">{{ $currencySymbol ?? '' }} {{ number_format($report['total_all_deductions'] ?? $report['total_deductions'], 2) }}</value>
             </div>
+            @endif
+            
+            @if(isset($report['total_paye_tax']))
             <div class="summary-item">
                 <label>Total PAYE Tax</label>
-                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_paye_tax'] ?? 0, 2) }}</value>
+                <value class="currency">{{ $currencySymbol ?? '' }} {{ number_format($report['total_paye_tax'], 2) }}</value>
             </div>
+            @endif
+            
+            @if(isset($report['total_net_salary']))
             <div class="summary-item">
                 <label>Total Net Salary</label>
-                <value class="currency">{{ $currencySymbol }} {{ number_format($report['total_net_salary'] ?? 0, 2) }}</value>
+                <value class="currency">{{ $currencySymbol ?? '' }} {{ number_format($report['total_net_salary'], 2) }}</value>
             </div>
+            @endif
         </div>
     </div>
-
-    <!-- Earnings Breakdown -->
-    @if(isset($report['earning_breakdown']) && count($report['earning_breakdown']) > 0)
-    <div class="breakdown-section">
-        <div class="breakdown-title">📈 Earnings Breakdown by Type</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Earning Type</th>
-                    <th>Description</th>
-                    <th>Category</th>
-                    <th class="text-right">Total Amount</th>
-                    <th class="text-right">Employees</th>
-                    <th class="text-right">Average</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($report['earning_breakdown'] as $earning)
-                <tr>
-                    <td><strong>{{ $earning['name'] ?? 'N/A' }}</strong></td>
-                    <td>{{ $earning['description'] ?? 'N/A' }}</td>
-                    <td><span class="type-badge type-{{ $earning['type'] ?? 'basic' }}">{{ $earning['type'] ?? 'basic' }}</span></td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($earning['total_amount'] ?? 0, 2) }}</td>
-                    <td class="text-right">{{ $earning['employee_count'] ?? 0 }}</td>
-                    <td class="text-right currency">
-                        {{ $currencySymbol }} {{ number_format(($earning['employee_count'] ?? 0) > 0 ? ($earning['total_amount'] ?? 0) / $earning['employee_count'] : 0, 2) }}
-                    </td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
     @endif
 
-    <!-- Deductions Breakdown -->
-    @if(isset($report['deduction_breakdown']) && count($report['deduction_breakdown']) > 0)
-    <div class="breakdown-section">
-        <div class="breakdown-title">📉 Deductions Breakdown by Type</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Deduction Type</th>
-                    <th>Description</th>
-                    <th>Category</th>
-                    <th class="text-right">Total Amount</th>
-                    <th class="text-right">Employees</th>
-                    <th class="text-right">Average</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($report['deduction_breakdown'] as $deduction)
-                <tr>
-                    <td><strong>{{ $deduction['name'] ?? 'N/A' }}</strong></td>
-                    <td>{{ $deduction['description'] ?? 'N/A' }}</td>
-                    <td><span class="type-badge type-{{ $deduction['type'] ?? 'statutory' }}">{{ $deduction['type'] ?? 'statutory' }}</span></td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($deduction['total_amount'] ?? 0, 2) }}</td>
-                    <td class="text-right">{{ $deduction['employee_count'] ?? 0 }}</td>
-                    <td class="text-right currency">
-                        {{ $currencySymbol }} {{ number_format(($deduction['employee_count'] ?? 0) > 0 ? ($deduction['total_amount'] ?? 0) / $deduction['employee_count'] : 0, 2) }}
-                    </td>
-                </tr>
-                @endforeach
-            </tbody>
-        </table>
-    </div>
-    @endif
-
-    <!-- Employee Payroll Details with Dynamic Columns -->
     @if(isset($report['payslip_details']) && count($report['payslip_details']) > 0)
-    <div class="breakdown-section" style="page-break-before: always;">
-        <div class="breakdown-title">👥 Detailed Employee Payroll</div>
+    <div class="breakdown-section">
+        <div class="breakdown-title">Employee Payroll Details</div>
         <table>
             <thead>
                 <tr>
                     <th>Employee</th>
                     <th>Department</th>
-                    <th>Pay Period</th>
                     <th class="text-right">Gross</th>
-                    
-                    @if(isset($report['earning_headers']))
-                        @foreach($report['earning_headers'] as $header)
-                        <th class="text-right">{{ $header }}</th>
-                        @endforeach
-                    @endif
-                    
-                    <th class="text-right">Total Earnings</th>
-                    
-                    @if(isset($report['deduction_headers']))
-                        @foreach($report['deduction_headers'] as $header)
-                        <th class="text-right">{{ $header }}</th>
-                        @endforeach
-                    @endif
-                    
-                    <th class="text-right">Total Deductions</th>
+                    <th class="text-right">Deductions</th>
                     <th class="text-right">Net Pay</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach($report['payslip_details'] as $payslip)
                 <tr>
-                    <td><strong>{{ $payslip['employee_name'] ?? 'N/A' }}</strong></td>
+                    <td>{{ $payslip['employee_name'] ?? 'N/A' }}</td>
                     <td>{{ $payslip['department'] ?? 'N/A' }}</td>
-                    <td>{{ $payslip['pay_period'] ?? 'N/A' }}</td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($payslip['gross_salary'] ?? 0, 2) }}</td>
-                    
-                    @if(isset($report['earning_headers']))
-                        @foreach($report['earning_headers'] as $header)
-                        <td class="text-right currency">
-                            {{ $currencySymbol }} {{ number_format($payslip['earnings_breakdown'][$header] ?? 0, 2) }}
-                        </td>
-                        @endforeach
-                    @endif
-                    
-                    <td class="text-right currency"><strong>{{ $currencySymbol }} {{ number_format($payslip['total_earnings'] ?? 0, 2) }}</strong></td>
-                    
-                    @if(isset($report['deduction_headers']))
-                        @foreach($report['deduction_headers'] as $header)
-                        <td class="text-right currency">
-                            {{ $currencySymbol }} {{ number_format($payslip['deductions_breakdown'][$header] ?? 0, 2) }}
-                        </td>
-                        @endforeach
-                    @endif
-                    
-                    <td class="text-right currency"><strong>{{ $currencySymbol }} {{ number_format($payslip['total_deductions'] ?? 0, 2) }}</strong></td>
-                    <td class="text-right currency"><strong>{{ $currencySymbol }} {{ number_format($payslip['net_salary'] ?? 0, 2) }}</strong></td>
+                    <td class="text-right currency">{{ $currencySymbol ?? '' }} {{ number_format($payslip['gross_salary'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">{{ $currencySymbol ?? '' }} {{ number_format($payslip['total_deductions'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">{{ $currencySymbol ?? '' }} {{ number_format($payslip['net_salary'] ?? 0, 2) }}</td>
                 </tr>
                 @endforeach
             </tbody>
@@ -329,34 +255,25 @@
     </div>
     @endif
 
-    <!-- Department Breakdown -->
     @if(isset($report['department_breakdown']) && count($report['department_breakdown']) > 0)
-    <div class="breakdown-section" style="page-break-before: always;">
-        <div class="breakdown-title">🏢 Department Summary</div>
+    <div class="breakdown-section">
+        <div class="breakdown-title">Department Summary</div>
         <table>
             <thead>
                 <tr>
                     <th>Department</th>
                     <th class="text-right">Employees</th>
                     <th class="text-right">Total Gross</th>
-                    <th class="text-right">Total Earnings</th>
-                    <th class="text-right">Total Deductions</th>
                     <th class="text-right">Total Net</th>
-                    <th class="text-right">Avg Net Salary</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach($report['department_breakdown'] as $dept => $data)
                 <tr>
-                    <td><strong>{{ $dept }}</strong></td>
+                    <td>{{ $dept }}</td>
                     <td class="text-right">{{ $data['employee_count'] ?? 0 }}</td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_gross_salary'] ?? 0, 2) }}</td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_earnings'] ?? 0, 2) }}</td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_deductions'] ?? 0, 2) }}</td>
-                    <td class="text-right currency">{{ $currencySymbol }} {{ number_format($data['total_net_salary'] ?? 0, 2) }}</td>
-                    <td class="text-right currency">
-                        {{ $currencySymbol }} {{ number_format(($data['employee_count'] ?? 0) > 0 ? ($data['total_net_salary'] ?? 0) / $data['employee_count'] : 0, 2) }}
-                    </td>
+                    <td class="text-right currency">{{ $currencySymbol ?? '' }} {{ number_format($data['total_gross_salary'] ?? 0, 2) }}</td>
+                    <td class="text-right currency">{{ $currencySymbol ?? '' }} {{ number_format($data['total_net_salary'] ?? 0, 2) }}</td>
                 </tr>
                 @endforeach
             </tbody>
@@ -365,8 +282,10 @@
     @endif
 
     <div class="footer">
-        <p>This is a computer-generated report. Generated on {{ now()->format('F d, Y \a\t h:i A') }}</p>
-        <p>Report includes {{ $report['processed_employees'] ?? 0 }} employees with {{ count($report['earning_headers'] ?? []) }} earning types and {{ count($report['deduction_headers'] ?? []) }} deduction types</p>
+        <p>Generated on {{ now()->format('F d, Y \a\t h:i A') }}</p>
+        @if(isset($report['processed_employees']))
+        <p>Report includes {{ $report['processed_employees'] }} employees</p>
+        @endif
     </div>
 </body>
 </html>

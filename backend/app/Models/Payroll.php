@@ -1,12 +1,15 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\HasEncryptedFields;
 
 class Payroll extends Model
 {
     use HasFactory;
+    use HasEncryptedFields;
 
     protected $fillable = [
         'payroll_period',
@@ -17,18 +20,29 @@ class Payroll extends Model
         'total_net',
         'employee_count',
         'processed_at',
-        'business_id', // Add if you have this field
-        'country_id',  // Add if you have this field
+        'business_id',
+        'country_id',
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
-        'total_gross' => 'decimal:2',
-        'total_net' => 'decimal:2',
         'processed_at' => 'datetime',
+        // REMOVED decimal casts for total_gross and total_net
+        // They will be encrypted by the trait
     ];
 
+    /**
+     * Define which fields should be encrypted
+     */
+    public function getEncryptedFields(): array
+    {
+        return [
+            'total_gross',    // Encrypted
+            'total_net',      // Encrypted
+            
+        ];
+    }
     /**
      * Get payslips associated with this payroll batch
      */

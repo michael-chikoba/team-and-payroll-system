@@ -1,395 +1,451 @@
 <template>
-  <div class="admin-settings-container">
-    <!-- Loading Overlay -->
-    <div v-if="loading" class="loading-state">
+  <div class="settings-page">
+
+    <!-- ── Full-page Loading ──────────────────────── -->
+    <div v-if="loading && !selectedBusinessId" class="full-loading">
       <div class="spinner"></div>
-      <p>Loading configuration...</p>
+      <p>Loading configuration…</p>
     </div>
 
-    <!-- Main Content -->
     <template v-else>
-      <!-- Header Section -->
-      <header class="page-header">
-        <div class="header-content">
-          <h1>⚙️ Business Settings</h1>
-          <p class="subtitle">Manage configuration for your assigned business locations.</p>
-          <div v-if="!isSuperAdmin" class="access-badge">
-            <span class="badge">Assigned Admin</span>
-            <span class="badge-count">{{ accessibleBusinesses.length }} business{{ accessibleBusinesses.length !== 1 ? 'es' : '' }}</span>
+
+      <!-- ── Header Card ───────────────────────────── -->
+      <div class="dashboard-header-card">
+        <div class="header-card-accent"></div>
+        <div class="user-greeting">
+          <div class="avatar-section">
+            <div class="avatar">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                  a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                  A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                  l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                  A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                  l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                  a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                  l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                  a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </div>
+            <div class="user-info">
+              <h1 class="greeting">Business Settings</h1>
+              <p class="subtitle">Manage configuration for your assigned business locations</p>
+              <div class="role-meta">
+                <span v-if="isSuperAdmin" class="role-badge super">👑 Super Admin</span>
+                <span v-else class="role-badge">Assigned Admin</span>
+                <span v-if="accessibleBusinesses.length > 0" class="count-chip">
+                  {{ accessibleBusinesses.length }} business{{ accessibleBusinesses.length !== 1 ? 'es' : '' }}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-        
-        <div class="header-actions">
-          <div class="business-selector-wrapper">
-            <label for="business-select">Select Business</label>
-            <div class="select-container">
-              <span class="select-icon">🏢</span>
-              <select 
-                id="business-select" 
-                v-model="selectedBusinessId" 
-                @change="loadBusinessSettings"
-                :disabled="accessibleBusinesses.length === 0"
-              >
-                <option :value="null">
-                  {{ accessibleBusinesses.length === 0 ? 'No businesses assigned' : '-- Select a business --' }}
-                </option>
-                <option 
-                  v-for="business in accessibleBusinesses" 
-                  :key="business.id" 
-                  :value="business.id"
+
+          <div class="header-actions">
+            <!-- Business Selector -->
+            <div class="filter-group">
+              <label>Active Business</label>
+              <div class="business-select-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" stroke-width="2" class="select-icon">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                  <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+                <select
+                  id="business-select"
+                  v-model="selectedBusinessId"
+                  @change="loadBusinessSettings"
+                  :disabled="accessibleBusinesses.length === 0"
+                  class="business-select"
                 >
-                  {{ business.name }} 
-                  <template v-if="business.country">
-                    ({{ business.country.name }})
-                  </template>
-                  <template v-if="business.is_primary">
-                    ★
-                  </template>
-                </option>
-              </select>
+                  <option :value="null">
+                    {{ accessibleBusinesses.length === 0 ? 'No businesses assigned' : '— Select a business —' }}
+                  </option>
+                  <option v-for="b in accessibleBusinesses" :key="b.id" :value="b.id">
+                    {{ b.name }}{{ b.country ? ' (' + b.country.name + ')' : '' }}{{ b.is_primary ? ' ★' : '' }}
+                  </option>
+                </select>
+              </div>
+              <small v-if="accessibleBusinesses.length === 0" class="hint-error">
+                You are not assigned to any businesses. Contact a super administrator.
+              </small>
             </div>
-            <small v-if="accessibleBusinesses.length === 0" class="access-hint">
-              You are not assigned to any businesses. Contact a super administrator.
-            </small>
+
+            <button
+              v-if="isSuperAdmin"
+              class="btn-primary"
+              @click="$router.push({ name: 'create-business' })"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Create Business
+            </button>
           </div>
-          
-          <button 
-            v-if="isSuperAdmin"
-            class="btn btn-primary" 
-            @click="$router.push({ name: 'create-business' })"
-          >
-            <span class="icon">➕</span> Create Business
-          </button>
-        </div>
-      </header>
-
-      <!-- Feedback Messages -->
-      <transition name="fade">
-        <div v-if="successMessage" class="alert alert-success">
-          <span class="icon">✅</span> {{ successMessage }}
-        </div>
-      </transition>
-
-      <transition name="fade">
-        <div v-if="error" class="alert alert-error">
-          <div class="alert-content">
-            <span class="icon">⚠️</span> {{ error }}
-          </div>
-          <button 
-            v-if="isSettingsMissing && selectedBusinessId" 
-            @click="initializeSelectedBusiness"
-            class="btn btn-sm btn-white"
-          >
-            Initialize Now
-          </button>
-        </div>
-      </transition>
-
-      <!-- Empty State - No Businesses -->
-      <div v-if="accessibleBusinesses.length === 0 && !loading" class="empty-state">
-        <div class="empty-icon">🔒</div>
-        <h3>No Business Access</h3>
-        <p>You are not assigned to manage any businesses.</p>
-        <div class="empty-actions">
-          <button class="btn btn-secondary" @click="loadBusinesses">
-            Refresh List
-          </button>
-          <button v-if="isSuperAdmin" class="btn btn-primary" @click="$router.push({ name: 'business-management' })">
-            Manage Business Assignments
-          </button>
         </div>
       </div>
 
-      <!-- Empty State - Business Not Selected -->
-      <div v-if="accessibleBusinesses.length > 0 && !selectedBusinessId" class="empty-state">
-        <div class="empty-icon">🏢</div>
-        <h3>Select a Business</h3>
-        <p>Choose a business from the dropdown above to manage its settings.</p>
-        <p class="hint">You have access to {{ accessibleBusinesses.length }} business{{ accessibleBusinesses.length !== 1 ? 'es' : '' }}</p>
-      </div>
+      <div class="dashboard-content">
 
-      <!-- Settings Form -->
-      <div v-else-if="selectedBusinessId && (!error || isSettingsMissing)" class="settings-wrapper">
-        
-        <!-- Info Banner with Access Indicator -->
-        <div v-if="currentBusiness" class="info-banner">
-          <div class="banner-icon">{{ currentBusiness.flag_emoji || '🏢' }}</div>
-          <div class="banner-details">
-            <div class="banner-header">
-              <h2>{{ currentBusiness.name }}</h2>
-              <span v-if="currentBusiness.is_primary" class="primary-badge" title="Your primary business">★ Primary</span>
-              <span class="access-type" v-if="!isSuperAdmin">Assigned Admin</span>
+        <!-- ── Toast Banners ──────────────────────── -->
+        <transition name="toast">
+          <div v-if="successMessage" class="toast-banner success">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>{{ successMessage }}</span>
+            <button class="toast-close" @click="successMessage = null">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </transition>
+
+        <transition name="toast">
+          <div v-if="error" class="toast-banner error">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>{{ error }}</span>
+            <button
+              v-if="isSettingsMissing && selectedBusinessId"
+              class="toast-action"
+              @click="initializeSelectedBusiness"
+            >Initialize Now</button>
+            <button class="toast-close" @click="error = null">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </transition>
+
+        <!-- ── Empty: No Access ──────────────────── -->
+        <div v-if="accessibleBusinesses.length === 0" class="table-section">
+          <div class="empty-state">
+            <div class="empty-icon-wrap">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
             </div>
-            <div class="meta-tags">
-              <span class="tag">🌍 {{ currentBusiness.country?.name || currentBusiness.country_name || 'N/A' }}</span>
-              <span v-if="currentBusiness.currency_code" class="tag">💱 {{ currentBusiness.currency_code }}</span>
-              <span v-if="countryInfo" class="tag">🕐 {{ countryInfo.timezone }}</span>
-              <span class="tag" :class="{ 'super-admin': isSuperAdmin }">
-                {{ isSuperAdmin ? '👑 Super Admin' : '👨‍💼 Business Admin' }}
-              </span>
+            <h3>No Business Access</h3>
+            <p>You are not assigned to manage any businesses.</p>
+            <div class="empty-actions">
+              <button class="btn-secondary" @click="loadBusinesses">Refresh List</button>
+              <button v-if="isSuperAdmin" class="btn-primary"
+                @click="$router.push({ name: 'business-management' })">
+                Manage Assignments
+              </button>
             </div>
           </div>
         </div>
 
-        <div class="cards-grid">
-          <!-- Company Information Card -->
-          <div class="card">
-            <div class="card-header">
-              <h3>🏢 Business Information</h3>
+        <!-- ── Empty: Nothing Selected ──────────── -->
+        <div v-else-if="!selectedBusinessId" class="table-section">
+          <div class="empty-state">
+            <div class="empty-icon-wrap">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
             </div>
-            <div class="card-body">
-              <div class="form-grid">
-                <div class="form-group">
-                  <label>Business Name <span class="required">*</span></label>
-                  <input 
-                    v-model="settings.company_name" 
-                    type="text" 
-                    class="form-control"
-                    placeholder="e.g. Lusaka HQ"
-                    @input="onSettingChange"
-                  />
-                </div>
-                
-                <div class="form-group">
-                  <label>Tax / Registration ID</label>
-                  <input 
-                    v-model="settings.tax_id" 
-                    type="text" 
-                    class="form-control"
-                    placeholder="e.g. TPIN-123456"
-                    @input="onSettingChange"
-                  />
-                </div>
-                
-                <div class="form-group">
-                  <label>Currency <span class="required">*</span></label>
-                  <select v-model="settings.currency" class="form-control" @change="onSettingChange">
-                    <option disabled value="">Select Currency</option>
-                    <optgroup label="Major International Currencies">
-                      <option value="USD">USD - US Dollar</option>
-                      <option value="EUR">EUR - Euro</option>
-                      <option value="GBP">GBP - British Pound</option>
-                    </optgroup>
-                    <optgroup label="African Currencies">
-                      <option value="ZMW">ZMW - Zambian Kwacha</option>
-                      <option value="ZAR">ZAR - South African Rand</option>
-                      <option value="NGN">NGN - Nigerian Naira</option>
-                      <option value="KES">KES - Kenyan Shilling</option>
-                    </optgroup>
-                  </select>
-                </div>
-                
-                <div class="form-group">
-                  <label>Date Format</label>
-                  <select v-model="settings.date_format" class="form-control" @change="onSettingChange">
-                    <option value="d/m/Y">DD/MM/YYYY</option>
-                    <option value="m/d/Y">MM/DD/YYYY</option>
-                    <option value="Y-m-d">YYYY-MM-DD</option>
-                    <option value="d M Y">DD MMM YYYY</option>
-                  </select>
-                </div>
+            <h3>Select a Business</h3>
+            <p>Choose a business from the dropdown above to manage its settings.</p>
+            <p class="empty-hint">
+              You have access to {{ accessibleBusinesses.length }}
+              business{{ accessibleBusinesses.length !== 1 ? 'es' : '' }}
+            </p>
+          </div>
+        </div>
 
-                <div class="form-group full-width">
-                  <label>Physical Address <span class="required">*</span></label>
-                  <textarea 
-                    v-model="settings.company_address" 
-                    rows="2" 
-                    class="form-control"
-                    placeholder="Street, City, Province"
-                    @input="onSettingChange"
-                  ></textarea>
-                </div>
+        <!-- ── Settings Form ─────────────────────── -->
+        <template v-else-if="selectedBusinessId && (!error || isSettingsMissing)">
+
+          <!-- Business Info Banner -->
+          <div v-if="currentBusiness" class="business-banner">
+            <div class="banner-flag">{{ currentBusiness.flag_emoji || '🏢' }}</div>
+            <div class="banner-details">
+              <div class="banner-name-row">
+                <h2>{{ currentBusiness.name }}</h2>
+                <span v-if="currentBusiness.is_primary" class="chip amber">★ Primary</span>
+                <span v-if="!isSuperAdmin" class="chip blue">Assigned Admin</span>
+                <span v-else class="chip gold">👑 Super Admin</span>
+              </div>
+              <div class="banner-tags">
+                <span class="btag">🌍 {{ currentBusiness.country?.name || currentBusiness.country_name || 'N/A' }}</span>
+                <span v-if="currentBusiness.currency_code" class="btag">💱 {{ currentBusiness.currency_code }}</span>
+                <span v-if="countryInfo" class="btag">🕐 {{ countryInfo.timezone }}</span>
               </div>
             </div>
           </div>
 
-          <!-- Departments Card -->
-          <div class="card">
-            <div class="card-header">
-              <h3>🏛️ Departments</h3>
-              <button class="btn-text" @click="addDepartment">
-                <span>+ Add New</span>
-              </button>
+          <!-- Settings Cards -->
+          <div class="cards-grid">
+
+            <!-- ── Business Information ──────────── -->
+            <div class="settings-card">
+              <div class="card-header">
+                <div class="card-header-left">
+                  <div class="card-icon" style="background:rgba(99,102,241,0.1);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                      fill="none" stroke="#6366f1" stroke-width="2">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+                      <polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                  </div>
+                  <h3>Business Information</h3>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Business Name <span class="required">*</span></label>
+                    <input v-model="settings.company_name" type="text" class="form-control"
+                      placeholder="e.g. Lusaka HQ" @input="onSettingChange" />
+                  </div>
+                  <div class="form-group">
+                    <label>Tax / Registration ID</label>
+                    <input v-model="settings.tax_id" type="text" class="form-control"
+                      placeholder="e.g. TPIN-123456" @input="onSettingChange" />
+                  </div>
+                  <div class="form-group">
+                    <label>Currency <span class="required">*</span></label>
+                    <select v-model="settings.currency" class="form-control" @change="onSettingChange">
+                      <option disabled value="">Select Currency</option>
+                      <optgroup label="Major International">
+                        <option value="USD">USD — US Dollar</option>
+                        <option value="EUR">EUR — Euro</option>
+                        <option value="GBP">GBP — British Pound</option>
+                      </optgroup>
+                      <optgroup label="African Currencies">
+                        <option value="ZMW">ZMW — Zambian Kwacha</option>
+                        <option value="ZAR">ZAR — South African Rand</option>
+                        <option value="NGN">NGN — Nigerian Naira</option>
+                        <option value="KES">KES — Kenyan Shilling</option>
+                      </optgroup>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Date Format</label>
+                    <select v-model="settings.date_format" class="form-control" @change="onSettingChange">
+                      <option value="d/m/Y">DD/MM/YYYY</option>
+                      <option value="m/d/Y">MM/DD/YYYY</option>
+                      <option value="Y-m-d">YYYY-MM-DD</option>
+                      <option value="d M Y">DD MMM YYYY</option>
+                    </select>
+                  </div>
+                  <div class="form-group full-width">
+                    <label>Physical Address <span class="required">*</span></label>
+                    <textarea v-model="settings.company_address" rows="2" class="form-control"
+                      placeholder="Street, City, Province" @input="onSettingChange"></textarea>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="card-body">
-              <p class="helper-text">Define the operational departments for this branch.</p>
-              <div class="departments-list">
-                <div 
-                  v-for="(dept, index) in settings.departments" 
-                  :key="index" 
-                  class="department-row"
+
+            <!-- ── Departments ───────────────────── -->
+            <div class="settings-card">
+              <div class="card-header">
+                <div class="card-header-left">
+                  <div class="card-icon" style="background:rgba(59,130,246,0.1);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                      fill="none" stroke="#3b82f6" stroke-width="2">
+                      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                      <circle cx="9" cy="7" r="4"/>
+                      <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                    </svg>
+                  </div>
+                  <h3>Departments</h3>
+                </div>
+                <button class="btn-text-action" @click="addDepartment">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Add New
+                </button>
+              </div>
+              <div class="card-body">
+                <p class="helper-text">Define the operational departments for this branch.</p>
+                <div class="dept-list">
+                  <div v-for="(dept, index) in settings.departments" :key="index" class="dept-row">
+                    <div class="dept-num">{{ index + 1 }}</div>
+                    <input v-model="dept.name" type="text" class="form-control"
+                      placeholder="Department Name" @input="onSettingChange" />
+                    <button
+                      class="dept-delete"
+                      @click="removeDepartment(index)"
+                      :disabled="settings.departments.length <= 1"
+                      title="Remove"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Leave Policies ────────────────── -->
+            <div class="settings-card">
+              <div class="card-header">
+                <div class="card-header-left">
+                  <div class="card-icon" style="background:rgba(16,185,129,0.1);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                      fill="none" stroke="#10b981" stroke-width="2">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                      <line x1="16" y1="2" x2="16" y2="6"/>
+                      <line x1="8" y1="2" x2="8" y2="6"/>
+                      <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                  </div>
+                  <h3>Leave Policies</h3>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Annual Leave</label>
+                    <div class="input-suffix-wrap">
+                      <input v-model.number="settings.annual_leave_days" type="number" min="0"
+                        class="form-control" @input="onSettingChange" />
+                      <span class="input-suffix-label">days/yr</span>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Sick Leave</label>
+                    <div class="input-suffix-wrap">
+                      <input v-model.number="settings.sick_leave_days" type="number" min="0"
+                        class="form-control" @input="onSettingChange" />
+                      <span class="input-suffix-label">days/yr</span>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Maternity Leave</label>
+                    <div class="input-suffix-wrap">
+                      <input v-model.number="settings.maternity_leave_days" type="number" min="0"
+                        class="form-control" @input="onSettingChange" />
+                      <span class="input-suffix-label">days</span>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Paternity Leave</label>
+                    <div class="input-suffix-wrap">
+                      <input v-model.number="settings.paternity_leave_days" type="number" min="0"
+                        class="form-control" @input="onSettingChange" />
+                      <span class="input-suffix-label">days</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Security ──────────────────────── -->
+            <div class="settings-card">
+              <div class="card-header">
+                <div class="card-header-left">
+                  <div class="card-icon" style="background:rgba(239,68,68,0.1);">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                      fill="none" stroke="#ef4444" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0110 0v4"/>
+                    </svg>
+                  </div>
+                  <h3>Security</h3>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="form-grid">
+                  <div class="form-group full-width">
+                    <label>Default Password</label>
+                    <input v-model="settings.default_password" type="text"
+                      class="form-control" @input="onSettingChange" />
+                    <small class="field-hint">Used when creating new employee accounts</small>
+                  </div>
+                  <div class="form-group">
+                    <label>Max Login Attempts</label>
+                    <input v-model.number="settings.max_login_attempts" type="number"
+                      min="1" max="10" class="form-control" @input="onSettingChange" />
+                  </div>
+                  <div class="form-group">
+                    <label>Session Timeout</label>
+                    <div class="input-suffix-wrap">
+                      <input v-model.number="settings.session_timeout" type="number"
+                        min="1" class="form-control" @input="onSettingChange" />
+                      <span class="input-suffix-label">min</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /cards-grid -->
+
+          <!-- ── Sticky Action Bar ──────────────── -->
+          <div class="action-bar">
+            <div class="action-bar-inner">
+              <transition name="toast">
+                <span v-if="hasChanges" class="unsaved-indicator">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                  You have unsaved changes
+                </span>
+              </transition>
+              <div class="action-btns">
+                <button
+                  class="btn-secondary"
+                  @click="loadBusinessSettings"
+                  :disabled="(!hasChanges && !isSettingsMissing) || submitting"
+                >Reset</button>
+
+                <button
+                  v-if="!isSettingsMissing"
+                  class="btn-primary"
+                  @click="saveSettings"
+                  :disabled="!hasChanges || submitting"
                 >
-                  <input 
-                    v-model="dept.name" 
-                    type="text" 
-                    class="form-control"
-                    placeholder="Department Name"
-                    @input="onSettingChange"
-                  />
-                  <button 
-                    class="btn-icon delete" 
-                    @click="removeDepartment(index)"
-                    :disabled="settings.departments.length <= 1"
-                    title="Remove Department"
-                  >
-                    🗑️
-                  </button>
-                </div>
+                  <svg v-if="submitting" class="spin-icon" xmlns="http://www.w3.org/2000/svg"
+                    width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                  </svg>
+                  {{ submitting ? 'Saving…' : 'Save Settings' }}
+                </button>
+
+                <button
+                  v-else
+                  class="btn-primary"
+                  @click="initializeSelectedBusiness"
+                  :disabled="submitting"
+                >
+                  <svg v-if="submitting" class="spin-icon" xmlns="http://www.w3.org/2000/svg"
+                    width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                  </svg>
+                  {{ submitting ? 'Initializing…' : 'Initialize Settings' }}
+                </button>
               </div>
             </div>
           </div>
 
-          <!-- Leave Policies Card -->
-          <div class="card">
-            <div class="card-header">
-              <h3>🏖️ Leave Policies</h3>
-            </div>
-            <div class="card-body">
-              <div class="form-grid">
-                <div class="form-group">
-                  <label>Annual Leave (Days)</label>
-                  <div class="input-suffix">
-                    <input 
-                      v-model.number="settings.annual_leave_days" 
-                      type="number" 
-                      class="form-control"
-                      min="0"
-                      @input="onSettingChange"
-                    />
-                    <span>/ yr</span>
-                  </div>
-                </div>
-                
-                <div class="form-group">
-                  <label>Sick Leave (Days)</label>
-                  <div class="input-suffix">
-                    <input 
-                      v-model.number="settings.sick_leave_days" 
-                      type="number" 
-                      class="form-control"
-                      min="0"
-                      @input="onSettingChange"
-                    />
-                    <span>/ yr</span>
-                  </div>
-                </div>
-                
-                <div class="form-group">
-                  <label>Maternity Leave</label>
-                  <div class="input-suffix">
-                    <input 
-                      v-model.number="settings.maternity_leave_days" 
-                      type="number" 
-                      class="form-control"
-                      min="0"
-                      @input="onSettingChange"
-                    />
-                    <span>Days</span>
-                  </div>
-                </div>
-                
-                <div class="form-group">
-                  <label>Paternity Leave</label>
-                  <div class="input-suffix">
-                    <input 
-                      v-model.number="settings.paternity_leave_days" 
-                      type="number" 
-                      class="form-control"
-                      min="0"
-                      @input="onSettingChange"
-                    />
-                    <span>Days</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Security Card -->
-          <div class="card">
-            <div class="card-header">
-              <h3>🔒 Security</h3>
-            </div>
-            <div class="card-body">
-              <div class="form-grid">
-                <div class="form-group">
-                  <label>Default Password</label>
-                  <input 
-                    v-model="settings.default_password" 
-                    type="text" 
-                    class="form-control"
-                    @input="onSettingChange"
-                  />
-                  <small class="hint">For new employee accounts</small>
-                </div>
-                
-                <div class="form-group">
-                  <label>Max Login Attempts</label>
-                  <input 
-                    v-model.number="settings.max_login_attempts" 
-                    type="number" 
-                    class="form-control"
-                    min="1" max="10"
-                    @input="onSettingChange"
-                  />
-                </div>
-                
-                <div class="form-group">
-                  <label>Session Timeout</label>
-                  <div class="input-suffix">
-                    <input 
-                      v-model.number="settings.session_timeout" 
-                      type="number" 
-                      class="form-control"
-                      min="1"
-                      @input="onSettingChange"
-                    />
-                    <span>min</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Sticky Footer Action Bar -->
-        <div class="action-bar">
-          <div class="action-bar-content">
-            <span class="change-indicator" :class="{ visible: hasChanges }">
-              ⚠️ You have unsaved changes
-            </span>
-            <div class="action-buttons">
-              <button 
-                class="btn btn-secondary" 
-                @click="loadBusinessSettings" 
-                :disabled="(!hasChanges && !isSettingsMissing) || submitting"
-              >
-                Reset
-              </button>
-              
-              <button 
-                v-if="!isSettingsMissing"
-                class="btn btn-primary" 
-                @click="saveSettings" 
-                :disabled="!hasChanges || submitting"
-              >
-                <span v-if="submitting" class="spinner-small"></span>
-                {{ submitting ? 'Saving...' : 'Save Settings' }}
-              </button>
-              
-              <button 
-                v-else
-                class="btn btn-primary" 
-                @click="initializeSelectedBusiness" 
-                :disabled="submitting"
-              >
-                <span v-if="submitting" class="spinner-small"></span>
-                {{ submitting ? 'Initializing...' : 'Initialize Settings' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+        </template>
+      </div><!-- /dashboard-content -->
     </template>
   </div>
 </template>
@@ -400,7 +456,7 @@ import axios from 'axios'
 
 export default {
   name: 'AdminSettings',
-  
+
   setup() {
     const authStore = useAuthStore()
     return { authStore }
@@ -409,35 +465,20 @@ export default {
   data() {
     return {
       selectedBusinessId: null,
-      businesses: [], // All businesses from API
-      accessibleBusinesses: [], // Filtered businesses based on access
+      businesses: [],
+      accessibleBusinesses: [],
       currentBusiness: null,
       countryInfo: null,
-      
-      // Default Settings Structure
       settings: {
-        company_name: '',
-        company_address: '',
-        tax_id: '',
-        currency: 'ZMW',
-        annual_leave_days: 21,
-        sick_leave_days: 7,
-        maternity_leave_days: 90,
-        paternity_leave_days: 14,
-        default_password: 'Password123!',
-        max_login_attempts: 5,
-        session_timeout: 60,
-        date_format: 'd/m/Y',
+        company_name: '', company_address: '', tax_id: '', currency: 'ZMW',
+        annual_leave_days: 21, sick_leave_days: 7, maternity_leave_days: 90,
+        paternity_leave_days: 14, default_password: 'Password123!',
+        max_login_attempts: 5, session_timeout: 60, date_format: 'd/m/Y',
         departments: []
       },
-      
       originalSettings: null,
-      loading: false,
-      error: null,
-      isSettingsMissing: false,
-      submitting: false,
-      successMessage: null,
-      userRole: null
+      loading: false, error: null, isSettingsMissing: false,
+      submitting: false, successMessage: null, userRole: null
     }
   },
 
@@ -446,852 +487,442 @@ export default {
       if (!this.originalSettings) return false
       return JSON.stringify(this.settings) !== JSON.stringify(this.originalSettings)
     },
-    
-    isSuperAdmin() {
-      return this.authStore.user?.role === 'super_admin'
-    },
-    
-    isAdmin() {
-      return this.authStore.user?.role === 'admin' || this.isSuperAdmin
-    }
+    isSuperAdmin() { return this.authStore.user?.role === 'super_admin' },
+    isAdmin() { return this.authStore.user?.role === 'admin' || this.isSuperAdmin }
   },
 
-  mounted() {
-    this.initializeComponent()
-  },
+  mounted() { this.initializeComponent() },
 
   methods: {
     async initializeComponent() {
-      if (!this.authStore.isAuthenticated) {
-        this.error = 'Please log in to access settings.'
-        return
-      }
-      
-      if (!this.isAdmin) {
-        this.error = 'Access denied. Administrator privileges required.'
-        return
-      }
-      
+      if (!this.authStore.isAuthenticated) { this.error = 'Please log in to access settings.'; return }
+      if (!this.isAdmin) { this.error = 'Access denied. Administrator privileges required.'; return }
       this.userRole = this.authStore.user?.role
       await this.loadBusinesses()
-      
-      // Auto-select business if stored in user profile
       if (this.authStore.user?.current_business_id && this.hasBusinessAccess(this.authStore.user.current_business_id)) {
         this.selectedBusinessId = this.authStore.user.current_business_id
         await this.loadBusinessSettings()
       }
     },
-   
+
     async loadBusinesses() {
       this.loading = true
       try {
-        // Use the new endpoint that filters based on admin access
-        const response = await axios.get('/api/admin/accessible-businesses')
-        
-        this.businesses = response.data.businesses || []
-        this.accessibleBusinesses = this.businesses // API already filtered
-        
-        console.log('Accessible businesses loaded:', {
-          total: response.data.total,
-          is_super_admin: response.data.is_super_admin,
-          businesses: this.accessibleBusinesses
-        })
-        
-        // If user has only one business, auto-select it
+        const res = await axios.get('/api/admin/accessible-businesses')
+        this.businesses = res.data.businesses || []
+        this.accessibleBusinesses = this.businesses
         if (this.accessibleBusinesses.length === 1 && !this.selectedBusinessId) {
           this.selectedBusinessId = this.accessibleBusinesses[0].id
           await this.loadBusinessSettings()
         }
       } catch (err) {
-        console.error('Failed to load accessible businesses:', err)
         this.error = err.response?.data?.message || 'Failed to load businesses list.'
         this.accessibleBusinesses = []
-      } finally {
-        this.loading = false
-      }
+      } finally { this.loading = false }
     },
-   
-    hasBusinessAccess(businessId) {
-      return this.accessibleBusinesses.some(b => b.id == businessId)
-    },
-   
+
+    hasBusinessAccess(id) { return this.accessibleBusinesses.some(b => b.id == id) },
+
     async loadBusinessSettings() {
       if (!this.selectedBusinessId || !this.hasBusinessAccess(this.selectedBusinessId)) {
-        this.error = 'You do not have access to this business.'
-        return
+        this.error = 'You do not have access to this business.'; return
       }
-
-      this.error = null
-      this.successMessage = null
-      this.isSettingsMissing = false
-      this.countryInfo = null
-      
+      this.error = null; this.successMessage = null; this.isSettingsMissing = false; this.countryInfo = null
       this.loading = true
       this.currentBusiness = this.accessibleBusinesses.find(b => b.id == this.selectedBusinessId)
-
       try {
-        console.log('Loading settings for accessible business:', this.selectedBusinessId)
-        
         const countryCode = this.currentBusiness?.country?.code || this.currentBusiness?.country_code
-        
-        const response = await axios.get('/api/admin/settings', {
-          params: { 
-            business_id: this.selectedBusinessId,
-            country_code: countryCode
-          }
+        const res = await axios.get('/api/admin/settings', {
+          params: { business_id: this.selectedBusinessId, country_code: countryCode }
         })
-       
-        console.log('Settings response:', response.data)
-        
-        if (response.data && response.data.settings) {
-          this.settings = { 
-            ...this.settings,
-            ...response.data.settings,
-            business_id: this.selectedBusinessId
-          }
-          
-          // Parse departments if it's a string
+        if (res.data?.settings) {
+          this.settings = { ...this.settings, ...res.data.settings, business_id: this.selectedBusinessId }
           if (typeof this.settings.departments === 'string') {
-             try {
-               this.settings.departments = JSON.parse(this.settings.departments)
-             } catch(e) {
-               console.error('Failed to parse departments:', e)
-               this.settings.departments = []
-             }
-          } else if (!Array.isArray(this.settings.departments)) {
-             this.settings.departments = []
-          }
-
-          // Ensure at least one department
-          if (this.settings.departments.length === 0) {
-             this.settings.departments = [{ name: 'General' }]
-          }
-
-          this.countryInfo = response.data.country_info
+            try { this.settings.departments = JSON.parse(this.settings.departments) }
+            catch { this.settings.departments = [] }
+          } else if (!Array.isArray(this.settings.departments)) { this.settings.departments = [] }
+          if (this.settings.departments.length === 0) this.settings.departments = [{ name: 'General' }]
+          this.countryInfo = res.data.country_info
           this.originalSettings = JSON.parse(JSON.stringify(this.settings))
         }
       } catch (err) {
-        console.error('Settings load error:', err)
-        
-        // 404 or 422 could mean settings don't exist yet
         if (err.response?.status === 404 || err.response?.status === 422) {
           this.error = `Settings not yet configured for ${this.currentBusiness?.name}.`
-          this.isSettingsMissing = true
-          this.prepareDefaultSettings()
+          this.isSettingsMissing = true; this.prepareDefaultSettings()
         } else if (err.response?.status === 403) {
           this.error = 'You do not have permission to access settings for this business.'
           this.selectedBusinessId = null
-        } else {
-          this.handleApiError(err)
-        }
-      } finally {
-        this.loading = false
-      }
+        } else { this.handleApiError(err) }
+      } finally { this.loading = false }
     },
-    
+
     prepareDefaultSettings() {
-      const business = this.accessibleBusinesses.find(b => b.id == this.selectedBusinessId)
-      
+      const b = this.accessibleBusinesses.find(b => b.id == this.selectedBusinessId)
       this.settings = {
         business_id: this.selectedBusinessId,
-        company_name: business?.name || '',
-        company_address: business?.address_line_1 || '',
-        tax_id: business?.tax_identification_number || '',
-        currency: business?.currency_code || 'ZMW',
-        annual_leave_days: 21,
-        sick_leave_days: 7,
-        maternity_leave_days: 90,
-        paternity_leave_days: 14,
-        default_password: 'Password123!',
-        max_login_attempts: 5,
-        session_timeout: 60,
-        date_format: 'd/m/Y',
-        departments: [
-          { name: 'Human Resources' },
-          { name: 'Finance' },
-          { name: 'Operations' },
-          { name: 'IT' }
-        ]
+        company_name: b?.name || '', company_address: b?.address_line_1 || '',
+        tax_id: b?.tax_identification_number || '', currency: b?.currency_code || 'ZMW',
+        annual_leave_days: 21, sick_leave_days: 7, maternity_leave_days: 90, paternity_leave_days: 14,
+        default_password: 'Password123!', max_login_attempts: 5, session_timeout: 60, date_format: 'd/m/Y',
+        departments: [{ name: 'Human Resources' }, { name: 'Finance' }, { name: 'Operations' }, { name: 'IT' }]
       }
     },
-    
+
     async initializeSelectedBusiness() {
-      if (!this.hasBusinessAccess(this.selectedBusinessId)) {
-        this.error = 'Access denied. You cannot initialize settings for this business.'
-        return
-      }
-      
-      this.submitting = true
-      this.error = null
-      
+      if (!this.hasBusinessAccess(this.selectedBusinessId)) { this.error = 'Access denied.'; return }
+      this.submitting = true; this.error = null
       try {
-        console.log('Initializing settings for business:', this.selectedBusinessId)
-        
         await axios.post('/api/admin/business-settings/initialize', this.settings)
         this.successMessage = `Settings initialized successfully for ${this.currentBusiness?.name}!`
         this.isSettingsMissing = false
-        
-        // Clear success message after 5 seconds
-        setTimeout(() => {
-          this.successMessage = null
-        }, 5000)
-        
+        setTimeout(() => this.successMessage = null, 5000)
         await this.loadBusinessSettings()
-      } catch (err) {
-        console.error('Initialize error:', err)
-        this.handleApiError(err)
-      } finally {
-        this.submitting = false
-      }
+      } catch (err) { this.handleApiError(err) }
+      finally { this.submitting = false }
     },
-   
+
     async saveSettings() {
-      if (!this.hasBusinessAccess(this.selectedBusinessId)) {
-        this.error = 'Access denied. You cannot save settings for this business.'
-        return
-      }
-      
-      this.submitting = true
-      this.error = null
-      this.successMessage = null
-     
+      if (!this.hasBusinessAccess(this.selectedBusinessId)) { this.error = 'Access denied.'; return }
+      this.submitting = true; this.error = null; this.successMessage = null
       try {
-        console.log('Saving settings for business:', this.selectedBusinessId)
-        
-        const response = await axios.put('/api/admin/settings', {
-          ...this.settings,
-          business_id: this.selectedBusinessId
-        })
-       
-        this.successMessage = response.data.message || 'Settings updated successfully!'
+        const res = await axios.put('/api/admin/settings', { ...this.settings, business_id: this.selectedBusinessId })
+        this.successMessage = res.data.message || 'Settings updated successfully!'
         this.originalSettings = JSON.parse(JSON.stringify(this.settings))
-        
-        // Clear success message after 5 seconds
-        setTimeout(() => {
-          this.successMessage = null
-        }, 5000)
-        
-        // Reload businesses if company name changed
-        if (this.settings.company_name !== this.currentBusiness.name) {
-          await this.loadBusinesses()
-        }
-      } catch (err) {
-        console.error('Save error:', err)
-        this.handleApiError(err)
-      } finally {
-        this.submitting = false
-      }
+        setTimeout(() => this.successMessage = null, 5000)
+        if (this.settings.company_name !== this.currentBusiness.name) await this.loadBusinesses()
+      } catch (err) { this.handleApiError(err) }
+      finally { this.submitting = false }
     },
-   
-    addDepartment() {
-      this.settings.departments.push({ name: '' })
-      this.onSettingChange()
-    },
-   
+
+    addDepartment() { this.settings.departments.push({ name: '' }); this.onSettingChange() },
+
     removeDepartment(index) {
       if (this.settings.departments.length > 1) {
-        this.settings.departments.splice(index, 1)
-        this.onSettingChange()
+        this.settings.departments.splice(index, 1); this.onSettingChange()
       }
     },
-   
-    onSettingChange() {
-      // Triggers computed properties to update
-    },
-   
+
+    onSettingChange() { /* triggers computed re-evaluation */ },
+
     handleApiError(err) {
-      let errorMsg = 'An unexpected error occurred.'
-     
-      if (err.code === 'ERR_NETWORK') {
-        errorMsg = 'Network error: Unable to connect to server. Please check your connection.'
-      } else if (err.response?.status === 401) {
-        errorMsg = 'Session expired. Please log in again.'
-        this.authStore.clearAuth()
-        this.$router.push({ name: 'login' })
+      let msg = 'An unexpected error occurred.'
+      if (err.code === 'ERR_NETWORK') msg = 'Network error: Unable to connect to server.'
+      else if (err.response?.status === 401) {
+        msg = 'Session expired. Please log in again.'
+        this.authStore.clearAuth(); this.$router.push({ name: 'login' })
       } else if (err.response?.status === 403) {
-        errorMsg = 'Permission denied. You do not have access to this business.'
-        // Reset selection if access denied
-        this.selectedBusinessId = null
+        msg = 'Permission denied.'; this.selectedBusinessId = null
       } else if (err.response?.status === 422) {
-        const errors = err.response.data.errors
-        if (errors) {
-          errorMsg = Object.values(errors).flat().join(', ')
-        } else {
-          errorMsg = err.response.data.message || 'Validation failed. Please check your inputs.'
-        }
-      } else {
-        errorMsg = err.response?.data?.message || errorMsg
-      }
-     
-      this.error = errorMsg
-      console.error('API Error:', errorMsg, err)
+        const e = err.response.data.errors
+        msg = e ? Object.values(e).flat().join(', ') : err.response.data.message || 'Validation failed.'
+      } else { msg = err.response?.data?.message || msg }
+      this.error = msg
     }
   }
 }
 </script>
 
 <style scoped>
-/* Variables & Reset */
-.admin-settings-container {
+/* ── Base ──────────────────────────────────────────── */
+.settings-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #1e293b;
+  padding: 1.5rem 2rem 6rem;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  color: #1e293b;
-  min-height: 100vh;
-  padding-bottom: 5rem;
-}
-
-/* Header */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: 2rem;
-  margin-bottom: 2.5rem;
-}
-
-.page-header h1 {
-  font-size: 1.875rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0;
-}
-
-.subtitle {
-  color: #64748b;
-  margin-top: 0.5rem;
-}
-
-.access-badge {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  align-items: center;
-}
-
-.badge {
-  background: #e0e7ff;
-  color: #3730a3;
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid #c7d2fe;
-}
-
-.badge-count {
-  background: #f1f5f9;
-  color: #475569;
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.business-selector-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-}
-
-.business-selector-wrapper label {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #475569;
-}
-
-.select-container {
-  position: relative;
-  background: white;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  transition: all 0.2s;
-}
-
-.select-container:focus-within {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.select-icon {
-  padding-left: 0.75rem;
-  font-size: 1.25rem;
-}
-
-select {
-  appearance: none;
-  background: transparent;
-  border: none;
-  padding: 0.75rem 2.5rem 0.75rem 0.75rem;
-  font-size: 0.95rem;
-  color: #1e293b;
-  width: 100%;
-  min-width: 280px;
-  cursor: pointer;
-}
-
-select:focus {
-  outline: none;
-}
-
-select:disabled {
-  background-color: #f8fafc;
-  color: #94a3b8;
-  cursor: not-allowed;
-}
-
-.access-hint {
-  color: #ef4444;
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-  display: block;
-}
-
-/* Cards & Layout */
-.cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-  gap: 1.5rem;
-}
-
-.card {
-  background: white;
-  border-radius: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-  border: 1px solid #f1f5f9;
-  display: flex;
-  flex-direction: column;
-}
-
-.card-header {
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid #f1f5f9;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #334155;
-}
-
-.card-body {
-  padding: 1.5rem;
-  flex: 1;
-}
-
-/* Info Banner */
-.info-banner {
-  background: linear-gradient(to right, #eff6ff, #ffffff);
-  border: 1px solid #bfdbfe;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  margin-bottom: 2rem;
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.banner-icon {
-  font-size: 2.5rem;
-  background: white;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.banner-details h2 {
-  margin: 0 0 0.5rem 0;
-  font-size: 1.25rem;
-  color: #1e40af;
-}
-
-.banner-header {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-}
-
-.primary-badge {
-  background: #fef3c7;
-  color: #92400e;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.access-type {
-  background: #dbeafe;
-  color: #1e40af;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.meta-tags {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.tag {
-  background: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #1e40af;
-  border: 1px solid #dbeafe;
-}
-
-.tag.super-admin {
-  background: linear-gradient(to right, #fef3c7, #fed7aa);
-  color: #92400e;
-  border-color: #fdba74;
-}
-
-/* Forms */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
 }
 
-.form-group.full-width {
-  grid-column: 1 / -1;
+/* ── Full Loading ────────────────────────────────── */
+.full-loading {
+  min-height: 60vh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 1rem;
+  color: #64748b; font-size: 0.875rem;
+}
+.full-loading p { margin: 0; }
+
+/* ── Header Card ─────────────────────────────────── */
+.dashboard-header-card {
+  background: white; border-radius: 16px; padding: 1.5rem 1.75rem;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.03);
+  border: 1px solid #e2e8f0; position: relative; overflow: hidden; flex-shrink: 0;
+}
+.header-card-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  
+}
+.user-greeting {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 1.5rem; flex-wrap: wrap;
+}
+.avatar-section { display: flex; align-items: center; gap: 1rem; }
+.avatar {
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.25); flex-shrink: 0;
+}
+.user-info { display: flex; flex-direction: column; gap: 0.2rem; }
+.greeting  { margin: 0; font-size: 1.375rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
+.subtitle  { margin: 0; color: #64748b; font-size: 0.875rem; }
+.role-meta { margin-top: 0.25rem; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+
+.role-badge {
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  padding: 0.125rem 0.6rem; border-radius: 8px;
+  font-size: 0.7rem; font-weight: 600; color: #1d4ed8;
+}
+.role-badge.super { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+.count-chip {
+  background: #f1f5f9; border: 1px solid #e2e8f0;
+  padding: 0.125rem 0.6rem; border-radius: 8px;
+  font-size: 0.7rem; font-weight: 600; color: #64748b;
+}
+.header-actions {
+  display: flex; gap: 0.75rem; flex-shrink: 0;
+  align-items: flex-end; flex-wrap: wrap;
 }
 
-.form-group label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #64748b;
-  margin-bottom: 0.5rem;
+/* Business Selector */
+.filter-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.filter-group label {
+  font-size: 0.7rem; font-weight: 700; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.04em;
 }
-
-.required {
-  color: #ef4444;
+.business-select-wrap { position: relative; display: flex; align-items: center; }
+.select-icon { position: absolute; left: 0.65rem; color: #94a3b8; pointer-events: none; z-index: 1; }
+.business-select {
+  padding: 0.5rem 2rem 0.5rem 2.1rem; border: 1px solid #e2e8f0;
+  border-radius: 8px; background: #f8fafc; color: #334155;
+  font-size: 0.82rem; font-weight: 500; cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.65rem center;
+  transition: all 0.2s; font-family: inherit; min-width: 260px;
 }
+.business-select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.business-select:disabled { opacity: 0.6; cursor: not-allowed; }
+.hint-error { font-size: 0.72rem; color: #ef4444; }
 
-.form-control {
-  width: 100%;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.5rem;
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  background: #fff;
-  color: #1e293b;
-  box-sizing: border-box;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.input-suffix {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.input-suffix input {
-  padding-right: 3.5rem;
-}
-
-.input-suffix span {
-  position: absolute;
-  right: 1rem;
-  color: #94a3b8;
-  font-size: 0.875rem;
-  pointer-events: none;
-}
-
-textarea.form-control {
-  resize: vertical;
-}
-
-.hint {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  margin-top: 0.25rem;
-  display: block;
-}
-
-/* Departments List */
-.departments-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.department-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.btn-icon {
-  background: transparent;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-icon:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #fca5a5;
-}
-
-.btn-icon:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: #f1f5f9;
-}
-
-.helper-text {
-  font-size: 0.875rem;
-  color: #64748b;
-  margin-bottom: 1rem;
-}
-
-/* Buttons */
-.btn {
-  padding: 0.65rem 1.25rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
-  font-size: 0.95rem;
-  border: none;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.2s;
-}
-
+/* ── Buttons ─────────────────────────────────────── */
 .btn-primary {
-  background: #4f46e5;
-  color: white;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;
+  border: none; padding: 0.5rem 1.1rem; border-radius: 8px;
+  font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  transition: all 0.2s; font-family: inherit; white-space: nowrap;
 }
-
 .btn-primary:hover:not(:disabled) {
-  background: #4338ca;
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99,102,241,0.35);
 }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 .btn-secondary {
-  background: white;
-  border: 1px solid #cbd5e1;
-  color: #475569;
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem; background: white; border: 1px solid #e2e8f0;
+  color: #475569; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
 }
+.btn-secondary:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; }
+.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-secondary:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #94a3b8;
+.btn-text-action {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: none; border: none; color: #6366f1;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer;
+  font-family: inherit; padding: 0.2rem 0.5rem;
+  border-radius: 6px; transition: background 0.15s;
 }
+.btn-text-action:hover { background: #eff6ff; }
 
-.btn-text {
-  background: none;
-  border: none;
-  color: #4f46e5;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
+/* ── Dashboard Content ───────────────────────────── */
+.dashboard-content { display: flex; flex-direction: column; gap: 1.25rem; }
+
+/* ── Toast Banners ───────────────────────────────── */
+.toast-banner {
+  display: flex; align-items: center; gap: 0.6rem;
+  padding: 0.75rem 1rem; border-radius: 10px;
+  font-size: 0.875rem; font-weight: 600;
 }
-
-.btn-text:hover {
-  text-decoration: underline;
+.toast-banner.success { background: #d1fae5; border: 1px solid #6ee7b7; color: #065f46; }
+.toast-banner.error   { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+.toast-banner span { flex: 1; }
+.toast-close {
+  background: none; border: none; color: inherit;
+  cursor: pointer; opacity: 0.7; padding: 0; line-height: 1;
 }
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.toast-close:hover { opacity: 1; }
+.toast-action {
+  background: rgba(255,255,255,0.5); border: 1px solid currentColor;
+  border-radius: 6px; padding: 0.2rem 0.65rem;
+  font-size: 0.75rem; font-weight: 700; cursor: pointer;
+  color: inherit; font-family: inherit; white-space: nowrap;
+  transition: background 0.15s;
 }
+.toast-action:hover { background: rgba(255,255,255,0.8); }
+.toast-enter-active, .toast-leave-active { transition: all 0.25s ease; }
+.toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-6px); }
 
-/* Alerts */
-.alert {
-  padding: 1rem;
-  border-radius: 0.5rem;
-  margin-bottom: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ── Empty States ────────────────────────────────── */
+.table-section {
+  background: white; border-radius: 16px; padding: 1.5rem;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.03);
+  border: 1px solid #e2e8f0;
 }
-
-.alert-error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  color: #991b1b;
-}
-
-.alert-success {
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
-}
-
-.btn-sm {
-  padding: 0.25rem 0.75rem;
-  font-size: 0.8rem;
-}
-
-.btn-white {
-  background: white;
-  border: 1px solid #e5e7eb;
-}
-
-/* Sticky Action Bar */
-.action-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-  border-top: 1px solid #e2e8f0;
-  padding: 1rem 2rem;
-  box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.05);
-  z-index: 50;
-}
-
-.action-bar-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.change-indicator {
-  color: #d97706;
-  font-weight: 500;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.change-indicator.visible {
-  opacity: 1;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 1rem;
-}
-
-/* States */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #4f46e5;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 1rem;
-}
-
-.spinner-small {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
 .empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  background: #f8fafc;
-  border-radius: 1rem;
-  border: 2px dashed #cbd5e1;
+  text-align: center; padding: 4rem 2rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.875rem;
+}
+.empty-icon-wrap {
+  width: 64px; height: 64px; border-radius: 16px; background: #f1f5f9;
+  border: 1px solid #e2e8f0; display: flex; align-items: center;
+  justify-content: center; color: #94a3b8;
+}
+.empty-state h3 { margin: 0; font-size: 1.05rem; font-weight: 700; color: #1e293b; }
+.empty-state p  { margin: 0; font-size: 0.875rem; color: #64748b; }
+.empty-hint { font-size: 0.8rem !important; color: #94a3b8 !important; }
+.empty-actions { display: flex; gap: 0.75rem; margin-top: 0.25rem; }
+
+/* ── Business Banner ────────────────────────────── */
+.business-banner {
+  display: flex; align-items: center; gap: 1.25rem;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+  border: 1px solid #bfdbfe; border-radius: 16px; padding: 1.25rem 1.5rem;
+}
+.banner-flag {
+  width: 56px; height: 56px; border-radius: 14px; background: white;
+  display: flex; align-items: center; justify-content: center; font-size: 1.75rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07); border: 1px solid #e2e8f0; flex-shrink: 0;
+}
+.banner-details { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.banner-name-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.banner-name-row h2 { margin: 0; font-size: 1.15rem; font-weight: 700; color: #1e40af; }
+.chip { display: inline-flex; padding: 0.15rem 0.6rem; border-radius: 6px; font-size: 0.7rem; font-weight: 700; }
+.chip.amber { background: #fef3c7; color: #92400e; }
+.chip.blue  { background: #dbeafe; color: #1e40af; }
+.chip.gold  { background: linear-gradient(135deg, #fef3c7, #fed7aa); color: #92400e; }
+.banner-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.btag {
+  background: white; border: 1px solid #dbeafe; padding: 0.2rem 0.65rem;
+  border-radius: 9999px; font-size: 0.75rem; font-weight: 500; color: #1e40af;
 }
 
-.empty-icon {
-  font-size: 3rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
+/* ── Cards Grid ──────────────────────────────────── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+  gap: 1.25rem;
+}
+.settings-card {
+  background: white; border-radius: 16px;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.03);
+  border: 1px solid #e2e8f0; display: flex; flex-direction: column;
+}
+.card-header {
+  padding: 1.125rem 1.375rem; border-bottom: 1px solid #f1f5f9;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.card-header-left { display: flex; align-items: center; gap: 0.75rem; }
+.card-icon {
+  width: 34px; height: 34px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.card-header h3 { margin: 0; font-size: 1rem; font-weight: 700; color: #334155; }
+.card-body { padding: 1.375rem; flex: 1; }
+
+/* ── Forms ───────────────────────────────────────── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.125rem; }
+.form-group.full-width { grid-column: 1 / -1; }
+.form-group label {
+  display: block; font-size: 0.72rem; font-weight: 700; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.4rem;
+}
+.required { color: #ef4444; }
+.form-control {
+  width: 100%; padding: 0.55rem 0.75rem; border: 1px solid #e2e8f0;
+  border-radius: 8px; font-size: 0.875rem; color: #1e293b; background: #f8fafc;
+  transition: all 0.2s; font-family: inherit; box-sizing: border-box;
+}
+.form-control:focus {
+  outline: none; border-color: #6366f1; background: white;
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+textarea.form-control { resize: vertical; }
+select.form-control {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.75rem center; padding-right: 2rem;
+}
+.field-hint { font-size: 0.72rem; color: #94a3b8; margin-top: 0.3rem; display: block; }
+.helper-text { font-size: 0.82rem; color: #64748b; margin: 0 0 1rem; }
+
+/* Input with unit suffix */
+.input-suffix-wrap { position: relative; display: flex; align-items: center; }
+.input-suffix-wrap .form-control { padding-right: 4.5rem; }
+.input-suffix-label {
+  position: absolute; right: 0.75rem; color: #94a3b8;
+  font-size: 0.72rem; font-weight: 600; pointer-events: none; white-space: nowrap;
 }
 
-.empty-actions {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-  justify-content: center;
+/* Departments */
+.dept-list  { display: flex; flex-direction: column; gap: 0.625rem; }
+.dept-row   { display: flex; align-items: center; gap: 0.5rem; }
+.dept-num {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: #f1f5f9; border: 1px solid #e2e8f0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.68rem; font-weight: 700; color: #94a3b8; flex-shrink: 0;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.dept-delete {
+  width: 34px; height: 34px; border-radius: 7px; border: 1px solid #e2e8f0;
+  background: white; color: #94a3b8;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
 }
+.dept-delete:hover:not(:disabled) { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+.dept-delete:disabled { opacity: 0.35; cursor: not-allowed; }
 
-@keyframes fade {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+/* ── Sticky Action Bar ───────────────────────────── */
+.action-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  background: white; border-top: 1px solid #e2e8f0;
+  box-shadow: 0 -4px 16px -4px rgba(0,0,0,0.06);
+  padding: 0.875rem 2rem;
 }
+.action-bar-inner {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; justify-content: space-between; align-items: center; gap: 1rem;
+}
+.unsaved-indicator {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; font-weight: 600; color: #d97706;
+}
+.action-btns { display: flex; gap: 0.625rem; }
 
-/* Responsive */
+/* ── Spinner ─────────────────────────────────────── */
+.spinner {
+  width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #6366f1;
+  border-radius: 50%; animation: spin 1s linear infinite;
+}
+.spin-icon { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Responsive ──────────────────────────────────── */
 @media (max-width: 768px) {
-  .admin-settings-container {
-    padding: 1rem;
-  }
-  
-  .cards-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1.5rem;
-  }
-  
-  .action-bar {
-    padding: 1rem;
-  }
-  
-  .action-buttons {
-    width: 100%;
-  }
-  
-  .action-buttons .btn {
-    flex: 1;
-    justify-content: center;
-  }
-  
-  .change-indicator {
-    display: none;
-  }
+  .settings-page        { padding: 1rem 1rem 5rem; }
+  .user-greeting        { flex-direction: column; align-items: flex-start; }
+  .cards-grid           { grid-template-columns: 1fr; }
+  .form-grid            { grid-template-columns: 1fr; }
+  .form-group.full-width{ grid-column: 1; }
+  .action-bar           { padding: 0.75rem 1rem; }
+  .action-bar-inner     { flex-direction: row; }
+  .action-btns          { flex: 1; justify-content: flex-end; }
+  .business-select      { min-width: 200px; }
+  .banner-flag          { display: none; }
 }
 </style>

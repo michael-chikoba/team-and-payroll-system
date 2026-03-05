@@ -17,7 +17,10 @@
               />
               <!-- Upload Overlay -->
               <label for="profile-pic-upload" class="avatar-overlay">
-                <span class="camera-icon">📷</span>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hero-icon">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
                 <span class="upload-text">Change</span>
                 <input
                   id="profile-pic-upload"
@@ -61,7 +64,25 @@
             @click="activeTab = tab.id"
             :class="['tab-btn', { active: activeTab === tab.id }]"
           >
-            <span class="tab-icon">{{ tab.icon }}</span>
+            <!-- Personal Details Icon -->
+            <svg v-if="tab.id === 'personal'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+            <!-- Job Details Icon -->
+            <svg v-if="tab.id === 'job'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon">
+              <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+            </svg>
+            <!-- Security Icon -->
+            <svg v-if="tab.id === 'security'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <!-- Documents Icon -->
+            <svg v-if="tab.id === 'documents'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tab-icon">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
             {{ tab.name }}
           </button>
         </nav>
@@ -112,12 +133,25 @@
               </div>
 
               <!-- Form Alerts -->
-              <div v-if="formError" class="alert alert-error">{{ formError }}</div>
-              <div v-if="successMessage" class="alert alert-success">{{ successMessage }}</div>
+              <div v-if="formError" class="alert alert-error">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alert-icon">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                {{ formError }}
+              </div>
+              <div v-if="successMessage" class="alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alert-icon">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                {{ successMessage }}
+              </div>
 
               <div class="form-actions">
                 <button type="button" @click="resetForm" class="btn-ghost">Reset Changes</button>
                 <button type="submit" class="btn-primary" :disabled="updatingProfile">
+                  <svg v-if="!updatingProfile" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+                  </svg>
                   {{ updatingProfile ? 'Saving...' : 'Save Changes' }}
                 </button>
               </div>
@@ -188,11 +222,24 @@
                 </div>
               </div>
 
-              <div v-if="passwordError" class="alert alert-error">{{ passwordError }}</div>
-              <div v-if="passwordSuccess" class="alert alert-success">{{ passwordSuccess }}</div>
+              <div v-if="passwordError" class="alert alert-error">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alert-icon">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                {{ passwordError }}
+              </div>
+              <div v-if="passwordSuccess" class="alert alert-success">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="alert-icon">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
+                {{ passwordSuccess }}
+              </div>
 
               <div class="form-actions">
                 <button type="submit" class="btn-primary" :disabled="updatingPassword || (passwordForm.password !== passwordForm.password_confirmation)">
+                  <svg v-if="!updatingPassword" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
                   {{ updatingPassword ? 'Updating...' : 'Update Password' }}
                 </button>
               </div>
@@ -209,7 +256,10 @@
             <div class="upload-zone">
               <label for="document-upload" class="upload-trigger">
                 <div class="upload-content">
-                  <span class="upload-icon">☁️</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="upload-hero-icon">
+                    <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+                    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+                  </svg>
                   <span class="upload-text">Click to upload files</span>
                   <span class="upload-sub">PDF, DOC, JPG (Max 5MB)</span>
                 </div>
@@ -226,19 +276,51 @@
 
             <div v-if="documents.length > 0" class="docs-list">
               <div v-for="doc in documents" :key="doc.id" class="doc-item">
-                <div class="doc-file-icon">{{ getFileIcon(doc.fileName) }}</div>
+                <div class="doc-file-icon">
+                  <!-- PDF icon -->
+                  <svg v-if="getFileType(doc.fileName) === 'pdf'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-type-icon pdf">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  <!-- Word doc icon -->
+                  <svg v-else-if="getFileType(doc.fileName) === 'doc'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-type-icon doc">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                  </svg>
+                  <!-- Image icon -->
+                  <svg v-else-if="getFileType(doc.fileName) === 'img'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-type-icon img">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <!-- Generic file icon -->
+                  <svg v-else xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="file-type-icon generic">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>
+                  </svg>
+                </div>
                 <div class="doc-details">
                   <span class="doc-name">{{ doc.fileName }}</span>
                   <span class="doc-meta">{{ formatDate(doc.uploadDate) }} • {{ doc.type || 'General' }}</span>
                 </div>
                 <div class="doc-tools">
-                  <button @click="downloadDocument(doc.id)" class="tool-btn download" title="Download">⬇</button>
-                  <button @click="deleteDocument(doc.id)" class="tool-btn delete" title="Delete">🗑</button>
+                  <button @click="downloadDocument(doc.id)" class="tool-btn download" title="Download">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tool-icon">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  </button>
+                  <button @click="deleteDocument(doc.id)" class="tool-btn delete" title="Delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="tool-icon">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                    </svg>
+                  </button>
                 </div>
               </div>
             </div>
             
             <div v-else class="empty-docs">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
               <p>No documents uploaded yet.</p>
             </div>
           </div>
@@ -268,12 +350,11 @@ export default {
     return {
       activeTab: 'personal',
       tabs: [
-        { id: 'personal', name: 'Personal Details', icon: '👤' },
-        { id: 'job', name: 'Job Details', icon: '💼' },
-        { id: 'security', name: 'Security', icon: '🔒' },
-        { id: 'documents', name: 'Documents', icon: '📂' }
+        { id: 'personal', name: 'Personal Details' },
+        { id: 'job', name: 'Job Details' },
+        { id: 'security', name: 'Security' },
+        { id: 'documents', name: 'Documents' }
       ],
-      // Existing data structure
       form: {
         first_name: '',
         last_name: '',
@@ -309,7 +390,6 @@ export default {
     this.fetchProfile()
   },
   methods: {
-    // --- API & LOGIC METHODS (Kept same logic, just polished) ---
     async fetchProfile(retry = false) {
       this.loading = true
       this.error = null
@@ -440,7 +520,7 @@ export default {
     },
    
     handleImageError() {
-      this.profilePicUrl = '' // will fall back to default or initial in logic if handled
+      this.profilePicUrl = ''
     },
    
     async handleDocumentUpload(event) {
@@ -493,11 +573,13 @@ export default {
       if (this.originalFormData) this.form = { ...this.originalFormData }
       this.formError = null
     },
-   
-    getFileIcon(fileName) {
-      const ext = fileName.split('.').pop()?.toLowerCase()
-      const icons = { pdf: '📄', doc: '📝', docx: '📝', jpg: '🖼️', png: '🖼️' }
-      return icons[ext] || '📎'
+
+    getFileType(fileName) {
+      const ext = fileName?.split('.').pop()?.toLowerCase()
+      if (ext === 'pdf') return 'pdf'
+      if (['doc', 'docx'].includes(ext)) return 'doc'
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'img'
+      return 'generic'
     },
     
     handleApiError(err, defaultMsg, target = 'form') {
@@ -530,7 +612,7 @@ export default {
 /* --- Layout & Variables --- */
 .profile-view {
   min-height: 100vh;
-  background-color: #f3f4f6; /* Light gray background */
+  background-color: #f3f4f6;
   padding: 2rem;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: #1f2937;
@@ -601,6 +683,7 @@ export default {
   transition: opacity 0.2s ease;
   cursor: pointer;
   font-size: 0.8rem;
+  gap: 4px;
 }
 
 .avatar-container:hover .avatar-overlay {
@@ -609,6 +692,18 @@ export default {
 
 .avatar-overlay input {
   display: none;
+}
+
+.avatar-overlay .upload-text {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: white;
+}
+
+.hero-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .identity-info {
@@ -709,6 +804,12 @@ export default {
 .tab-btn.active {
   color: #4f46e5;
   border-bottom-color: #4f46e5;
+}
+
+.tab-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .tab-panel {
@@ -825,6 +926,9 @@ input:focus, textarea:focus {
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -834,6 +938,12 @@ input:focus, textarea:focus {
 .btn-primary:disabled {
   background: #a5b4fc;
   cursor: not-allowed;
+}
+
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .btn-ghost {
@@ -855,12 +965,23 @@ input:focus, textarea:focus {
   padding: 1rem;
   border-radius: 8px;
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
+
+.alert-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 .alert-error {
   background: #fef2f2;
   color: #991b1b;
   border: 1px solid #fecaca;
 }
+
 .alert-success {
   background: #f0fdf4;
   color: #166534;
@@ -891,10 +1012,17 @@ input:focus, textarea:focus {
   display: none;
 }
 
-.upload-icon {
-  font-size: 2rem;
+.upload-hero-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: #9ca3af;
   display: block;
-  margin-bottom: 0.5rem;
+  margin: 0 auto 0.5rem;
+  transition: color 0.2s;
+}
+
+.upload-trigger:hover .upload-hero-icon {
+  color: #4f46e5;
 }
 
 .upload-text {
@@ -906,6 +1034,8 @@ input:focus, textarea:focus {
 .upload-sub {
   font-size: 0.8rem;
   color: #9ca3af;
+  display: block;
+  margin-top: 0.25rem;
 }
 
 .docs-list {
@@ -930,8 +1060,30 @@ input:focus, textarea:focus {
 }
 
 .doc-file-icon {
-  font-size: 1.5rem;
   margin-right: 1rem;
+  display: flex;
+  align-items: center;
+}
+
+.file-type-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.file-type-icon.pdf {
+  color: #dc2626;
+}
+
+.file-type-icon.doc {
+  color: #2563eb;
+}
+
+.file-type-icon.img {
+  color: #7c3aed;
+}
+
+.file-type-icon.generic {
+  color: #6b7280;
 }
 
 .doc-details {
@@ -965,8 +1117,12 @@ input:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
   transition: background 0.2s;
+}
+
+.tool-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .download {
@@ -981,6 +1137,27 @@ input:focus, textarea:focus {
 }
 .delete:hover { background: #fee2e2; }
 
+/* --- Empty State --- */
+.empty-docs {
+  text-align: center;
+  padding: 3rem 0;
+  color: #9ca3af;
+}
+
+.empty-icon {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 0.75rem;
+  opacity: 0.5;
+}
+
+/* --- Password Form --- */
+.password-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
 /* --- Mobile Responsiveness --- */
 @media (max-width: 768px) {
   .profile-container {
@@ -992,7 +1169,7 @@ input:focus, textarea:focus {
     position: static;
   }
   
-  .form-grid, .info-grid {
+  .form-grid, .info-grid, .password-split {
     grid-template-columns: 1fr;
   }
   

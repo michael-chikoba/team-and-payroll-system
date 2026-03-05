@@ -355,22 +355,28 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         // Admin's Personal Attendance
         Route::prefix('attendance')->group(function () {
-            // Specific routes first
-            Route::get('status', [AttendanceController::class, 'getAttendanceStatus']);
-            Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
-            Route::get('countries', [AttendanceController::class, 'getCountries']);
-            Route::get('businesses', [AttendanceController::class, 'getBusinesses']);
-            Route::get('today-status', [AttendanceController::class, 'todayStatus']);
-            Route::get('stats', [AttendanceController::class, 'summary']);
-            Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
-            Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
-            Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
-            Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
-            
-            // Actions
-            Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
-            Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
-            Route::post('{employee}/mark-present', [AttendanceController::class, 'markPresent']);
+    // ── Specific named routes FIRST ──
+    Route::get('status',           [AttendanceController::class, 'getAttendanceStatus']);
+    Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
+    Route::get('countries',        [AttendanceController::class, 'getCountries']);
+    Route::get('businesses',       [AttendanceController::class, 'getBusinesses']);
+    Route::get('today-status',     [AttendanceController::class, 'todayStatus']);
+    Route::get('stats',            [AttendanceController::class, 'summary']);
+    Route::get('monthly-stats',    [AttendanceController::class, 'monthlyStats']);
+    Route::get('monthly-breakdown',[AttendanceController::class, 'monthlyBreakdown']);
+    Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
+    Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
+    Route::get('history',          [AttendanceController::class, 'adminHistory']);
+
+    // ── Parameterized routes LAST ──
+    Route::get('{employee}/history',      [AttendanceController::class, 'employeeHistory']);
+    Route::post('{employee}/mark-present',[AttendanceController::class, 'markPresent']);
+    Route::post('{employee}/clock-out',   [AttendanceController::class, 'managerClockOut']);
+    
+    // ... actions
+    Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
+    Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
+
             
             // Personal actions
             Route::get('history', [AttendanceController::class, 'adminHistory']);
@@ -1011,4 +1017,32 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Shared route - this should be LAST
     Route::get('/schedule-reports/{id}', [ScheduleReportController::class, 'show']);
+});
+
+
+use App\Http\Controllers\Api\AdminPermissionController;
+
+
+// Owner-level admin management
+Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
+// Any authenticated admin can fetch their own restrictions
+Route::get('/my-permissions', [AdminPermissionController::class, 'myPermissions']);
+
+    Route::prefix('admin-permissions')->group(function () {
+        // List all admins + their permissions for a business
+        Route::get('/',                    [AdminPermissionController::class, 'index']);
+
+        // Get single admin's permissions
+        Route::get('/{userId}',            [AdminPermissionController::class, 'show']);
+
+        // Update restriction flags
+        Route::put('/{userId}',            [AdminPermissionController::class, 'update']);
+
+        // Change role
+        Route::patch('/{userId}/role',     [AdminPermissionController::class, 'updateRole']);
+
+        // Suspend / unsuspend
+        Route::post('/{userId}/suspend',   [AdminPermissionController::class, 'suspend']);
+        Route::post('/{userId}/unsuspend', [AdminPermissionController::class, 'unsuspend']);
+    });
 });

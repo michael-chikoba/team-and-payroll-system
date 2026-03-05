@@ -55,7 +55,12 @@ class ReportExportService
     }
 
     /**
-     * Prepare data structure for PDF views - FIXED to ensure numeric types
+     * Prepare data structure for PDF views.
+     *
+     * Currency, country, and date values are passed through strictly from the
+     * report data. No defaults are injected — null means "not available" and
+     * the Blade view must handle it gracefully (e.g. show "N/A", omit the
+     * symbol, or label the report "Multi-currency").
      */
     private function prepareDataForPdf(array $data): array
     {
@@ -97,31 +102,36 @@ class ReportExportService
             $preparedData = $data;
         }
 
-        // Ensure required date fields exist
+        // Period dates — resolve from data only; null if genuinely absent.
+        // Never invent a date range (e.g. current month) as that would silently
+        // misrepresent what the report covers.
         if (!isset($preparedData['period_start'])) {
-            $preparedData['period_start'] = $preparedData['start_date'] ?? 
-                $preparedData['filters']['start_date'] ?? 
-                now()->startOfMonth()->toDateString();
+            $preparedData['period_start'] = $preparedData['start_date']
+                ?? $preparedData['filters']['start_date']
+                ?? null;
         }
 
         if (!isset($preparedData['period_end'])) {
-            $preparedData['period_end'] = $preparedData['end_date'] ?? 
-                $preparedData['filters']['end_date'] ?? 
-                now()->endOfMonth()->toDateString();
+            $preparedData['period_end'] = $preparedData['end_date']
+                ?? $preparedData['filters']['end_date']
+                ?? null;
         }
 
-        // Ensure currency fields exist
+        // Currency — pass through exactly what the report resolved.
+        // null means the result set spans multiple currencies or has no country
+        // data; the view should handle this case explicitly.
         if (!isset($preparedData['currency'])) {
-            $preparedData['currency'] = $preparedData['filters']['currency'] ?? 'KES';
+            $preparedData['currency'] = $preparedData['filters']['currency'] ?? null;
         }
 
         if (!isset($preparedData['currency_symbol'])) {
-            $preparedData['currency_symbol'] = $preparedData['filters']['currency_symbol'] ?? 'KES';
+            $preparedData['currency_symbol'] = $preparedData['filters']['currency_symbol'] ?? null;
         }
 
-        // Ensure department field exists
+        // Department — null when not filtered; the view should show "All Departments"
+        // or similar copy itself rather than having this service invent it.
         if (!isset($preparedData['department'])) {
-            $preparedData['department'] = $preparedData['filters']['department'] ?? 'All Departments';
+            $preparedData['department'] = $preparedData['filters']['department'] ?? null;
         }
 
         // CRITICAL FIX: Ensure all numeric fields are actually numeric, not strings
@@ -142,10 +152,8 @@ class ReportExportService
 
         foreach ($numericFields as $field) {
             if (isset($preparedData[$field])) {
-                // Remove any formatting and convert to float
                 $value = $preparedData[$field];
                 if (is_string($value)) {
-                    // Remove commas and other formatting
                     $value = str_replace(',', '', $value);
                 }
                 $preparedData[$field] = (float) $value;
@@ -157,19 +165,19 @@ class ReportExportService
             $preparedData['total_paye_tax'] ?? 
             $preparedData['total_paye'] ?? 
             $preparedData['total_tax_withheld'] ?? 
-            0
+            null
         );
 
         $preparedData['total_earnings'] = $this->ensureNumeric(
             $preparedData['total_earnings'] ?? 
             $preparedData['total_gross_salary'] ?? 
-            0
+            null
         );
 
         $preparedData['total_deductions'] = $this->ensureNumeric(
             $preparedData['total_all_deductions'] ?? 
             $preparedData['total_deductions'] ?? 
-            0
+            null
         );
 
         // Ensure processed_employees exists
@@ -181,16 +189,16 @@ class ReportExportService
         if (!isset($preparedData['average_deductions']) && $preparedData['processed_employees'] > 0) {
             $preparedData['average_deductions'] = $preparedData['total_deductions'] / $preparedData['processed_employees'];
         } else {
-            $preparedData['average_deductions'] = $this->ensureNumeric($preparedData['average_deductions'] ?? 0);
+            $preparedData['average_deductions'] = $this->ensureNumeric($preparedData['average_deductions'] ?? null);
         }
 
         if (!isset($preparedData['average_earnings']) && $preparedData['processed_employees'] > 0) {
             $preparedData['average_earnings'] = $preparedData['total_earnings'] / $preparedData['processed_employees'];
         } else {
-            $preparedData['average_earnings'] = $this->ensureNumeric($preparedData['average_earnings'] ?? 0);
+            $preparedData['average_earnings'] = $this->ensureNumeric($preparedData['average_earnings'] ?? null);
         }
 
-        // CRITICAL: Clean up employee earnings/deductions data
+        // Clean up employee earnings/deductions data
         if (isset($preparedData['employee_earnings']) && is_array($preparedData['employee_earnings'])) {
             $preparedData['employee_earnings'] = $this->cleanEmployeeData($preparedData['employee_earnings']);
         }
@@ -227,6 +235,8 @@ class ReportExportService
             'period_start' => $preparedData['period_start'],
             'period_end' => $preparedData['period_end'],
             'currency' => $preparedData['currency'],
+            'currency_symbol' => $preparedData['currency_symbol'],
+            'is_multi_currency' => $preparedData['is_multi_currency'] ?? null,
             'processed_employees' => $preparedData['processed_employees'],
             'total_deductions' => $preparedData['total_deductions'],
             'has_payslip_details' => isset($preparedData['payslip_details']),
@@ -237,16 +247,22 @@ class ReportExportService
     }
 
     /**
-     * Ensure a value is numeric (float)
+     * Ensure a value is numeric (float).
+     * Returns 0.0 for null/unparseable values so arithmetic in views is safe,
+     * but callers that need to distinguish "zero" from "absent" should check
+     * for null before calling this method.
      */
     private function ensureNumeric($value): float
     {
+        if (is_null($value)) {
+            return 0.0;
+        }
+        
         if (is_numeric($value)) {
             return (float) $value;
         }
         
         if (is_string($value)) {
-            // Remove commas and other formatting
             $cleaned = str_replace(',', '', trim($value));
             if (is_numeric($cleaned)) {
                 return (float) $cleaned;
@@ -262,7 +278,6 @@ class ReportExportService
     private function cleanEmployeeData(array $employees): array
     {
         return array_map(function ($employee) {
-            // Fields that should be numeric
             $numericFields = [
                 'total_earnings',
                 'gross_salary',
@@ -312,7 +327,7 @@ class ReportExportService
     }
 
     /**
-     * Export report to CSV - FIXED VERSION
+     * Export report to CSV
      */
     public function exportToCsv(array $data, string $filename, string $reportType = 'payroll')
     {
@@ -328,10 +343,8 @@ class ReportExportService
                 'has_earning_headers' => isset($data['earning_headers'])
             ]);
 
-            // CRITICAL FIX: Extract data based on structure
             $reportData = $this->extractReportDataForCsv($data, $reportType);
             
-            // Generate CSV based on report type
             switch ($reportType) {
                 case 'payroll':
                     $this->generateDetailedPayrollCsv($file, $reportData);
@@ -362,24 +375,14 @@ class ReportExportService
     {
         $result = [];
         
-        // Check if data is wrapped in 'data' key (from controller response)
         if (isset($data['data']) && is_array($data['data'])) {
             $result = $data['data'];
         } else {
             $result = $data;
         }
 
-        // Ensure we have the data array
         if (!isset($result['payslip_details']) && isset($result['data']) && is_array($result['data'])) {
             $result['payslip_details'] = $result['data'];
-        }
-
-        // Extract headers if they exist
-        if (isset($result['earning_headers'])) {
-            $result['earning_headers'] = $result['earning_headers'];
-        }
-        if (isset($result['deduction_headers'])) {
-            $result['deduction_headers'] = $result['deduction_headers'];
         }
 
         return $result;
@@ -397,11 +400,9 @@ class ReportExportService
             'has_deduction_headers' => isset($data['deduction_headers'])
         ]);
 
-        // Get headers from the first payslip if not provided in summary
         $earningHeaders = $data['earning_headers'] ?? [];
         $deductionHeaders = $data['deduction_headers'] ?? [];
         
-        // If headers are empty, extract from first payslip
         if (empty($earningHeaders) && !empty($data['payslip_details'])) {
             $firstPayslip = $data['payslip_details'][0] ?? [];
             if (isset($firstPayslip['earnings_breakdown'])) {
@@ -416,7 +417,6 @@ class ReportExportService
             }
         }
 
-        // Build CSV headers
         $csvHeaders = [
             'Employee Name',
             'Employee ID', 
@@ -429,14 +429,12 @@ class ReportExportService
             'Status'
         ];
 
-        // Add earnings columns
         $csvHeaders[] = 'Gross Salary';
         foreach ($earningHeaders as $header) {
             $csvHeaders[] = $header . ' (Earnings)';
         }
         $csvHeaders[] = 'Total Earnings';
 
-        // Add deductions columns
         foreach ($deductionHeaders as $header) {
             $csvHeaders[] = $header . ' (Deductions)';
         }
@@ -446,7 +444,6 @@ class ReportExportService
 
         fputcsv($file, $csvHeaders);
 
-        // Build rows
         $payslips = $data['payslip_details'] ?? [];
         
         foreach ($payslips as $row) {
@@ -463,10 +460,8 @@ class ReportExportService
                 $row['status'] ?? 'N/A'
             ];
 
-            // Add gross salary
             $csvRow[] = $this->ensureNumeric($row['gross_salary'] ?? 0);
 
-            // Add earnings breakdown
             $totalEarnings = 0;
             foreach ($earningHeaders as $header) {
                 $amount = $this->ensureNumeric($row['earnings_breakdown'][$header] ?? 0);
@@ -475,7 +470,6 @@ class ReportExportService
             }
             $csvRow[] = $this->ensureNumeric($row['total_earnings'] ?? $totalEarnings);
 
-            // Add deductions breakdown
             $totalDeductions = 0;
             foreach ($deductionHeaders as $header) {
                 $amount = $this->ensureNumeric($row['deductions_breakdown'][$header] ?? 0);
@@ -489,7 +483,6 @@ class ReportExportService
             fputcsv($file, $csvRow);
         }
 
-        // Add summary row if available
         if (isset($data['summary']) || isset($data['total_gross_salary'])) {
             fputcsv($file, []); // Empty row
             fputcsv($file, ['SUMMARY', '', '', '', '', '', '', '', '']);
@@ -511,7 +504,6 @@ class ReportExportService
         
         $earningHeaders = $data['earning_headers'] ?? [];
         
-        // If headers are empty, extract from first employee
         if (empty($earningHeaders) && !empty($data['employee_earnings'])) {
             $firstEmployee = $data['employee_earnings'][0] ?? [];
             if (isset($firstEmployee['earnings_breakdown'])) {
@@ -578,7 +570,6 @@ class ReportExportService
         
         $deductionHeaders = $data['deduction_headers'] ?? [];
         
-        // If headers are empty, extract from first employee
         if (empty($deductionHeaders) && !empty($data['employee_deductions'])) {
             $firstEmployee = $data['employee_deductions'][0] ?? [];
             if (isset($firstEmployee['deductions_breakdown'])) {

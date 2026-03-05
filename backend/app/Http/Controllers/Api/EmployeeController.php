@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use App\Services\EncryptionService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -24,8 +25,17 @@ use Illuminate\Validation\ValidationException;
 class EmployeeController extends Controller
 {
 
+protected EncryptionService $encryption;
+
+    public function __construct(EncryptionService $encryption)
+    {
+        $this->encryption = $encryption;
+    }
  
-     public function index(Request $request): JsonResponse
+    /**
+     * Display a listing of employees with encrypted fields handled
+     */
+    public function index(Request $request): JsonResponse
     {
         try {
             $startTime = microtime(true);
@@ -38,16 +48,9 @@ class EmployeeController extends Controller
             Log::info('EMPLOYEE_CONTROLLER: Raw employees data', [
                 'count' => $employees->count(),
                 'business_filter' => $request->query('business_id'),
-                'sample' => $employees->first() ? [
-                    'id' => $employees->first()->id,
-                    'business_id' => $employees->first()->business_id,
-                    'user_id' => $employees->first()->user_id,
-                    'country_id' => $employees->first()->country_id,
-                    'has_country' => $employees->first()->country !== null,
-                ] : 'no data'
             ]);
             
-            // Transform the data to include all necessary fields
+            // Transform the data - encrypted fields will auto-decrypt via trait
             $transformedEmployees = $employees->map(function ($employee) {
                 return [
                     'id' => $employee->id,
@@ -62,20 +65,29 @@ class EmployeeController extends Controller
                     'role' => $employee->user->role ?? 'employee',
                     'position' => $employee->position,
                     'department' => $employee->department,
-                    'base_salary' => $employee->base_salary,
-                    'transport_allowance' => $employee->transport_allowance,
-                    'lunch_allowance' => $employee->lunch_allowance,
+                    'base_salary' => (float) $employee->base_salary,
+                    'transport_allowance' => (float) $employee->transport_allowance,
+                    'lunch_allowance' => (float) $employee->lunch_allowance,
                     'employment_type' => $employee->employment_type,
                     'hire_date' => $employee->hire_date,
                     'created_at' => $employee->created_at,
                     'updated_at' => $employee->updated_at,
+                    
+                    // Encrypted fields - will auto-decrypt based on user permissions
+                    'phone' => $employee->phone, // Auto-decrypts via trait
+                    'national_id' => $employee->national_id, // Auto-decrypts
+                    'address' => $employee->address, // Auto-decrypts
+                    'emergency_contact' => $employee->emergency_contact, // Auto-decrypts
+                    'bank_details' => $employee->bank_details, // Auto-decrypts JSON
+                    
                     // Business relationship
                     'business' => $employee->business ? [
                         'id' => $employee->business->id,
                         'name' => $employee->business->name,
                         'industry' => $employee->business->industry,
                     ] : null,
-                    // Country relationship - CRITICAL
+                    
+                    // Country relationship
                     'country' => $employee->country ? [
                         'id' => $employee->country->id,
                         'code' => $employee->country->code,
@@ -85,6 +97,7 @@ class EmployeeController extends Controller
                         'flag' => $employee->country->flag,
                         'is_active' => $employee->country->is_active,
                     ] : null,
+                    
                     // Manager relationship
                     'manager' => $employee->manager ? [
                         'id' => $employee->manager->id,
@@ -92,7 +105,8 @@ class EmployeeController extends Controller
                         'last_name' => $employee->manager->last_name,
                         'email' => $employee->manager->email,
                     ] : null,
-                    // User relationship (full data)
+                    
+                    // User relationship
                     'user' => [
                         'id' => $employee->user->id,
                         'first_name' => $employee->user->first_name,
@@ -110,9 +124,6 @@ class EmployeeController extends Controller
                 'execution_time_ms' => $executionTime,
                 'user_id' => $request->user()->id,
                 'user_role' => $request->user()->role,
-                'user_business_id' => $request->user()->current_business_id,
-                'requested_business_id' => $request->query('business_id'),
-                'sample_country' => $transformedEmployees->first()['country'] ?? 'no country',
             ]);
             
             return response()->json([
@@ -126,12 +137,11 @@ class EmployeeController extends Controller
             Log::error('EMPLOYEE_CONTROLLER: Failed to fetch employees', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'user_id' => $request->user()->id ?? null,
             ]);
             
             return response()->json([
                 'message' => 'Failed to fetch employees',
-                'error' => $e->getMessage()
+                'error' => app()->environment('local') ? $e->getMessage() : null
             ], 500);
         }
     }
@@ -438,6 +448,52 @@ public function searchUsers(Request $request): JsonResponse
         }
     }
 
+    /**
+     * Show specific employee with encrypted fields
+     */
+    public function show(Request $request, Employee $employee): EmployeeResource
+    {
+        try {
+            $currentUser = $request->user();
+            
+            // Verify access
+            if ($currentUser->role === 'admin') {
+                if ($currentUser->current_business_id && 
+                    $employee->business_id !== $currentUser->current_business_id) {
+                    abort(403, 'Unauthorized access to employee from different business');
+                }
+                elseif (!$currentUser->current_business_id && $currentUser->businesses()->exists()) {
+                    $managedBusinessIds = $currentUser->businesses()->pluck('businesses.id');
+                    if (!$managedBusinessIds->contains($employee->business_id)) {
+                        abort(403, 'Unauthorized access to employee from unmanaged business');
+                    }
+                }
+            }
+            elseif ($currentUser->role === 'manager') {
+                if ($employee->manager_id !== $currentUser->id) {
+                    abort(403, 'Unauthorized access to employee not in your team');
+                }
+            }
+            elseif ($currentUser->role === 'employee') {
+                if ($employee->user_id !== $currentUser->id) {
+                    abort(403, 'Unauthorized access to other employee records');
+                }
+            }
+            
+            $employee->load(['user', 'manager', 'business', 'country', 'attendances', 'leaves', 'payslips']);
+            return new EmployeeResource($employee);
+        } catch (\Exception $e) {
+            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch employee details', [
+                'employee_id' => $employee->id,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Store a new employee with encryption
+     */
     public function store(Request $request): JsonResponse
     {
         try {
@@ -456,22 +512,25 @@ public function searchUsers(Request $request): JsonResponse
                 'manager_id' => 'nullable|exists:users,id',
                 'business_id' => 'required|exists:businesses,id',
                 'country_id' => 'required|exists:countries,id',
+                
+                // Optional encrypted fields
+                'phone' => 'nullable|string|max:20',
+                'national_id' => 'nullable|string|max:50',
+                'address' => 'nullable|string',
+                'emergency_contact' => 'nullable|array',
+                'bank_details' => 'nullable|array',
             ]);
-            
-            $currentUser = $request->user();
             
             Log::info('EMPLOYEE_CONTROLLER: Employee validation passed', [
                 'email' => $validated['email'],
                 'role' => $validated['role'],
                 'business_id' => $validated['business_id'],
                 'country_id' => $validated['country_id'],
-                'created_by' => $currentUser->id,
             ]);
             
             DB::beginTransaction();
             
-            $defaultPasswordSetting = SystemSetting::where('key', 'default_password')->first();
-            $defaultPassword = $defaultPasswordSetting ? $defaultPasswordSetting->value : 'Password123!';
+            $defaultPassword = $this->getDefaultPassword();
             
             $user = User::create([
                 'first_name' => $validated['first_name'],
@@ -486,7 +545,6 @@ public function searchUsers(Request $request): JsonResponse
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'role' => $user->role,
-                'business_id' => $validated['business_id'],
             ]);
             
             $lastEmployee = Employee::where('business_id', $validated['business_id'])
@@ -498,12 +556,12 @@ public function searchUsers(Request $request): JsonResponse
             
             if (isset($validated['manager_id'])) {
                 $managerEmployee = Employee::where('user_id', $validated['manager_id'])->first();
-                
                 if ($managerEmployee && $managerEmployee->business_id !== (int)$validated['business_id']) {
                     throw new \Exception('Manager must be in the same business');
                 }
             }
             
+            // Create employee - encrypted fields will be auto-encrypted by trait
             $employee = Employee::create([
                 'user_id' => $user->id,
                 'business_id' => $validated['business_id'],
@@ -517,6 +575,13 @@ public function searchUsers(Request $request): JsonResponse
                 'lunch_allowance' => $validated['lunch_allowance'],
                 'hire_date' => $validated['hire_date'],
                 'employment_type' => $validated['employment_type'],
+                
+                // Encrypted fields
+                'phone' => $validated['phone'] ?? null,
+                'national_id' => $validated['national_id'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'emergency_contact' => $validated['emergency_contact'] ?? null,
+                'bank_details' => $validated['bank_details'] ?? null,
             ]);
             
             if ($validated['role'] === 'manager' || $validated['role'] === 'admin') {
@@ -532,8 +597,6 @@ public function searchUsers(Request $request): JsonResponse
                 Log::info('EMPLOYEE_CONTROLLER: Manager record created', [
                     'user_id' => $user->id,
                     'department' => $validated['department'],
-                    'business_id' => $validated['business_id'],
-                    'country_id' => $validated['country_id']
                 ]);
             }
             
@@ -543,8 +606,6 @@ public function searchUsers(Request $request): JsonResponse
                 'employee_id' => $employee->id,
                 'employee_number' => $employeeId,
                 'role' => $validated['role'],
-                'business_id' => $validated['business_id'],
-                'country_id' => $validated['country_id'],
             ]);
             
             $employee->load(['user', 'manager', 'business', 'country']);
@@ -576,6 +637,9 @@ public function searchUsers(Request $request): JsonResponse
         }
     }
 
+    /**
+     * Update employee with encryption support
+     */
     public function update(Request $request, Employee $employee): JsonResponse
     {
         try {
@@ -593,15 +657,24 @@ public function searchUsers(Request $request): JsonResponse
                 'manager_id' => 'nullable|exists:users,id',
                 'business_id' => 'sometimes|exists:businesses,id',
                 'country_id' => 'sometimes|exists:countries,id',
+                
+                // Encrypted fields
+                'phone' => 'nullable|string|max:20',
+                'national_id' => 'nullable|string|max:50',
+                'address' => 'nullable|string',
+                'emergency_contact' => 'nullable|array',
+                'bank_details' => 'nullable|array',
             ]);
             
             DB::beginTransaction();
+            
             $userUpdates = [];
             $employeeUpdates = [];
             
             $oldRole = $employee->user->role;
             $newRole = $validated['role'] ?? $oldRole;
             
+            // Update user details
             if (isset($validated['first_name'])) $userUpdates['first_name'] = $validated['first_name'];
             if (isset($validated['last_name'])) $userUpdates['last_name'] = $validated['last_name'];
             if (isset($validated['email'])) $userUpdates['email'] = $validated['email'];
@@ -620,6 +693,7 @@ public function searchUsers(Request $request): JsonResponse
                 $employee->user->update($userUpdates);
             }
             
+            // Handle role changes
             if ($oldRole !== $newRole) {
                 if (($newRole === 'manager' || $newRole === 'admin') &&
                     ($oldRole !== 'manager' && $oldRole !== 'admin')) {
@@ -629,6 +703,8 @@ public function searchUsers(Request $request): JsonResponse
                         'department' => $validated['department'] ?? $employee->department,
                         'max_team_size' => 10,
                         'permissions' => json_encode([]),
+                        'business_id' => $validated['business_id'] ?? $employee->business_id,
+                        'country_id' => $validated['country_id'] ?? $employee->country_id,
                     ]);
                     $employeeUpdates['manager_id'] = null;
                 }
@@ -641,19 +717,21 @@ public function searchUsers(Request $request): JsonResponse
                 }
             }
             
-            if (isset($validated['position'])) $employeeUpdates['position'] = $validated['position'];
-            if (isset($validated['department'])) {
-                $employeeUpdates['department'] = $validated['department'];
-                if ($newRole === 'manager' || $newRole === 'admin') {
-                    Manager::where('user_id', $employee->user_id)
-                        ->update(['department' => $validated['department']]);
+            // Update employee fields
+            $employeeFields = [
+                'position', 'department', 'base_salary', 'transport_allowance',
+                'lunch_allowance', 'employment_type', 'business_id', 'country_id',
+                // Encrypted fields
+                'phone', 'national_id', 'address', 'emergency_contact', 'bank_details'
+            ];
+            
+            foreach ($employeeFields as $field) {
+                if (isset($validated[$field])) {
+                    $employeeUpdates[$field] = $validated[$field];
                 }
             }
-            if (isset($validated['base_salary'])) $employeeUpdates['base_salary'] = $validated['base_salary'];
-            if (isset($validated['transport_allowance'])) $employeeUpdates['transport_allowance'] = $validated['transport_allowance'];
-            if (isset($validated['lunch_allowance'])) $employeeUpdates['lunch_allowance'] = $validated['lunch_allowance'];
-            if (isset($validated['employment_type'])) $employeeUpdates['employment_type'] = $validated['employment_type'];
             
+            // Handle manager_id for employees
             if ($newRole === 'employee' && isset($validated['manager_id'])) {
                 $employeeUpdates['manager_id'] = $validated['manager_id'];
             } elseif ($newRole !== 'employee') {
@@ -667,6 +745,7 @@ public function searchUsers(Request $request): JsonResponse
             DB::commit();
             
             $employee->load(['user', 'manager', 'business', 'country']);
+            
             return response()->json([
                 'employee' => new EmployeeResource($employee),
                 'message' => 'Employee updated successfully'
@@ -685,48 +764,7 @@ public function searchUsers(Request $request): JsonResponse
             ], 500);
         }
     }
-    public function show(Request $request, Employee $employee): EmployeeResource
-    {
-        try {
-            $currentUser = $request->user();
-            
-            // Verify access
-            if ($currentUser->role === 'admin') {
-                if ($currentUser->current_business_id && 
-                    $employee->business_id !== $currentUser->current_business_id) {
-                    abort(403, 'Unauthorized access to employee from different business');
-                }
-                // If admin doesn't have current business but manages businesses
-                elseif (!$currentUser->current_business_id && $currentUser->businesses()->exists()) {
-                    $managedBusinessIds = $currentUser->businesses()->pluck('businesses.id');
-                    if (!$managedBusinessIds->contains($employee->business_id)) {
-                        abort(403, 'Unauthorized access to employee from unmanaged business');
-                    }
-                }
-            }
-            // Verify access for managers
-            elseif ($currentUser->role === 'manager') {
-                if ($employee->manager_id !== $currentUser->id) {
-                    abort(403, 'Unauthorized access to employee not in your team');
-                }
-            }
-            // Verify access for regular employees
-            elseif ($currentUser->role === 'employee') {
-                if ($employee->user_id !== $currentUser->id) {
-                    abort(403, 'Unauthorized access to other employee records');
-                }
-            }
-            
-            $employee->load(['user', 'manager', 'business', 'country', 'attendances', 'leaves', 'payslips']);
-            return new EmployeeResource($employee);
-        } catch (\Exception $e) {
-            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch employee details', [
-                'employee_id' => $employee->id,
-                'error' => $e->getMessage(),
-            ]);
-            throw $e;
-        }
-    }
+
 
     public function destroy(Employee $employee): JsonResponse
     {
@@ -902,8 +940,8 @@ public function departments(): JsonResponse
         return EmployeeResource::collection($employees);
     }
 
-    /**
-     * Get authenticated user's profile (accessible to ALL roles)
+     /**
+     * Get authenticated user's profile with encrypted fields
      */
     public function profile(Request $request): JsonResponse
     {
@@ -913,12 +951,13 @@ public function departments(): JsonResponse
             if ($employee) {
                 $employee->load('manager');
             }
+            
             Log::info('EMPLOYEE_CONTROLLER: Profile fetched', [
                 'user_id' => $user->id,
                 'role' => $user->role,
                 'has_employee_record' => $employee !== null,
-                'business_id' => $employee ? $employee->business_id : null,
             ]);
+            
             return response()->json([
                 'user' => [
                     'id' => $user->id,
@@ -928,7 +967,18 @@ public function departments(): JsonResponse
                     'role' => $user->role,
                     'current_business_id' => $user->current_business_id,
                 ],
-                'employee' => $employee ? new EmployeeResource($employee) : null,
+                'employee' => $employee ? [
+                    'id' => $employee->id,
+                    'employee_id' => $employee->employee_id,
+                    'position' => $employee->position,
+                    'department' => $employee->department,
+                    'phone' => $employee->phone, // Auto-decrypts
+                    'national_id' => $employee->national_id, // Auto-decrypts
+                    'address' => $employee->address, // Auto-decrypts
+                    'emergency_contact' => $employee->emergency_contact, // Auto-decrypts
+                    'bank_details' => $employee->bank_details, // Auto-decrypts
+                    'profile_pic' => $employee->profile_pic,
+                ] : null,
             ]);
         } catch (\Exception $e) {
             Log::error('EMPLOYEE_CONTROLLER: Failed to fetch profile', [
@@ -942,7 +992,7 @@ public function departments(): JsonResponse
     }
 
     /**
-     * Update authenticated user's profile (accessible to ALL roles)
+     * Update profile with encrypted fields
      */
     public function updateProfile(Request $request): JsonResponse
     {
@@ -956,24 +1006,29 @@ public function departments(): JsonResponse
                 'date_of_birth' => 'nullable|date|before:today',
                 'national_id' => 'nullable|string|max:50',
                 'address' => 'nullable|string|max:500',
-                'emergency_contact' => 'nullable|string|max:255',
+                'emergency_contact' => 'nullable|array',
+                'bank_details' => 'nullable|array',
             ]);
+            
             Log::info('EMPLOYEE_CONTROLLER: Updating profile', [
                 'user_id' => $user->id,
                 'role' => $user->role,
                 'fields' => array_keys($validated),
             ]);
+            
             DB::beginTransaction();
+            
             // Update user table fields
             $userUpdates = [];
             if (isset($validated['first_name'])) $userUpdates['first_name'] = $validated['first_name'];
             if (isset($validated['last_name'])) $userUpdates['last_name'] = $validated['last_name'];
             if (isset($validated['email'])) $userUpdates['email'] = $validated['email'];
+            
             if (!empty($userUpdates)) {
                 $user->update($userUpdates);
-                Log::info('EMPLOYEE_CONTROLLER: User table updated', ['updates' => array_keys($userUpdates)]);
             }
-            // Update employee table fields (if employee record exists)
+            
+            // Update employee table fields (will auto-encrypt)
             $employee = $user->employee;
             if ($employee) {
                 $employeeUpdates = [];
@@ -982,18 +1037,22 @@ public function departments(): JsonResponse
                 if (isset($validated['national_id'])) $employeeUpdates['national_id'] = $validated['national_id'];
                 if (isset($validated['address'])) $employeeUpdates['address'] = $validated['address'];
                 if (isset($validated['emergency_contact'])) $employeeUpdates['emergency_contact'] = $validated['emergency_contact'];
+                if (isset($validated['bank_details'])) $employeeUpdates['bank_details'] = $validated['bank_details'];
+                
                 if (!empty($employeeUpdates)) {
                     $employee->update($employeeUpdates);
-                    Log::info('EMPLOYEE_CONTROLLER: Employee table updated', ['updates' => array_keys($employeeUpdates)]);
                 }
             }
+            
             DB::commit();
+            
             // Refresh data
             $user->refresh();
             if ($employee) {
                 $employee->refresh();
                 $employee->load('manager');
             }
+            
             return response()->json([
                 'message' => 'Profile updated successfully',
                 'user' => [
@@ -1004,7 +1063,16 @@ public function departments(): JsonResponse
                     'role' => $user->role,
                     'current_business_id' => $user->current_business_id,
                 ],
-                'employee' => $employee ? new EmployeeResource($employee) : null,
+                'employee' => $employee ? [
+                    'id' => $employee->id,
+                    'employee_id' => $employee->employee_id,
+                    'phone' => $employee->phone,
+                    'national_id' => $employee->national_id,
+                    'address' => $employee->address,
+                    'emergency_contact' => $employee->emergency_contact,
+                    'bank_details' => $employee->bank_details,
+                    'profile_pic' => $employee->profile_pic,
+                ] : null,
             ]);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -1022,6 +1090,34 @@ public function departments(): JsonResponse
             return response()->json([
                 'message' => 'Failed to update profile. Please try again.'
             ], 500);
+        }
+    }
+
+    /**
+     * Get default password from system settings
+     */
+    private function getDefaultPassword(): string
+    {
+        try {
+            $defaultPasswordSetting = SystemSetting::where('key', 'default_password')->first();
+            
+            if (!$defaultPasswordSetting || empty($defaultPasswordSetting->value)) {
+                Log::warning('EMPLOYEE_CONTROLLER: No default password found, using fallback');
+                return 'Password123!';
+            }
+            
+            $password = trim($defaultPasswordSetting->value);
+            
+            if (strlen($password) < 8) {
+                Log::warning('EMPLOYEE_CONTROLLER: Default password too short, using fallback');
+                return 'Password123!';
+            }
+               return $password;
+        } catch (\Exception $e) {
+            Log::error('EMPLOYEE_CONTROLLER: Failed to get default password', [
+                'error' => $e->getMessage(),
+            ]);
+            return 'Password123!';
         }
     }
 
@@ -1236,40 +1332,5 @@ public function departments(): JsonResponse
             ], 500);
         }
     }
-    /**
- * Get default password from system settings
- */
-private function getDefaultPassword(): string
-{
-    try {
-        $defaultPasswordSetting = SystemSetting::where('key', 'default_password')->first();
-        
-        if (!$defaultPasswordSetting || empty($defaultPasswordSetting->value)) {
-            Log::warning('EMPLOYEE_CONTROLLER: No default password found in system settings, using fallback');
-            return 'Password123!';
-        }
-        
-        $password = trim($defaultPasswordSetting->value);
-        
-        // Validate password meets minimum requirements
-        if (strlen($password) < 8) {
-            Log::warning('EMPLOYEE_CONTROLLER: Default password too short, using fallback', [
-                'password_length' => strlen($password),
-            ]);
-            return 'Password123!';
-        }
-        
-        Log::info('EMPLOYEE_CONTROLLER: Retrieved default password from system settings', [
-            'password_length' => strlen($password),
-            'password_stars' => str_repeat('*', strlen($password)),
-        ]);
-        
-        return $password;
-    } catch (\Exception $e) {
-        Log::error('EMPLOYEE_CONTROLLER: Failed to get default password', [
-            'error' => $e->getMessage(),
-        ]);
-        return 'Password123!';
-    }
-}
+  
 }

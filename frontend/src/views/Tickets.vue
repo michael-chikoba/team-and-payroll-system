@@ -76,8 +76,7 @@
       <section>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           <!-- Total Tickets -->
-          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-1 h-full bg-blue-600"></div>
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group">
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Tickets</p>
@@ -95,8 +94,7 @@
           </div>
           
           <!-- Pending Review -->
-          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group">
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Pending Review</p>
@@ -114,8 +112,7 @@
           </div>
           
           <!-- In Progress -->
-          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group">
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">In Progress</p>
@@ -133,8 +130,7 @@
           </div>
           
           <!-- Overdue -->
-          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group">
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">Overdue</p>
@@ -152,8 +148,7 @@
           </div>
           
           <!-- SLA Compliance -->
-          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+          <div class="bg-white rounded-xl p-6 shadow-sm border border-slate-200 hover:shadow-md transition-all duration-300 group">
             <div class="flex items-start justify-between">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-wider text-slate-500">SLA Compliance</p>
@@ -766,7 +761,7 @@ const filters = ref({
   status: '',
   priority: '',
   category: '',
-  assigned: '', // New filter for assigned tickets
+  assigned: '',
   search: '',
   page: 1,
   sort_by: 'created_at',
@@ -788,15 +783,9 @@ const currentUser = ref(null)
 const showQuickActions = ref(null)
 
 // ===== Computed Properties =====
-
-/**
- * Computed statistics with fallback values
- * This ensures we always have valid numbers even if the backend returns null/undefined
- */
 const computedStatistics = computed(() => {
   const stats = statistics.value || {}
   
-  // Calculate total from by_type if not provided directly
   let total = stats.total || 0
   if (!total && stats.by_type) {
     const issueCount = Array.isArray(stats.by_type.issue) 
@@ -811,7 +800,6 @@ const computedStatistics = computed(() => {
     total = issueCount + requestCount + changeCount
   }
   
-  // Calculate SLA compliance
   const slaCompliant = stats.sla_compliance?.compliant || 0
   const slaTotal = stats.sla_compliance?.total || total
   const slaPercentage = slaTotal > 0 
@@ -819,33 +807,19 @@ const computedStatistics = computed(() => {
     : stats.sla_compliance?.percentage || 0
   
   return {
-    // Total tickets
-    total: total,
-    
-    // Pending review count
+    total,
     pending: stats.pending || 0,
-    
-    // In progress count
     in_progress: stats.in_progress || 0,
-    
-    // Overdue count
     overdue: stats.overdue || 0,
-    
-    // SLA compliance - handle nested object
     sla_compliant: slaCompliant,
     sla_total: slaTotal,
     sla_percentage: slaPercentage
   }
 })
 
-/**
- * Computed ticket stats by type
- * Processes backend data to show counts for each ticket type
- */
 const computedTicketStats = computed(() => {
   const stats = statistics.value || {}
   
-  // If backend provides by_type breakdown
   if (stats.by_type) {
     return {
       issues: calculateTypeCount(stats.by_type.issue),
@@ -854,7 +828,6 @@ const computedTicketStats = computed(() => {
     }
   }
   
-  // Fallback: calculate from tickets array if needed
   if (tickets.value.data && tickets.value.data.length > 0) {
     return {
       issues: tickets.value.data.filter(t => t.type === 'issue').length,
@@ -863,132 +836,50 @@ const computedTicketStats = computed(() => {
     }
   }
   
-  // Default fallback
-  return {
-    issues: 0,
-    requests: 0,
-    change_requests: 0
-  }
+  return { issues: 0, requests: 0, change_requests: 0 }
 })
 
-/**
- * Helper function to calculate count from type data
- */
 const calculateTypeCount = (typeData) => {
   if (!typeData) return 0
-  
   if (Array.isArray(typeData)) {
     return typeData.reduce((sum, item) => sum + (item.count || 0), 0)
   }
-  
   return typeData.count || 0
 }
 
 const filteredApprovers = computed(() => {
   if (!selectedTicket.value || !approvers.value.length) return []
-  return approvers.value.filter(approver =>
-    approver.id !== selectedTicket.value.approver_id
-  )
+  return approvers.value.filter(approver => approver.id !== selectedTicket.value.approver_id)
 })
 
 const uniqueCategories = computed(() => {
   const categories = new Set()
   tickets.value.data.forEach(ticket => {
-    if (ticket.category) {
-      categories.add(ticket.category)
-    }
+    if (ticket.category) categories.add(ticket.category)
   })
   return Array.from(categories).sort()
 })
 
-// ===== Helper Functions for Initials =====
+// ===== Helper Functions =====
 const getInitials = (name) => {
   if (!name) return '??'
-  return name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
 }
+const getUserInitials = (user) => getInitials(getUserName(user))
+const getApproverInitials = (ticket) => getInitials(getApproverName(ticket))
 
-const getUserInitials = (user) => {
-  return getInitials(getUserName(user))
-}
-
-const getApproverInitials = (ticket) => {
-  return getInitials(getApproverName(ticket))
-}
-
-// ===== Ticket Type Helpers =====
 const getTypeIcon = (type) => {
   switch(type) {
-    case 'issue':
-      return ExclamationCircleIcon
-    case 'request':
-      return DocumentTextIcon
-    case 'change_request':
-      return AdjustmentsHorizontalIcon
-    default:
-      return TicketIcon
+    case 'issue': return ExclamationCircleIcon
+    case 'request': return DocumentTextIcon
+    case 'change_request': return AdjustmentsHorizontalIcon
+    default: return TicketIcon
   }
 }
-
-const getTypeLabel = (type) => {
-  switch(type) {
-    case 'issue':
-      return 'Issue'
-    case 'request':
-      return 'Request'
-    case 'change_request':
-      return 'Change Request'
-    default:
-      return type
-  }
-}
-
-const getTypeBadgeClass = (type) => {
-  switch(type) {
-    case 'issue':
-      return 'bg-red-100 text-red-800'
-    case 'request':
-      return 'bg-emerald-100 text-emerald-800'
-    case 'change_request':
-      return 'bg-purple-100 text-purple-800'
-    default:
-      return 'bg-slate-100 text-slate-800'
-  }
-}
-
-const getSlaBadgeClass = (slaStatus) => {
-  switch(slaStatus) {
-    case 'on_track':
-      return 'bg-green-100 text-green-800'
-    case 'warning':
-      return 'bg-amber-100 text-amber-800'
-    case 'breached':
-      return 'bg-red-100 text-red-800'
-    case 'completed':
-      return 'bg-slate-100 text-slate-800'
-    default:
-      return 'bg-slate-100 text-slate-800'
-  }
-}
-
-const getSlaLabel = (slaStatus) => {
-  switch(slaStatus) {
-    case 'on_track':
-      return 'On Track'
-    case 'warning':
-      return 'Warning'
-    case 'breached':
-      return 'Breached'
-    case 'completed':
-      return 'Completed'
-    default:
-      return slaStatus
-  }
-}
+const getTypeLabel = (type) => ({ issue: 'Issue', request: 'Request', change_request: 'Change Request' }[type] || type)
+const getTypeBadgeClass = (type) => ({ issue: 'bg-red-100 text-red-800', request: 'bg-emerald-100 text-emerald-800', change_request: 'bg-purple-100 text-purple-800' }[type] || 'bg-slate-100 text-slate-800')
+const getSlaBadgeClass = (slaStatus) => ({ on_track: 'bg-green-100 text-green-800', warning: 'bg-amber-100 text-amber-800', breached: 'bg-red-100 text-red-800', completed: 'bg-slate-100 text-slate-800' }[slaStatus] || 'bg-slate-100 text-slate-800')
+const getSlaLabel = (slaStatus) => ({ on_track: 'On Track', warning: 'Warning', breached: 'Breached', completed: 'Completed' }[slaStatus] || slaStatus)
 
 // ===== API Fetchers =====
 const fetchTickets = async () => {
@@ -997,11 +888,8 @@ const fetchTickets = async () => {
     const params = { ...filters.value }
     Object.keys(params).forEach(key => !params[key] && delete params[key])
     
-    // Use the assigned-to-me endpoint if filter is set
     if (params.assigned === 'assigned_to_me') {
       const response = await axios.get('/api/tickets/assigned-to-me')
-      console.log('Assigned to me response:', response.data)
-      
       if (response.data) {
         tickets.value = {
           data: Array.isArray(response.data.data) ? response.data.data : response.data,
@@ -1009,10 +897,7 @@ const fetchTickets = async () => {
         }
       }
     } else {
-      // Use the regular tickets endpoint
       const response = await axios.get('/api/tickets', { params })
-      console.log('Tickets response:', response.data)
-      
       if (response.data) {
         tickets.value = {
           data: Array.isArray(response.data.data) ? response.data.data : [],
@@ -1020,7 +905,6 @@ const fetchTickets = async () => {
         }
       }
     }
-
   } catch (error) {
     console.error('Error fetching tickets:', error)
     tickets.value = { data: [], meta: {} }
@@ -1042,7 +926,6 @@ const fetchStatistics = async () => {
 const fetchAssignableUsers = async () => {
   try {
     const response = await axios.get('/api/tickets/assignable-users')
-    
     if (response.data) {
       if (response.data.assignable_users && response.data.approvers) {
         assignableUsers.value = response.data.assignable_users.map(user => ({
@@ -1053,7 +936,6 @@ const fetchAssignableUsers = async () => {
           department: user.department || '',
           is_admin: user.is_admin || false
         }))
-       
         approvers.value = response.data.approvers.map(approver => ({
           id: approver.id,
           name: approver.name || `${approver.first_name || ''} ${approver.last_name || ''}`.trim(),
@@ -1069,16 +951,11 @@ const fetchAssignableUsers = async () => {
           business_id: approver.business_id,
           position: approver.position || 'Admin'
         }))
-       
         assignableUsers.value = [...approvers.value]
       } else {
-        console.warn('Unexpected response format:', response.data)
         assignableUsers.value = []
         approvers.value = []
       }
-    } else {
-      assignableUsers.value = []
-      approvers.value = []
     }
   } catch (error) {
     console.error('Error fetching assignable users:', error.response || error)
@@ -1105,28 +982,12 @@ const fetchUserWithRoles = async () => {
   }
 }
 
-// ===== Helper Functions =====
+// ===== Helpers =====
 const clearFilters = () => {
-  filters.value = {
-    type: '',
-    status: '',
-    priority: '',
-    category: '',
-    assigned: '', // Clear assigned filter too
-    search: '',
-    page: 1,
-    sort_by: 'created_at',
-    sort_order: 'desc'
-  }
+  filters.value = { type: '', status: '', priority: '', category: '', assigned: '', search: '', page: 1, sort_by: 'created_at', sort_order: 'desc' }
 }
-
-// Handle assigned filter change
 const handleAssignedFilterChange = () => {
-  // When selecting "Assigned to Me", we want to fetch from a different endpoint
-  // Reset other filters that might conflict
-  if (filters.value.assigned === 'assigned_to_me') {
-    filters.value.page = 1
-  }
+  if (filters.value.assigned === 'assigned_to_me') filters.value.page = 1
 }
 
 // ===== Lifecycle =====
@@ -1135,396 +996,126 @@ onMounted(() => {
   fetchTickets()
   fetchStatistics()
   fetchAssignableUsers()
- 
   document.addEventListener('click', closeQuickActions)
 })
-
 onUnmounted(() => {
   document.removeEventListener('click', closeQuickActions)
 })
+watch(filters, () => { fetchTickets() }, { deep: true })
 
-// ===== Watchers =====
-watch(filters, () => {
-  fetchTickets()
-}, { deep: true })
-
-// ===== Permission Check Functions =====
-const canApproveTicket = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  const isAdmin = currentUser.value.role === 'admin'
-  const isPending = ticket.status === 'pending'
-  
-  return isAdmin && isPending
-}
-
-const getApproveButtonTitle = (ticket) => {
-  if (!currentUser.value || !ticket) return 'Approve'
-  
-  const isAssignedApprover = ticket.approver_id === currentUser.value.id
-  if (isAssignedApprover) {
-    return 'Approve ticket (assigned to you)'
-  } else {
-    return 'Approve ticket (as business admin)'
-  }
-}
-
-const canEditTicket = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  return ticket.user_id === currentUser.value.id && ['draft', 'pending'].includes(ticket.status)
-}
-
-const canDeleteTicket = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  return ticket.user_id === currentUser.value.id && ['draft', 'pending', 'rejected'].includes(ticket.status)
-}
-
-const canEditPriority = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  const isAdmin = currentUser.value.role === 'admin'
-  const isEditableStatus = ['pending', 'approved', 'in_progress'].includes(ticket.status)
-  
-  return isAdmin && isEditableStatus
-}
-
-const canReassignTicket = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  const isAdmin = currentUser.value.role === 'admin'
-  const isReassignableStatus = ['pending', 'approved'].includes(ticket.status)
-  
-  return isAdmin && isReassignableStatus
-}
-
-const canTakeQuickActions = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  const isAdmin = currentUser.value.role === 'admin'
-  
-  return isAdmin
-}
-
-const canUpdateStatus = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  const isAdmin = currentUser.value.role === 'admin'
-  const isUpdatable = !['completed', 'closed'].includes(ticket.status)
-  
-  return isAdmin && isUpdatable
-}
-
+// ===== Permissions =====
+const canApproveTicket = (ticket) => currentUser.value?.role === 'admin' && ticket?.status === 'pending'
+const getApproveButtonTitle = (ticket) => ticket?.approver_id === currentUser.value?.id ? 'Approve ticket (assigned to you)' : 'Approve ticket (as business admin)'
+const canEditTicket = (ticket) => ticket?.user_id === currentUser.value?.id && ['draft', 'pending'].includes(ticket?.status)
+const canDeleteTicket = (ticket) => ticket?.user_id === currentUser.value?.id && ['draft', 'pending', 'rejected'].includes(ticket?.status)
+const canEditPriority = (ticket) => currentUser.value?.role === 'admin' && ['pending', 'approved', 'in_progress'].includes(ticket?.status)
+const canTakeQuickActions = (ticket) => currentUser.value?.role === 'admin'
+const canUpdateStatus = (ticket) => currentUser.value?.role === 'admin' && !['completed', 'closed'].includes(ticket?.status)
 const canResolveTicket = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  const isAdmin = currentUser.value.role === 'admin'
-  const isAssigned = ticket.assigned_users?.some(user => user.id === currentUser.value.id)
-  const canResolve = ['in_progress', 'on_hold'].includes(ticket.status)
-  return (isAdmin || isAssigned) && canResolve
+  const isAdmin = currentUser.value?.role === 'admin'
+  const isAssigned = ticket?.assigned_users?.some(user => user.id === currentUser.value?.id)
+  return (isAdmin || isAssigned) && ['in_progress', 'on_hold'].includes(ticket?.status)
 }
-
 const canReopenTicket = (ticket) => {
-  if (!currentUser.value || !ticket) return false
-  
-  const isAdmin = currentUser.value.role === 'admin'
-  const isCreator = ticket.user_id === currentUser.value.id
-  const canReopen = ['resolved', 'closed'].includes(ticket.status)
-  
-  // Allow both admins AND ticket creators to reopen
-  return (isAdmin || isCreator) && canReopen
+  const isAdmin = currentUser.value?.role === 'admin'
+  const isCreator = ticket?.user_id === currentUser.value?.id
+  return (isAdmin || isCreator) && ['resolved', 'closed'].includes(ticket?.status)
 }
 
 const getApproverName = (ticket) => {
   const approver = ticket?.approver
   if (!approver) return 'Unassigned'
   if (approver.name) return approver.name
-  if (approver.first_name || approver.last_name) {
-    return `${approver.first_name || ''} ${approver.last_name || ''}`.trim()
-  }
+  if (approver.first_name || approver.last_name) return `${approver.first_name || ''} ${approver.last_name || ''}`.trim()
   return approver.email || 'Unassigned'
 }
-
 const getUserName = (user) => {
   if (!user) return 'Unknown User'
   if (user.name) return user.name
-  if (user.first_name || user.last_name) {
-    return `${user.first_name || ''} ${user.last_name || ''}`.trim()
-  }
+  if (user.first_name || user.last_name) return `${user.first_name || ''} ${user.last_name || ''}`.trim()
   return user.email || 'Unknown User'
 }
 
 // ===== Actions =====
 const openCreateModal = async () => {
-  if (assignableUsers.value.length === 0 || approvers.value.length === 0) {
-    await fetchAssignableUsers()
-  }
+  if (assignableUsers.value.length === 0 || approvers.value.length === 0) await fetchAssignableUsers()
   showCreateModal.value = true
 }
-
-const closeCreateModal = () => {
-  showCreateModal.value = false
-}
-
-const editTicket = (ticket) => {
-  closeQuickActions()
-}
-
+const closeCreateModal = () => { showCreateModal.value = false }
+const editTicket = (ticket) => { closeQuickActions() }
 const deleteTicket = async (ticket) => {
   closeQuickActions()
   if (confirm(`Are you sure you want to delete ticket #${ticket.id}? This action cannot be undone.`)) {
     try {
       await axios.delete(`/api/tickets/${ticket.id}`)
-      fetchTickets()
-      fetchStatistics()
-    } catch (error) {
-      console.error('Error deleting ticket:', error)
-      alert('Failed to delete ticket')
-    }
+      fetchTickets(); fetchStatistics()
+    } catch (error) { alert('Failed to delete ticket') }
   }
 }
-
-const viewTicket = (ticket) => {
-  selectedTicket.value = ticket
-  showViewModal.value = true
-}
-
-const closeViewModal = () => {
-  showViewModal.value = false
-  selectedTicket.value = null
-}
-
-const openApprovalModal = (ticket) => {
-  selectedTicket.value = ticket
-  showApprovalModal.value = true
-  closeQuickActions()
-}
-
-const closeApprovalModal = () => {
-  showApprovalModal.value = false
-  selectedTicket.value = null
-}
-
-const openPriorityModal = (ticket) => {
-  selectedTicket.value = ticket
-  showPriorityModal.value = true
-  closeQuickActions()
-}
-
-const closePriorityModal = () => {
-  showPriorityModal.value = false
-  selectedTicket.value = null
-}
-
-const openReassignModal = (ticket) => {
-  selectedTicket.value = ticket
-  showReassignModal.value = true
-  closeQuickActions()
-}
-
-const closeReassignModal = () => {
-  showReassignModal.value = false
-  selectedTicket.value = null
-}
-
-const openStatusModal = (ticket) => {
-  selectedTicket.value = ticket
-  showStatusModal.value = true
-  closeQuickActions()
-}
-
-const closeStatusModal = () => {
-  showStatusModal.value = false
-  selectedTicket.value = null
-}
-
-const openAssignModal = (ticket) => {
-  selectedTicket.value = ticket
-  showAssignModal.value = true
-  closeQuickActions()
-}
-
-const closeAssignModal = () => {
-  showAssignModal.value = false
-  selectedTicket.value = null
-}
-
-const openSlackConfigModal = () => {
-  showSlackConfigModal.value = true
-}
-
-const closeSlackConfigModal = () => {
-  showSlackConfigModal.value = false
-}
-
-const handleSlackConfigSaved = () => {
-  closeSlackConfigModal()
-  console.log('Slack configuration saved successfully')
-}
+const viewTicket = (ticket) => { selectedTicket.value = ticket; showViewModal.value = true }
+const closeViewModal = () => { showViewModal.value = false; selectedTicket.value = null }
+const openApprovalModal = (ticket) => { selectedTicket.value = ticket; showApprovalModal.value = true; closeQuickActions() }
+const closeApprovalModal = () => { showApprovalModal.value = false; selectedTicket.value = null }
+const openPriorityModal = (ticket) => { selectedTicket.value = ticket; showPriorityModal.value = true; closeQuickActions() }
+const closePriorityModal = () => { showPriorityModal.value = false; selectedTicket.value = null }
+const openReassignModal = (ticket) => { selectedTicket.value = ticket; showReassignModal.value = true; closeQuickActions() }
+const closeReassignModal = () => { showReassignModal.value = false; selectedTicket.value = null }
+const openStatusModal = (ticket) => { selectedTicket.value = ticket; showStatusModal.value = true; closeQuickActions() }
+const closeStatusModal = () => { showStatusModal.value = false; selectedTicket.value = null }
+const openAssignModal = (ticket) => { selectedTicket.value = ticket; showAssignModal.value = true; closeQuickActions() }
+const closeAssignModal = () => { showAssignModal.value = false; selectedTicket.value = null }
+const openSlackConfigModal = () => { showSlackConfigModal.value = true }
+const closeSlackConfigModal = () => { showSlackConfigModal.value = false }
+const handleSlackConfigSaved = () => { closeSlackConfigModal() }
 
 const resolveTicket = async (ticket) => {
   closeQuickActions()
   if (confirm(`Mark ticket #${ticket.id} as resolved?`)) {
-    try {
-      await axios.post(`/api/tickets/${ticket.id}/update-status`, {
-        status: 'resolved'
-      })
-      fetchTickets()
-      fetchStatistics()
-    } catch (error) {
-      console.error('Error resolving ticket:', error)
-      alert('Failed to resolve ticket')
-    }
+    try { await axios.post(`/api/tickets/${ticket.id}/update-status`, { status: 'resolved' }); fetchTickets(); fetchStatistics() }
+    catch (error) { alert('Failed to resolve ticket') }
   }
 }
-
 const reopenTicket = async (ticket) => {
   closeQuickActions()
   if (confirm(`Reopen ticket #${ticket.id}?`)) {
-    try {
-      await axios.post(`/api/tickets/${ticket.id}/update-status`, {
-        status: 'reopened'
-      })
-      fetchTickets()
-      fetchStatistics()
-    } catch (error) {
-      console.error('Error reopening ticket:', error)
-      alert('Failed to reopen ticket')
-    }
+    try { await axios.post(`/api/tickets/${ticket.id}/update-status`, { status: 'reopened' }); fetchTickets(); fetchStatistics() }
+    catch (error) { alert('Failed to reopen ticket') }
   }
 }
-
 const handleActionClick = (actionType, ticket) => {
   closeQuickActions()
-  switch(actionType) {
-    case 'priority':
-      openPriorityModal(ticket)
-      break
-    case 'reassign':
-      openReassignModal(ticket)
-      break
-    case 'assign':
-      openAssignModal(ticket)
-      break
-    case 'status':
-      openStatusModal(ticket)
-      break
-  }
+  const actions = { priority: openPriorityModal, reassign: openReassignModal, assign: openAssignModal, status: openStatusModal }
+  actions[actionType]?.(ticket)
 }
-
-const toggleQuickActions = (ticketId) => {
-  if (showQuickActions.value === ticketId) {
-    showQuickActions.value = null
-  } else {
-    showQuickActions.value = ticketId
-  }
-}
-
-const closeQuickActions = () => {
-  showQuickActions.value = null
-}
-
-const changePage = (page) => {
-  filters.value.page = page
-}
-
+const toggleQuickActions = (ticketId) => { showQuickActions.value = showQuickActions.value === ticketId ? null : ticketId }
+const closeQuickActions = () => { showQuickActions.value = null }
+const changePage = (page) => { filters.value.page = page }
 const refreshData = async () => {
   isRefreshing.value = true
-  await Promise.all([
-    fetchTickets(),
-    fetchStatistics(),
-    fetchAssignableUsers()
-  ])
+  await Promise.all([fetchTickets(), fetchStatistics(), fetchAssignableUsers()])
   isRefreshing.value = false
 }
-
-const handleTicketCreated = () => {
-  closeCreateModal()
-  filters.value.status = ''
-  fetchTickets()
-  fetchStatistics()
-}
-
-const handleStatusUpdated = () => {
-  closeViewModal()
-  closeApprovalModal()
-  closeStatusModal()
-  fetchTickets()
-  fetchStatistics()
-  window.dispatchEvent(new CustomEvent('ticket-updated'))
-}
-
-const handlePriorityUpdated = () => {
-  closePriorityModal()
-  fetchTickets()
-  fetchStatistics()
-  window.dispatchEvent(new CustomEvent('ticket-updated'))
-}
-
-const handleTicketReassigned = () => {
-  closeReassignModal()
-  fetchTickets()
-  fetchStatistics()
-  window.dispatchEvent(new CustomEvent('ticket-updated'))
-}
-
-const handleUsersAssigned = () => {
-  closeAssignModal()
-  fetchTickets()
-  fetchStatistics()
-  window.dispatchEvent(new CustomEvent('ticket-updated'))
-}
+const handleTicketCreated = () => { closeCreateModal(); filters.value.status = ''; fetchTickets(); fetchStatistics() }
+const handleStatusUpdated = () => { closeViewModal(); closeApprovalModal(); closeStatusModal(); fetchTickets(); fetchStatistics(); window.dispatchEvent(new CustomEvent('ticket-updated')) }
+const handlePriorityUpdated = () => { closePriorityModal(); fetchTickets(); fetchStatistics(); window.dispatchEvent(new CustomEvent('ticket-updated')) }
+const handleTicketReassigned = () => { closeReassignModal(); fetchTickets(); fetchStatistics(); window.dispatchEvent(new CustomEvent('ticket-updated')) }
+const handleUsersAssigned = () => { closeAssignModal(); fetchTickets(); fetchStatistics(); window.dispatchEvent(new CustomEvent('ticket-updated')) }
 
 const formatDate = (date) => {
   if (!date) return 'N/A'
-  try {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    })
-  } catch (error) {
-    return 'Invalid Date'
-  }
+  try { return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }
+  catch (error) { return 'Invalid Date' }
 }
 </script>
 
 <style scoped>
-/* Scrollbar Styling */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
-}
-.scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-}
-
-.overflow-x-auto::-webkit-scrollbar {
-  height: 6px;
-}
-
-.overflow-x-auto::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.overflow-x-auto::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-
-.overflow-x-auto::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Transitions */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* Line clamp utility */
-.line-clamp-1 {
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
-}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.overflow-x-auto::-webkit-scrollbar { height: 6px; }
+.overflow-x-auto::-webkit-scrollbar-track { background: transparent; }
+.overflow-x-auto::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.overflow-x-auto::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; }
 </style>

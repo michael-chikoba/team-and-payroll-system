@@ -45,6 +45,12 @@ return [
     | Settings for overtime calculation
     |
     */
+   // Minutes of inactivity before the first idle warning is issued.
+    'idle_threshold_minutes' => env('ATTENDANCE_IDLE_THRESHOLD_MINUTES', 15),
+
+    // Minutes after the warning before the overtime session is auto-closed.
+    // Combined with idle_threshold_minutes: total idle before close = 15 + 5 = 20 min.
+    'auto_close_after_warning_minutes' => env('ATTENDANCE_AUTO_CLOSE_AFTER_WARNING_MINUTES', 5),
 
     'overtime_threshold' => env('ATTENDANCE_OVERTIME_THRESHOLD', 8),
     'allow_overtime_sessions' => env('ATTENDANCE_ALLOW_OVERTIME', true),

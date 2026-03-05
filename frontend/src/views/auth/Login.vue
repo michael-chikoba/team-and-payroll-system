@@ -1,11 +1,9 @@
 <template>
   <div class="login-page">
-    <div class="blob blob1"></div>
-    <div class="blob blob2"></div>
     <div class="login-container">
       <div class="login-header">
         <div class="logo-section">
-          <span class="logo-icon">💼</span>
+          <BuildingOfficeIcon class="logo-icon" />
           <h1 class="title">Payroll Portal</h1>
         </div>
         <p class="subtitle">Welcome back. Sign in to continue.</p>
@@ -14,7 +12,7 @@
         <div class="form-group">
           <label for="email" class="label">Email Address</label>
           <div class="input-wrapper">
-            <span class="input-icon">📧</span>
+            <EnvelopeIcon class="input-icon" />
             <input
               id="email"
               v-model="form.email"
@@ -28,7 +26,7 @@
         <div class="form-group">
           <label for="password" class="label">Password</label>
           <div class="input-wrapper">
-            <span class="input-icon">🔒</span>
+            <LockClosedIcon class="input-icon" />
             <input
               id="password"
               v-model="form.password"
@@ -46,7 +44,7 @@
           :class="{ 'loading': loading }"
         >
           <span v-if="!loading" class="btn-text">
-            <span class="btn-icon">🚀</span>
+            <ArrowRightOnRectangleIcon class="btn-icon" />
             Sign In
           </span>
           <span v-else class="btn-loading">
@@ -70,6 +68,12 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { 
+  BuildingOfficeIcon, 
+  EnvelopeIcon, 
+  LockClosedIcon,
+  ArrowRightOnRectangleIcon 
+} from '@heroicons/vue/24/outline'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -130,53 +134,19 @@ const handleLogin = async () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #0a0a0a, #1a1a1a);
+  background: #ffffff;
   padding: 1rem;
-  position: relative;
-  overflow: hidden;
-}
-
-.blob {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(40px);
-  opacity: 0.6;
-  animation: blob-move 20s infinite ease-in-out;
-}
-
-.blob1 {
-  top: -10%;
-  right: -10%;
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(147, 51, 234, 0.4), transparent);
-}
-
-.blob2 {
-  bottom: -20%;
-  left: -10%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.3), transparent);
-}
-
-@keyframes blob-move {
-  0% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(20px, -20px) scale(1.1); }
-  100% { transform: translate(0, 0) scale(1); }
 }
 
 .login-container {
-  background: rgba(26, 26, 46, 0.9);
+  background: #ffffff;
   padding: 2.5rem;
   border-radius: 16px;
   width: 100%;
   max-width: 420px;
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  z-index: 10;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid #f0f0f0;
 }
 
 .login-header {
@@ -193,23 +163,24 @@ const handleLogin = async () => {
 }
 
 .logo-icon {
-  font-size: 1.75rem;
-  color: #3b82f6;
+  width: 2rem;
+  height: 2rem;
+  color: #4f46e5;
 }
 
 .title {
-  color: #ffffff;
+  color: #111827;
   font-size: 1.875rem;
   font-weight: 700;
   margin: 0;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .subtitle {
-  color: #9ca3af;
+  color: #6b7280;
   font-size: 0.875rem;
   margin: 0;
   font-weight: 400;
@@ -227,7 +198,7 @@ const handleLogin = async () => {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #d1d5db;
+  color: #374151;
   font-size: 0.875rem;
 }
 
@@ -240,43 +211,44 @@ const handleLogin = async () => {
 .input-icon {
   position: absolute;
   left: 1rem;
-  font-size: 1rem;
-  color: #6b7280;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #9ca3af;
   z-index: 1;
 }
 
 .form-input {
   width: 100%;
   padding: 0.875rem 1rem 0.875rem 3rem;
-  border: 1px solid #374151;
+  border: 1px solid #e5e7eb;
   border-radius: 8px;
   font-size: 0.875rem;
-  background: #111827;
-  color: #ffffff;
+  background: #ffffff;
+  color: #111827;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
 .form-input::placeholder {
-  color: #6b7280;
+  color: #9ca3af;
 }
 
 .login-btn {
   width: 100%;
   padding: 0.875rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
   color: white;
   border: none;
   border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
   position: relative;
   overflow: hidden;
 }
@@ -284,6 +256,7 @@ const handleLogin = async () => {
 .login-btn:hover:not(:disabled) {
   opacity: 0.95;
   transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(79, 70, 229, 0.2);
 }
 
 .login-btn:disabled {
@@ -303,7 +276,8 @@ const handleLogin = async () => {
 }
 
 .btn-icon {
-  font-size: 0.875rem;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .btn-loading {
@@ -328,12 +302,12 @@ const handleLogin = async () => {
 }
 
 .error-message {
-  color: #ef4444;
+  color: #dc2626;
   font-size: 0.875rem;
   text-align: center;
   margin: 1rem 0;
   padding: 0.5rem;
-  background: rgba(248, 113, 113, 0.1);
+  background: #fef2f2;
   border-radius: 8px;
 }
 
@@ -342,20 +316,20 @@ const handleLogin = async () => {
 }
 
 .signup-link {
-  color: #9ca3af;
+  color: #6b7280;
   margin: 0;
   font-size: 0.875rem;
 }
 
 .link {
-  color: #3b82f6;
+  color: #4f46e5;
   text-decoration: none;
   font-weight: 500;
   transition: color 0.2s ease;
 }
 
 .link:hover {
-  color: #8b5cf6;
+  color: #7c3aed;
   text-decoration: underline;
 }
 
@@ -370,7 +344,8 @@ const handleLogin = async () => {
     font-size: 1.5rem;
   }
   .logo-icon {
-    font-size: 1.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
   }
 }
 </style>

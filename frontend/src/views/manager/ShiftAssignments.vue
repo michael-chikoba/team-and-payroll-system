@@ -1,350 +1,272 @@
 <template>
-  <div class="min-h-screen bg-gray-50 p-6">
-    <!-- Header -->
-    <div class="mb-6">
-      <h1 class="text-3xl font-extrabold text-gray-900">Shift Assignments</h1>
-      <p class="text-gray-600 mt-1 font-medium">Manage and view shift assignments.</p>
-    </div>
+  <div class="shifts-page">
 
-    <!-- Actions Bar -->
-    <div class="bg-white rounded-lg shadow-sm p-4 mb-6 flex flex-col md:flex-row items-center justify-between gap-4 border border-gray-200">
-      <!-- Filters -->
-      <div class="flex items-center gap-3 flex-1 flex-wrap w-full">
-        <!-- Status Filter -->
-        <select 
-          v-model="filters.status" 
-          @change="loadAssignments" 
-          class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white text-gray-900 font-medium"
-        >
-          <option value="" class="text-gray-500">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="accepted">Accepted</option>
-          <option value="rejected">Rejected</option>
-          <option value="completed">Completed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        
-        <!-- Type Filter -->
-        <select 
-          v-model="filters.shift_type" 
-          @change="loadAssignments" 
-          class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm bg-white text-gray-900 font-medium"
-        >
-          <option value="" class="text-gray-500">All Types</option>
-          <option value="morning">Morning</option>
-          <option value="day">Day</option>
-          <option value="evening">Evening</option>
-          <option value="night">Night</option>
-        </select>
-        
-        <!-- Search Input -->
-        <input
-          v-model="filters.employee_name"
-          type="text"
-          @input="debounceLoadAssignments"
-          class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 w-48 text-sm bg-white text-gray-900 placeholder-gray-500"
-          placeholder="Search employee..."
-        />
-        
-        <!-- Date Range -->
-        <div class="flex items-center gap-2">
-          <input 
-            v-model="filters.from_date" 
-            type="date" 
-            @change="loadAssignments" 
-            class="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 font-medium" 
-          />
-          <span class="text-gray-500 font-bold">-</span>
-          <input 
-            v-model="filters.to_date" 
-            type="date" 
-            @change="loadAssignments" 
-            class="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 font-medium" 
-          />
-        </div>
-        
-        <!-- Clear Filters Button -->
-        <button 
-          @click="clearFilters" 
-          class="px-3 py-2 text-sm text-gray-700 hover:text-gray-900 font-semibold hover:bg-gray-100 rounded-md transition-colors"
-          :disabled="!activeFiltersCount"
-        >
-          Clear Filters
-        </button>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="flex items-center gap-3 w-full md:w-auto justify-end">
-        <button
-          @click="openAssignModal"
-          class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center gap-2 font-bold shadow-sm"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          Assign Shift
-        </button>
-        
-        <button
-          @click="loadAssignments"
-          class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors inline-flex items-center gap-2 font-medium"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          Refresh
-        </button>
-        
-        <!-- Show All Toggle -->
-        <button
-          @click="toggleShowAll"
-          class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-          :class="showAll ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : ''"
-        >
-          {{ showAll ? 'Show Recent' : 'Show All' }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Stats Summary -->
-    <div v-if="assignments.length > 0" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-      <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-500">Total Shifts</p>
-            <p class="text-2xl font-bold text-gray-900">{{ stats.total }}</p>
-          </div>
-          <div class="p-3 bg-indigo-50 rounded-full">
-            <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    <!-- ── Header Card ─────────────────────────────── -->
+    <div class="dashboard-header-card">
+      <div class="header-card-accent"></div>
+      <div class="user-greeting">
+        <div class="avatar-section">
+          <div class="avatar">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
           </div>
-        </div>
-      </div>
-      
-      <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-500">Pending</p>
-            <p class="text-2xl font-bold text-yellow-600">{{ stats.pending }}</p>
-          </div>
-          <div class="p-3 bg-yellow-50 rounded-full">
-            <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-      
-      <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-500">Accepted</p>
-            <p class="text-2xl font-bold text-green-600">{{ stats.accepted }}</p>
-          </div>
-          <div class="p-3 bg-green-50 rounded-full">
-            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-      
-      <div class="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-medium text-gray-500">Unique Employees</p>
-            <p class="text-2xl font-bold text-blue-600">{{ stats.uniqueEmployees }}</p>
-          </div>
-          <div class="p-3 bg-blue-50 rounded-full">
-            <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Assignments List -->
-    <div v-if="loading" class="text-center py-20">
-      <div class="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
-      <p class="text-gray-600 mt-3 text-sm font-medium">Loading schedule...</p>
-    </div>
-
-    <div v-else-if="assignments.length === 0" class="bg-white rounded-lg shadow-sm p-12 text-center border border-dashed border-gray-300">
-      <div class="mx-auto h-12 w-12 text-gray-400">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-      </div>
-      <h3 class="mt-2 text-sm font-bold text-gray-900">No shifts found</h3>
-      <p class="mt-1 text-sm text-gray-500">
-        {{ activeFiltersCount > 0 ? 'Try adjusting your filters' : 'Get started by creating a new shift assignment' }}
-      </p>
-      <div class="mt-4 flex gap-3 justify-center">
-        <button
-          @click="openAssignModal"
-          class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors inline-flex items-center gap-2 font-bold shadow-sm"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          Assign Shift
-        </button>
-        <button
-          v-if="activeFiltersCount > 0"
-          @click="clearFilters"
-          class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-        >
-          Clear Filters
-        </button>
-      </div>
-    </div>
-
-    <div v-else class="grid grid-cols-1 gap-4">
-      <!-- Assignment Cards -->
-      <div
-        v-for="assignment in assignments"
-        :key="assignment.id"
-        class="bg-white rounded-lg shadow-sm border border-gray-200 p-5 hover:border-indigo-300 transition-all"
-      >
-        <!-- Card Content (Same as previous, styles inherited from globals or Tailwind defaults are mostly fine, but ensuring text-gray-900 on primary text) -->
-        <div class="flex items-start justify-between">
-          <div class="flex gap-4">
-            <!-- Avatar -->
-            <div class="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center flex-shrink-0 text-indigo-700 font-bold text-lg border border-indigo-100">
-              {{ getEmployeeInitial(assignment) }}
+          <div class="user-info">
+            <h1 class="greeting">Shift Assignments</h1>
+            <p class="subtitle">Manage and view shift assignments across your team</p>
+            <div class="role-meta">
+              <span class="role-badge">Manager View</span>
             </div>
+          </div>
+        </div>
 
-            <!-- Details -->
-            <div class="flex-1">
-              <div class="flex items-center gap-2 mb-2">
-                <h3 class="font-bold text-gray-900 text-lg">{{ getEmployeeName(assignment) }}</h3>
-                <span :class="getStatusClass(assignment.status)" class="text-xs px-2 py-0.5 rounded-full font-bold capitalize">
-                  {{ assignment.status }}
-                </span>
+        <div class="header-actions">
+          <button @click="loadAssignments()" class="btn-outline" :disabled="loading">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            Refresh
+          </button>
+          <button @click="toggleShowAll" class="btn-outline" :class="{ active: showAll }">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            {{ showAll ? 'Show Recent' : 'Show All' }}
+          </button>
+          <button @click="openAssignModal" class="btn-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Assign Shift
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-content">
+
+      <!-- ── Metrics ──────────────────────────────── -->
+      <div class="metrics-section" v-if="assignments.length > 0 && !loading">
+        <h2>Summary</h2>
+        <div class="metrics-grid">
+          <div class="metric-card" style="--accent:#6366f1;">
+            <div class="metric-icon-wrap" style="background:rgba(99,102,241,0.1);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            </div>
+            <div class="metric-value">{{ stats.total }}</div>
+            <div class="metric-label">Total Shifts</div>
+          </div>
+
+          <div class="metric-card" style="--accent:#f59e0b;">
+            <div class="metric-icon-wrap" style="background:rgba(245,158,11,0.1);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </div>
+            <div class="metric-value">{{ stats.pending }}</div>
+            <div class="metric-label">Pending</div>
+          </div>
+
+          <div class="metric-card" style="--accent:#10b981;">
+            <div class="metric-icon-wrap" style="background:rgba(16,185,129,0.1);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div class="metric-value">{{ stats.accepted }}</div>
+            <div class="metric-label">Accepted</div>
+          </div>
+
+          <div class="metric-card" style="--accent:#3b82f6;">
+            <div class="metric-icon-wrap" style="background:rgba(59,130,246,0.1);">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div class="metric-value">{{ stats.uniqueEmployees }}</div>
+            <div class="metric-label">Employees</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Filters + List ───────────────────────── -->
+      <div class="table-section">
+
+        <!-- Controls Bar -->
+        <div class="controls-bar">
+          <div class="filters-row">
+            <div class="filter-group">
+              <label>Status</label>
+              <select v-model="filters.status" @change="loadAssignments()" class="filter-select">
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="accepted">Accepted</option>
+                <option value="rejected">Rejected</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Shift Type</label>
+              <select v-model="filters.shift_type" @change="loadAssignments()" class="filter-select">
+                <option value="">All Types</option>
+                <option value="morning">Morning</option>
+                <option value="day">Day</option>
+                <option value="evening">Evening</option>
+                <option value="night">Night</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Employee</label>
+              <div class="search-wrapper">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input
+                  v-model="filters.employee_name"
+                  type="text"
+                  @input="debounceLoadAssignments"
+                  class="filter-input"
+                  placeholder="Search name..."
+                />
               </div>
-              
-              <!-- Employee Info -->
-              <div v-if="getEmployeeDetails(assignment)" class="mb-3">
-                <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-700">
-                  <span v-if="assignment.employee?.employee_id" class="flex items-center gap-1 font-medium">
-                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"/>
-                    </svg>
-                    ID: {{ assignment.employee.employee_id }}
-                  </span>
-                  <span v-if="assignment.employee?.position" class="flex items-center gap-1 font-medium">
-                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                    </svg>
-                    {{ assignment.employee.position }}
-                  </span>
-                </div>
-              </div>
-              
-              <!-- Shift Details -->
-              <div class="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                <div class="text-sm text-gray-900 grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div class="space-y-2">
-                    <div class="flex items-center gap-2">
-                      <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                      <span class="font-bold text-gray-900">Date:</span>
-                      <span>{{ formatDate(assignment.shift_date) }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <span class="w-2 h-2 rounded-full ml-1" :class="getShiftTypeDot(assignment.shift_type)"></span>
-                      <span class="font-bold text-gray-900">Type:</span>
-                      <span>{{ capitalize(assignment.shift_type) }}</span>
-                    </div>
-                  </div>
-                  
-                  <div class="space-y-2">
-                    <div class="flex items-center gap-2">
-                      <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                      <span class="font-bold text-gray-900">Time:</span>
-                      <span>{{ formatTime(assignment.start_time) }} - {{ formatTime(assignment.end_time) }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                      </svg>
-                      <span class="font-bold text-gray-900">Duration:</span>
-                      <span>{{ calculateShiftDuration(assignment.start_time, assignment.end_time) }}</span>
-                    </div>
-                  </div>
-                  
-                  <div class="space-y-2">
-                    <div class="flex items-center gap-2">
-                      <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                      </svg>
-                      <span class="font-bold text-gray-900">Assigned By:</span>
-                      <span>{{ getAssignedByName(assignment) || 'Unknown' }}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-                      </svg>
-                      <span class="font-bold text-gray-900">Notes:</span>
-                      <span>{{ assignment.notes || 'None' }}</span>
-                    </div>
+            </div>
+            <div class="filter-group">
+              <label>From</label>
+              <input v-model="filters.from_date" type="date" @change="loadAssignments()" class="filter-select date-input"/>
+            </div>
+            <div class="filter-group">
+              <label>To</label>
+              <input v-model="filters.to_date" type="date" @change="loadAssignments()" class="filter-select date-input"/>
+            </div>
+          </div>
+          <div class="controls-right">
+            <span class="records-count" v-if="!loading">{{ pagination.total || assignments.length }} shift{{ (pagination.total || assignments.length) !== 1 ? 's' : '' }}</span>
+            <button v-if="activeFiltersCount > 0" @click="clearFilters" class="btn-clear">
+              Clear Filters
+            </button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div v-if="loading" class="empty-state">
+          <div class="spinner"></div>
+          <p>Loading schedule...</p>
+        </div>
+
+        <!-- Empty -->
+        <div v-else-if="assignments.length === 0" class="empty-state">
+          <div class="empty-icon-wrap">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </div>
+          <h3>No Shifts Found</h3>
+          <p>{{ activeFiltersCount > 0 ? 'Try adjusting your filters.' : 'Get started by creating a new shift assignment.' }}</p>
+          <div class="empty-actions">
+            <button @click="openAssignModal" class="btn-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              Assign Shift
+            </button>
+            <button v-if="activeFiltersCount > 0" @click="clearFilters" class="btn-secondary">Clear Filters</button>
+          </div>
+        </div>
+
+        <!-- Assignment Cards -->
+        <div v-else class="assignments-list">
+          <div
+            v-for="assignment in assignments"
+            :key="assignment.id"
+            class="assignment-card"
+          >
+            <div class="card-left">
+              <!-- Employee Avatar + Info -->
+              <div class="emp-section">
+                <div class="emp-avatar">{{ getEmployeeInitial(assignment) }}</div>
+                <div class="emp-details">
+                  <div class="emp-name">{{ getEmployeeName(assignment) }}</div>
+                  <div class="emp-meta" v-if="getEmployeeDetails(assignment)">
+                    <span v-if="assignment.employee?.employee_id" class="meta-chip">
+                      ID: {{ assignment.employee.employee_id }}
+                    </span>
+                    <span v-if="assignment.employee?.position" class="meta-chip">
+                      {{ assignment.employee.position }}
+                    </span>
                   </div>
                 </div>
               </div>
+
+              <!-- Shift Info Grid -->
+              <div class="shift-info-grid">
+                <div class="shift-info-item">
+                  <span class="info-label">Date</span>
+                  <span class="info-value">{{ formatDate(assignment.shift_date) }}</span>
+                </div>
+                <div class="shift-info-item">
+                  <span class="info-label">Type</span>
+                  <span class="info-value">
+                    <span class="type-dot" :class="'type-' + assignment.shift_type"></span>
+                    {{ capitalize(assignment.shift_type) }}
+                  </span>
+                </div>
+                <div class="shift-info-item">
+                  <span class="info-label">Time</span>
+                  <span class="info-value">{{ formatTime(assignment.start_time) }} – {{ formatTime(assignment.end_time) }}</span>
+                </div>
+                <div class="shift-info-item">
+                  <span class="info-label">Duration</span>
+                  <span class="info-value">{{ calculateShiftDuration(assignment.start_time, assignment.end_time) }}</span>
+                </div>
+                <div class="shift-info-item">
+                  <span class="info-label">Assigned By</span>
+                  <span class="info-value">{{ getAssignedByName(assignment) || 'Unknown' }}</span>
+                </div>
+                <div class="shift-info-item" v-if="assignment.notes">
+                  <span class="info-label">Notes</span>
+                  <span class="info-value note-value">{{ assignment.notes }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Right: Status + Actions -->
+            <div class="card-right">
+              <span :class="['status-badge', getStatusClass(assignment.status)]">
+                <span class="dot"></span>{{ capitalize(assignment.status) }}
+              </span>
+              <div class="card-actions">
+                <button v-if="canEdit(assignment)" @click="editAssignment(assignment)" class="action-btn" title="Edit Shift">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                </button>
+                <button v-if="canDelete(assignment)" @click="deleteAssignment(assignment.id)" class="action-btn danger" title="Delete Shift">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>
+                </button>
+              </div>
             </div>
           </div>
+        </div>
 
-          <!-- Actions Dropdown or Buttons -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-2">
-              <button v-if="canEdit(assignment)" @click="editAssignment(assignment)" class="text-gray-500 hover:text-indigo-600 p-2 transition-colors" title="Edit Shift">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+        <!-- Pagination -->
+        <div v-if="pagination.total > 0 && pagination.last_page > 1" class="pagination-bar">
+          <span class="pagination-info">
+            Showing <strong>{{ pagination.from }}</strong>–<strong>{{ pagination.to }}</strong> of <strong>{{ pagination.total }}</strong> shifts
+          </span>
+          <div class="pagination-controls">
+            <button
+              @click="changePage(pagination.current_page - 1)"
+              :disabled="pagination.current_page === 1"
+              class="page-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              Prev
+            </button>
+            <template v-for="page in visiblePages" :key="page">
+              <span v-if="page === '...'" class="page-ellipsis">…</span>
+              <button
+                v-else
+                @click="changePage(page)"
+                :class="['page-btn', { active: pagination.current_page === page }]">
+                {{ page }}
               </button>
-              <button v-if="canDelete(assignment)" @click="deleteAssignment(assignment.id)" class="text-gray-500 hover:text-red-600 p-2 transition-colors" title="Delete Shift">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-              </button>
-            </div>
+            </template>
+            <button
+              @click="changePage(pagination.current_page + 1)"
+              :disabled="pagination.current_page === pagination.last_page"
+              class="page-btn">
+              Next
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Pagination -->
-    <div v-if="pagination.total > 0 && pagination.last_page > 1" class="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-       <div class="text-sm text-gray-700 font-medium">
-         Showing {{ pagination.from }} to {{ pagination.to }} of {{ pagination.total }} shifts
-       </div>
-       <div class="flex gap-2">
-         <button 
-           @click="changePage(pagination.current_page - 1)" 
-           :disabled="pagination.current_page === 1" 
-           class="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1 bg-white text-gray-700 font-medium"
-         >
-           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-           </svg>
-           Prev
-         </button>
-         
-         <div class="flex items-center gap-1">
-           <button 
-             v-for="page in visiblePages" 
-             :key="page"
-             @click="changePage(page)"
-             :class="pagination.current_page === page ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'"
-             class="px-3 py-1 border rounded-lg transition-colors min-w-[2.5rem] font-medium"
-           >
-             {{ page }}
-           </button>
-         </div>
-         
-         <button 
-           @click="changePage(pagination.current_page + 1)" 
-           :disabled="pagination.current_page === pagination.last_page" 
-           class="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1 bg-white text-gray-700 font-medium"
-         >
-           Next
-           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-           </svg>
-         </button>
-       </div>
-    </div>
-
-    <!-- The Modal -->
+    <!-- Modal -->
     <AssignShiftModal
       v-if="showAssignModal"
       :show="showAssignModal"
@@ -359,359 +281,500 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue';
-import { format } from 'date-fns';
-import axios from 'axios';
-import { useAuthStore } from '../../stores/auth';
-import AssignShiftModal from './AssignShiftModal.vue';
+import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { format } from 'date-fns'
+import axios from 'axios'
+import { useAuthStore } from '../../stores/auth'
+import AssignShiftModal from './AssignShiftModal.vue'
 
-const authStore = useAuthStore();
-const assignments = ref([]);
-const employees = ref([]);
-const loading = ref(false);
-const loadingEmployees = ref(false);
-const showAssignModal = ref(false);
-const selectedAssignment = ref(null);
-const showDebug = ref(false);
-const showAll = ref(false);
-let debounceTimer = null;
+const authStore = useAuthStore()
+const assignments = ref([])
+const employees = ref([])
+const loading = ref(false)
+const loadingEmployees = ref(false)
+const showAssignModal = ref(false)
+const selectedAssignment = ref(null)
+const showAll = ref(false)
+let debounceTimer = null
 
-const stats = reactive({
-  total: 0,
-  pending: 0,
-  accepted: 0,
-  rejected: 0,
-  uniqueEmployees: 0
-});
+const stats = reactive({ total: 0, pending: 0, accepted: 0, rejected: 0, uniqueEmployees: 0 })
 
 const pagination = reactive({
-  total: 0,
-  per_page: 20,
-  current_page: 1,
-  last_page: 1,
-  from: 0,
-  to: 0
-});
+  total: 0, per_page: 20, current_page: 1, last_page: 1, from: 0, to: 0
+})
 
 const filters = reactive({
-  status: '',
-  shift_type: '',
-  employee_name: '',
-  from_date: '',
-  to_date: ''
-});
+  status: '', shift_type: '', employee_name: '', from_date: '', to_date: ''
+})
 
-// Computed properties
 const visiblePages = computed(() => {
-  const pages = [];
-  const current = pagination.current_page;
-  const last = pagination.last_page;
-  
-  // Always show first page
-  pages.push(1);
-  
-  // Calculate range around current page
-  let start = Math.max(2, current - 1);
-  let end = Math.min(last - 1, current + 1);
-  
-  // Adjust if at beginning
-  if (current <= 3) {
-    end = Math.min(last - 1, 4);
-  }
-  
-  // Adjust if at end
-  if (current >= last - 2) {
-    start = Math.max(2, last - 3);
-  }
-  
-  // Add ellipsis if needed
-  if (start > 2) {
-    pages.push('...');
-  }
-  
-  // Add middle pages
-  for (let i = start; i <= end; i++) {
-    pages.push(i);
-  }
-  
-  // Add ellipsis if needed
-  if (end < last - 1) {
-    pages.push('...');
-  }
-  
-  // Always show last page if not already shown
-  if (last > 1 && !pages.includes(last)) {
-    pages.push(last);
-  }
-  
-  return pages;
-});
+  const pages = []
+  const current = pagination.current_page
+  const last = pagination.last_page
+  pages.push(1)
+  let start = Math.max(2, current - 1)
+  let end = Math.min(last - 1, current + 1)
+  if (current <= 3) end = Math.min(last - 1, 4)
+  if (current >= last - 2) start = Math.max(2, last - 3)
+  if (start > 2) pages.push('...')
+  for (let i = start; i <= end; i++) pages.push(i)
+  if (end < last - 1) pages.push('...')
+  if (last > 1 && !pages.includes(last)) pages.push(last)
+  return pages
+})
 
-const activeFiltersCount = computed(() => {
-  return Object.values(filters).filter(value => value !== '').length;
-});
+const activeFiltersCount = computed(() =>
+  Object.values(filters).filter(v => v !== '').length
+)
 
-// Toggle show all
-const toggleShowAll = () => {
-  showAll.value = !showAll.value;
-  loadAssignments(1);
-};
-
-// Clear all filters
+const toggleShowAll = () => { showAll.value = !showAll.value; loadAssignments(1) }
 const clearFilters = () => {
-  filters.status = '';
-  filters.shift_type = '';
-  filters.employee_name = '';
-  filters.from_date = '';
-  filters.to_date = '';
-  loadAssignments(1);
-};
+  filters.status = ''; filters.shift_type = ''; filters.employee_name = ''
+  filters.from_date = ''; filters.to_date = ''
+  loadAssignments(1)
+}
 
-// Load Assignments
 const loadAssignments = async (page = 1) => {
-  loading.value = true;
+  loading.value = true
   try {
-    const params = { 
-      page, 
-      ...filters,
-      show_all: showAll.value ? 1 : 0
-    };
-    
-    // Clean empty filters
-    Object.keys(params).forEach(key => (params[key] === '' || params[key] == null) && delete params[key]);
-
-    const response = await axios.get('/api/shift-assignments', { params });
-    
-    let data = [];
-    if (response.data.assignments) {
-      data = response.data.assignments;
-    } else if (response.data.data) {
-      data = response.data.data;
-    } else if (Array.isArray(response.data)) {
-      data = response.data;
-    }
-    
-    assignments.value = data || [];
-    
-    // Calculate statistics
-    calculateStats();
-    
+    const params = { page, ...filters, show_all: showAll.value ? 1 : 0 }
+    Object.keys(params).forEach(k => (params[k] === '' || params[k] == null) && delete params[k])
+    const response = await axios.get('/api/shift-assignments', { params })
+    const data = response.data.assignments || response.data.data || (Array.isArray(response.data) ? response.data : [])
+    assignments.value = data || []
+    calculateStats()
     if (response.data.pagination) {
-      const meta = response.data.pagination;
-      Object.assign(pagination, {
-        total: meta.total || 0,
-        per_page: meta.per_page || 20,
-        current_page: meta.current_page || 1,
-        last_page: meta.last_page || 1,
-        from: meta.from || 0,
-        to: meta.to || 0
-      });
+      Object.assign(pagination, response.data.pagination)
     } else {
-      pagination.total = data.length;
-      pagination.from = 1;
-      pagination.to = data.length;
-      pagination.current_page = page;
-      pagination.last_page = 1;
+      Object.assign(pagination, { total: data.length, from: 1, to: data.length, current_page: page, last_page: 1 })
     }
-
   } catch (error) {
-    console.error('Failed to load assignments', error);
-    assignments.value = [];
-    stats.total = 0;
-    pagination.total = 0;
+    console.error('Failed to load assignments', error)
+    assignments.value = []
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
-// Calculate statistics
 const calculateStats = () => {
-  stats.total = assignments.value.length;
-  stats.pending = assignments.value.filter(a => a.status === 'pending').length;
-  stats.accepted = assignments.value.filter(a => a.status === 'accepted').length;
-  stats.rejected = assignments.value.filter(a => a.status === 'rejected').length;
-  
-  const employeeIds = new Set(assignments.value.map(a => a.employee_id).filter(id => id));
-  stats.uniqueEmployees = employeeIds.size;
-};
+  stats.total = assignments.value.length
+  stats.pending = assignments.value.filter(a => a.status === 'pending').length
+  stats.accepted = assignments.value.filter(a => a.status === 'accepted').length
+  stats.rejected = assignments.value.filter(a => a.status === 'rejected').length
+  stats.uniqueEmployees = new Set(assignments.value.map(a => a.employee_id).filter(Boolean)).size
+}
 
 const debounceLoadAssignments = () => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => loadAssignments(1), 500);
-};
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => loadAssignments(1), 500)
+}
 
 const changePage = (page) => {
-  if (page >= 1 && page <= pagination.last_page) {
-    loadAssignments(page);
-  }
-};
+  if (page >= 1 && page <= pagination.last_page) loadAssignments(page)
+}
 
-// Employee Management
 const fetchEmployees = async () => {
-  if (employees.value.length > 0) return;
-  loadingEmployees.value = true;
+  if (employees.value.length > 0) return
+  loadingEmployees.value = true
   try {
-    let endpoint = '/api/manager/employees';
-    if (authStore.user?.roles?.includes('admin')) {
-      endpoint = '/api/admin/employees';
-    } else if (authStore.user?.roles?.includes('super-admin')) {
-      endpoint = '/api/admin/employees';
-    }
-    
-    const response = await axios.get(endpoint);
-    employees.value = response.data.data || response.data.employees || response.data || [];
+    const isAdmin = authStore.user?.roles?.includes('admin') || authStore.user?.roles?.includes('super-admin')
+    const endpoint = isAdmin ? '/api/admin/employees' : '/api/manager/employees'
+    const response = await axios.get(endpoint)
+    employees.value = response.data.data || response.data.employees || response.data || []
   } catch (error) {
-    console.error('Failed to fetch employees', error);
-    employees.value = [];
+    console.error('Failed to fetch employees', error)
+    employees.value = []
   } finally {
-    loadingEmployees.value = false;
+    loadingEmployees.value = false
   }
-};
+}
 
-// Modal Logic
 const openAssignModal = async () => {
-  selectedAssignment.value = null;
-  showAssignModal.value = true;
-  await fetchEmployees();
-};
+  selectedAssignment.value = null
+  showAssignModal.value = true
+  await fetchEmployees()
+}
 
 const editAssignment = async (assignment) => {
-  selectedAssignment.value = assignment;
-  showAssignModal.value = true;
-  await fetchEmployees();
-};
+  selectedAssignment.value = assignment
+  showAssignModal.value = true
+  await fetchEmployees()
+}
 
-const closeAssignModal = () => {
-  showAssignModal.value = false;
-  selectedAssignment.value = null;
-};
+const closeAssignModal = () => { showAssignModal.value = false; selectedAssignment.value = null }
+const handleAssignmentSaved = () => { closeAssignModal(); loadAssignments(pagination.current_page) }
 
-const handleAssignmentSaved = () => {
-  closeAssignModal();
-  loadAssignments(pagination.current_page);
-};
-
-// Assignment Actions
 const deleteAssignment = async (id) => {
-  if (!confirm('Are you sure you want to delete this shift assignment?')) return;
+  if (!confirm('Are you sure you want to delete this shift assignment?')) return
   try {
-    await axios.delete(`/api/shift-assignments/${id}`);
-    loadAssignments(pagination.current_page);
+    await axios.delete(`/api/shift-assignments/${id}`)
+    loadAssignments(pagination.current_page)
   } catch (error) {
-    alert('Failed to delete assignment: ' + (error.response?.data?.message || error.message));
+    alert('Failed to delete: ' + (error.response?.data?.message || error.message))
   }
-};
+}
 
-// Helper Functions
-const canEdit = (assignment) => {
-  if (!authStore.user?.roles) return false;
-  const userRoles = authStore.user.roles;
-  const isManagerOrAdmin = userRoles.includes('manager') || userRoles.includes('admin') || userRoles.includes('super-admin');
-  if (!isManagerOrAdmin) return false;
-  return ['pending', 'accepted'].includes(assignment.status);
-};
+const canEdit = (a) => {
+  const roles = authStore.user?.roles || []
+  return (roles.includes('manager') || roles.includes('admin') || roles.includes('super-admin'))
+    && ['pending', 'accepted'].includes(a.status)
+}
 
-const canDelete = (assignment) => {
-  if (!authStore.user?.roles) return false;
-  const userRoles = authStore.user.roles;
-  const isManagerOrAdmin = userRoles.includes('manager') || userRoles.includes('admin') || userRoles.includes('super-admin');
-  if (!isManagerOrAdmin) return false;
-  return assignment.status !== 'completed';
-};
+const canDelete = (a) => {
+  const roles = authStore.user?.roles || []
+  return (roles.includes('manager') || roles.includes('admin') || roles.includes('super-admin'))
+    && a.status !== 'completed'
+}
 
 const formatDate = (d) => {
-  if (!d) return '-';
-  try {
-    return format(new Date(d), 'MMM dd, yyyy');
-  } catch (e) {
-    return d;
-  }
-};
+  if (!d) return '—'
+  try { return format(new Date(d), 'MMM dd, yyyy') } catch { return d }
+}
 
 const formatTime = (t) => {
-  if (!t) return '';
+  if (!t) return ''
   try {
-    const [h, m] = t.split(':');
-    const hour = parseInt(h);
-    const minute = parseInt(m);
-    const period = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minute.toString().padStart(2, '0')} ${period}`;
-  } catch (e) {
-    return t;
-  }
-};
+    const [h, m] = t.split(':')
+    const hour = parseInt(h), minute = parseInt(m)
+    return `${hour % 12 || 12}:${minute.toString().padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`
+  } catch { return t }
+}
 
-const calculateShiftDuration = (startTime, endTime) => {
-  if (!startTime || !endTime) return '';
+const calculateShiftDuration = (start, end) => {
+  if (!start || !end) return ''
   try {
-    const [startHour, startMinute] = startTime.split(':').map(Number);
-    const [endHour, endMinute] = endTime.split(':').map(Number);
-    let startTotal = startHour * 60 + startMinute;
-    let endTotal = endHour * 60 + endMinute;
-    if (endTotal < startTotal) endTotal += 24 * 60;
-    const durationMinutes = endTotal - startTotal;
-    const hours = Math.floor(durationMinutes / 60);
-    const minutes = durationMinutes % 60;
-    return `${hours}h ${minutes}m`;
-  } catch (e) {
-    return '';
-  }
-};
+    const [sh, sm] = start.split(':').map(Number)
+    const [eh, em] = end.split(':').map(Number)
+    let diff = (eh * 60 + em) - (sh * 60 + sm)
+    if (diff < 0) diff += 24 * 60
+    return `${Math.floor(diff / 60)}h ${diff % 60}m`
+  } catch { return '' }
+}
 
-const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+const capitalize = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
 
-const getEmployeeName = (assignment) => {
-  if (assignment.employee?.full_name) return assignment.employee.full_name;
-  if (assignment.employee?.user?.name) return assignment.employee.user.name;
-  if (assignment.employee?.name) return assignment.employee.name;
-  if (assignment.employee?.employee_id) return `Employee #${assignment.employee.employee_id}`;
-  return 'Unknown Employee';
-};
+const getEmployeeName = (a) =>
+  a.employee?.full_name || a.employee?.user?.name || a.employee?.name ||
+  (a.employee?.employee_id ? `Employee #${a.employee.employee_id}` : 'Unknown Employee')
 
-const getEmployeeInitial = (assignment) => {
-  const name = getEmployeeName(assignment);
-  return name.charAt(0).toUpperCase();
-};
+const getEmployeeInitial = (a) => getEmployeeName(a).charAt(0).toUpperCase()
 
-const getEmployeeDetails = (assignment) => {
-  return assignment.employee && (
-    assignment.employee.employee_id ||
-    assignment.employee.position ||
-    assignment.employee.department?.name
-  );
-};
+const getEmployeeDetails = (a) =>
+  a.employee && (a.employee.employee_id || a.employee.position || a.employee.department?.name)
 
-const getAssignedByName = (assignment) => {
-  if (assignment.assigned_by?.name) return assignment.assigned_by.name;
-  if (assignment.assigned_by?.full_name) return assignment.assigned_by.full_name;
-  if (assignment.assigned_by?.user?.name) return assignment.assigned_by.user.name;
-  return null;
-};
+const getAssignedByName = (a) =>
+  a.assigned_by?.name || a.assigned_by?.full_name || a.assigned_by?.user?.name || null
 
 const getStatusClass = (s) => ({
-  pending: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
-  accepted: 'bg-green-100 text-green-800 border border-green-200',
-  rejected: 'bg-red-100 text-red-800 border border-red-200',
-  completed: 'bg-blue-100 text-blue-800 border border-blue-200',
-  cancelled: 'bg-gray-100 text-gray-800 border border-gray-200'
-}[s] || 'bg-gray-100 text-gray-800 border border-gray-200');
-
-const getShiftTypeDot = (t) => ({
-  morning: 'bg-orange-400',
-  day: 'bg-blue-400',
-  evening: 'bg-indigo-400',
-  night: 'bg-purple-400'
-}[t] || 'bg-gray-400');
+  pending: 'warning', accepted: 'success', rejected: 'danger',
+  completed: 'info', cancelled: 'neutral'
+}[s] || 'neutral')
 
 onMounted(() => {
-  const today = new Date();
-  filters.from_date = new Date(today.setDate(today.getDate() - 30)).toISOString().split('T')[0];
-  filters.to_date = new Date().toISOString().split('T')[0];
-  loadAssignments();
-});
+  const today = new Date()
+  const from = new Date(); from.setDate(today.getDate() - 30)
+  filters.from_date = from.toISOString().split('T')[0]
+  filters.to_date = new Date().toISOString().split('T')[0]
+  loadAssignments()
+})
 
-watch(() => authStore.user, () => {
-  loadAssignments();
-});
+watch(() => authStore.user, () => loadAssignments())
 </script>
+
+<style scoped>
+/* ── Base ──────────────────────────────────────────── */
+.shifts-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #1e293b;
+  padding: 1.5rem 2rem 3rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Header Card ─────────────────────────────────── */
+.dashboard-header-card {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.03);
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.header-card-accent {
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+
+.user-greeting { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; }
+.avatar-section { display: flex; align-items: center; gap: 1rem; }
+
+.avatar {
+  width: 52px; height: 52px;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  border-radius: 14px; display: flex; align-items: center; justify-content: center;
+  color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.25); flex-shrink: 0;
+}
+
+.user-info { display: flex; flex-direction: column; gap: 0.2rem; }
+.greeting { margin: 0; font-size: 1.375rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
+.subtitle { margin: 0; color: #64748b; font-size: 0.875rem; }
+.role-meta { margin-top: 0.125rem; }
+
+.role-badge {
+  background: #eff6ff; border: 1px solid #bfdbfe;
+  padding: 0.125rem 0.6rem; border-radius: 8px;
+  font-size: 0.7rem; font-weight: 600; color: #1d4ed8; display: inline-block;
+}
+
+.header-actions { display: flex; gap: 0.5rem; flex-shrink: 0; align-items: center; }
+
+/* ── Buttons ─────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;
+  border: none; padding: 0.5rem 1.1rem; border-radius: 8px;
+  font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  font-family: inherit;
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.35); }
+
+.btn-outline {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.45rem 0.9rem; background: white; border: 1px solid #e2e8f0;
+  color: #475569; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-outline:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; color: #1e293b; }
+.btn-outline.active { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+.btn-outline:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.btn-secondary {
+  padding: 0.5rem 1.1rem; background: #f1f5f9; color: #475569;
+  border: 1px solid #e2e8f0; border-radius: 8px;
+  font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-secondary:hover { background: #e2e8f0; }
+
+.btn-clear {
+  padding: 0.25rem 0.75rem; background: none; border: none;
+  color: #6366f1; font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: color 0.15s;
+}
+.btn-clear:hover { color: #4f46e5; text-decoration: underline; }
+
+/* ── Dashboard Content ───────────────────────────── */
+.dashboard-content { display: flex; flex-direction: column; gap: 1.5rem; }
+
+/* ── Section Cards ───────────────────────────────── */
+.metrics-section,
+.table-section {
+  background: white; border-radius: 16px;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.03);
+  border: 1px solid #e2e8f0; padding: 1.5rem;
+}
+h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem 0; color: #334155; }
+
+/* ── Metrics ─────────────────────────────────────── */
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; }
+
+.metric-card {
+  padding: 1.25rem; background: #f8fafc; border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  border: 1px solid #e2e8f0; position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.metric-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -4px rgba(0,0,0,0.08); border-color: var(--accent); }
+.metric-card::before { display: none; }
+.metric-icon-wrap { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; }
+.metric-value { font-size: 1.8rem; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 0.25rem; }
+.metric-label { font-size: 0.78rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ── Controls ────────────────────────────────────── */
+.controls-bar {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 1.25rem; gap: 1rem; flex-wrap: wrap;
+}
+.filters-row { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; }
+.filter-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.filter-group label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.filter-select {
+  padding: 0.45rem 2rem 0.45rem 0.75rem; border: 1px solid #e2e8f0;
+  border-radius: 8px; background: #f8fafc; color: #334155;
+  font-size: 0.82rem; font-weight: 500; cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.6rem center;
+  transition: all 0.2s; font-family: inherit;
+}
+.filter-select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.date-input { background-image: none; padding-right: 0.75rem; cursor: default; }
+
+.search-wrapper { position: relative; }
+.search-icon { position: absolute; left: 0.6rem; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+.filter-input {
+  padding: 0.45rem 0.75rem 0.45rem 1.9rem; border: 1px solid #e2e8f0;
+  border-radius: 8px; background: #f8fafc; color: #334155;
+  font-size: 0.82rem; font-weight: 500; width: 160px;
+  transition: all 0.2s; font-family: inherit;
+}
+.filter-input:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.filter-input::placeholder { color: #94a3b8; }
+
+.controls-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.records-count {
+  font-size: 0.78rem; font-weight: 700; color: #64748b;
+  background: #f1f5f9; padding: 0.2rem 0.7rem; border-radius: 9999px; white-space: nowrap;
+}
+
+/* ── States ──────────────────────────────────────── */
+.spinner {
+  width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #6366f1;
+  border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+  text-align: center; padding: 4rem 2rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.875rem;
+}
+.empty-icon-wrap {
+  width: 64px; height: 64px; border-radius: 16px; background: #f1f5f9;
+  border: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: center; color: #94a3b8;
+}
+.empty-state h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: #1e293b; }
+.empty-state p { margin: 0; font-size: 0.875rem; color: #64748b; max-width: 320px; }
+.empty-actions { display: flex; gap: 0.75rem; margin-top: 0.25rem; }
+
+/* ── Assignment Cards ────────────────────────────── */
+.assignments-list { display: flex; flex-direction: column; gap: 0.875rem; }
+
+.assignment-card {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 1.25rem; padding: 1.25rem;
+  border: 1px solid #e2e8f0; border-radius: 12px; background: #fdfdfe;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.assignment-card:hover { border-color: #c7d2fe; box-shadow: 0 4px 12px -4px rgba(0,0,0,0.07); }
+
+.card-left { display: flex; gap: 1.125rem; flex: 1; min-width: 0; }
+
+.emp-section { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+
+.emp-avatar {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  color: white; display: flex; align-items: center; justify-content: center;
+  font-size: 1rem; font-weight: 700; flex-shrink: 0;
+}
+
+.emp-details { min-width: 0; }
+.emp-name { font-size: 0.9rem; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.emp-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.3rem; }
+.meta-chip {
+  font-size: 0.68rem; font-weight: 600; color: #475569;
+  background: #f1f5f9; border: 1px solid #e2e8f0;
+  padding: 0.1rem 0.5rem; border-radius: 9999px;
+}
+
+/* Shift Info Grid */
+.shift-info-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem 1.5rem;
+  flex: 1; min-width: 0; align-content: start;
+}
+.shift-info-item { display: flex; flex-direction: column; gap: 0.1rem; }
+.info-label { font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+.info-value { font-size: 0.82rem; font-weight: 600; color: #334155; display: flex; align-items: center; gap: 0.35rem; }
+.note-value { font-weight: 400; color: #64748b; font-size: 0.8rem; }
+
+/* Shift type dots inside info */
+.type-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+}
+.type-morning { background: #f97316; }
+.type-day     { background: #3b82f6; }
+.type-evening { background: #8b5cf6; }
+.type-night   { background: #475569; }
+
+/* Card Right */
+.card-right {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 0.75rem; flex-shrink: 0;
+}
+
+.card-actions { display: flex; gap: 0.35rem; }
+
+.action-btn {
+  width: 30px; height: 30px; border-radius: 6px;
+  border: 1px solid #e2e8f0; background: white; color: #64748b;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s;
+}
+.action-btn:hover { background: #eff6ff; color: #4f46e5; border-color: #a5b4fc; }
+.action-btn.danger:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 0.25rem 0.65rem; border-radius: 9999px;
+  font-size: 0.7rem; font-weight: 700; white-space: nowrap;
+}
+.dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.status-badge.success { background: #d1fae5; color: #065f46; }
+.status-badge.warning { background: #fef3c7; color: #92400e; }
+.status-badge.danger  { background: #fee2e2; color: #991b1b; }
+.status-badge.info    { background: #dbeafe; color: #1e40af; }
+.status-badge.neutral { background: #f1f5f9; color: #64748b; }
+
+/* ── Pagination ──────────────────────────────────── */
+.pagination-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem 0 0; border-top: 1px solid #f1f5f9; margin-top: 0.875rem;
+}
+.pagination-info { font-size: 0.82rem; color: #64748b; }
+.pagination-info strong { color: #1e293b; font-weight: 700; }
+.pagination-controls { display: flex; gap: 0.35rem; align-items: center; }
+
+.page-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.35rem 0.75rem; background: white; border: 1px solid #e2e8f0;
+  border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #475569;
+  cursor: pointer; transition: all 0.15s; font-family: inherit; min-width: 2rem; justify-content: center;
+}
+.page-btn:hover:not(:disabled) { border-color: #a5b4fc; color: #4f46e5; background: #eff6ff; }
+.page-btn.active { background: #6366f1; color: white; border-color: #6366f1; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.page-ellipsis { padding: 0 0.25rem; color: #94a3b8; font-size: 0.82rem; }
+
+/* ── Responsive ──────────────────────────────────── */
+@media (max-width: 1000px) {
+  .shift-info-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .shifts-page { padding: 1rem 1rem 2rem; }
+  .user-greeting { flex-direction: column; align-items: flex-start; gap: 1rem; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  .controls-bar { flex-direction: column; align-items: flex-start; }
+  .filters-row { width: 100%; }
+  .filter-input { width: 100%; }
+  .assignment-card { flex-direction: column; gap: 1rem; }
+  .card-left { flex-direction: column; gap: 0.875rem; }
+  .shift-info-grid { grid-template-columns: repeat(2, 1fr); }
+  .card-right { flex-direction: row; align-items: center; justify-content: space-between; width: 100%; }
+  .pagination-bar { flex-direction: column; gap: 0.75rem; align-items: flex-start; }
+}
+
+@media (max-width: 480px) {
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .shift-info-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>

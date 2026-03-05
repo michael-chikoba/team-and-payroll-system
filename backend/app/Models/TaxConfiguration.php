@@ -73,8 +73,6 @@ class TaxConfiguration extends Model
         'DZD' => 'د.ج',
         'LYD' => 'ل.د',
         'ETB' => 'Br',
-        'KES' => 'KSh',
-        'UGX' => 'USh',
         'BRL' => 'R$',
         'MXN' => '$',
         'ARS' => '$',
@@ -213,11 +211,11 @@ class TaxConfiguration extends Model
     {
         $code = $this->getCurrency();
         $symbol = $this->getCurrencySymbol();
-        
+
         return [
-            'code' => $code,
+            'code'   => $code,
             'symbol' => $symbol,
-            'name' => $this->getCurrencyName($code),
+            'name'   => $this->getCurrencyName($code),
         ];
     }
 
@@ -226,63 +224,49 @@ class TaxConfiguration extends Model
      */
     private function getCurrencyName(string $code): string
     {
-       $names = [
-    // 🌍 Major Global Currencies
-    'USD' => 'US Dollar',
-    'EUR' => 'Euro',
-    'GBP' => 'British Pound',
-    'JPY' => 'Japanese Yen',
-    'CNY' => 'Chinese Yuan',
-    'INR' => 'Indian Rupee',
-    'AUD' => 'Australian Dollar',
-    'CAD' => 'Canadian Dollar',
-
-    // 🇿🇦 Southern Africa
-    'ZMW' => 'Zambian Kwacha',
-    'ZAR' => 'South African Rand',
-    'NAD' => 'Namibian Dollar',
-    'BWP' => 'Botswana Pula',
-    'MWK' => 'Malawian Kwacha',
-    'LSL' => 'Lesotho Loti',
-    'SZL' => 'Eswatini Lilangeni',
-    'MZN' => 'Mozambican Metical',
-    'ZWL' => 'Zimbabwean Dollar',
-
-    // 🇰🇪 East Africa
-    'KES' => 'Kenyan Shilling',
-    'UGX' => 'Ugandan Shilling',
-    'TZS' => 'Tanzanian Shilling',
-    'RWF' => 'Rwandan Franc',
-    'BIF' => 'Burundian Franc',
-    'ETB' => 'Ethiopian Birr',
-    'SOS' => 'Somali Shilling',
-
-    // 🇳🇬 West Africa
-    'NGN' => 'Nigerian Naira',
-    'GHS' => 'Ghanaian Cedi',
-    'XOF' => 'West African CFA Franc',
-    'XAF' => 'Central African CFA Franc',
-    'SLL' => 'Sierra Leonean Leone',
-    'GMD' => 'Gambian Dalasi',
-    'LRD' => 'Liberian Dollar',
-
-    // 🌍 Central Africa
-    'CDF' => 'Congolese Franc',
-    'STD' => 'São Tomé and Príncipe Dobra',
-
-    // 🌍 North Africa
-    'EGP' => 'Egyptian Pound',
-    'MAD' => 'Moroccan Dirham',
-    'DZD' => 'Algerian Dinar',
-    'TND' => 'Tunisian Dinar',
-    'LYD' => 'Libyan Dinar',
-
-    // 🌍 Island Nations
-    'MUR' => 'Mauritian Rupee',
-    'SCR' => 'Seychellois Rupee',
-    'CVE' => 'Cape Verdean Escudo',
-];
-
+        $names = [
+            'USD' => 'US Dollar',
+            'EUR' => 'Euro',
+            'GBP' => 'British Pound',
+            'JPY' => 'Japanese Yen',
+            'CNY' => 'Chinese Yuan',
+            'INR' => 'Indian Rupee',
+            'AUD' => 'Australian Dollar',
+            'CAD' => 'Canadian Dollar',
+            'ZMW' => 'Zambian Kwacha',
+            'ZAR' => 'South African Rand',
+            'NAD' => 'Namibian Dollar',
+            'BWP' => 'Botswana Pula',
+            'MWK' => 'Malawian Kwacha',
+            'LSL' => 'Lesotho Loti',
+            'SZL' => 'Eswatini Lilangeni',
+            'MZN' => 'Mozambican Metical',
+            'ZWL' => 'Zimbabwean Dollar',
+            'KES' => 'Kenyan Shilling',
+            'UGX' => 'Ugandan Shilling',
+            'TZS' => 'Tanzanian Shilling',
+            'RWF' => 'Rwandan Franc',
+            'BIF' => 'Burundian Franc',
+            'ETB' => 'Ethiopian Birr',
+            'SOS' => 'Somali Shilling',
+            'NGN' => 'Nigerian Naira',
+            'GHS' => 'Ghanaian Cedi',
+            'XOF' => 'West African CFA Franc',
+            'XAF' => 'Central African CFA Franc',
+            'SLL' => 'Sierra Leonean Leone',
+            'GMD' => 'Gambian Dalasi',
+            'LRD' => 'Liberian Dollar',
+            'CDF' => 'Congolese Franc',
+            'STD' => 'São Tomé and Príncipe Dobra',
+            'EGP' => 'Egyptian Pound',
+            'MAD' => 'Moroccan Dirham',
+            'DZD' => 'Algerian Dinar',
+            'TND' => 'Tunisian Dinar',
+            'LYD' => 'Libyan Dinar',
+            'MUR' => 'Mauritian Rupee',
+            'SCR' => 'Seychellois Rupee',
+            'CVE' => 'Cape Verdean Escudo',
+        ];
 
         return $names[$code] ?? $code;
     }
@@ -325,36 +309,36 @@ class TaxConfiguration extends Model
     public function calculateAllowances(Employee $employee): array
     {
         $basicSalary = (float) $employee->base_salary;
-        
+
         // Housing allowance - only if enabled in config
         $housing = 0.0;
         if ($this->includesHousingAllowance()) {
-            $rate = $this->getHousingAllowanceRate() / 100;
+            $rate    = $this->getHousingAllowanceRate() / 100;
             $housing = $basicSalary * $rate;
         }
-        
+
         // Transport and lunch from employee record
         $transport = (float) ($employee->transport_allowance ?? 0.00);
-        $lunch = (float) ($employee->lunch_allowance ?? 0.00);
-        
+        $lunch     = (float) ($employee->lunch_allowance    ?? 0.00);
+
         $total = $housing + $transport + $lunch;
 
         Log::debug('Allowances calculated', [
-            'employee_id' => $employee->id,
-            'basic_salary' => $basicSalary,
-            'housing' => $housing,
-            'transport' => $transport,
-            'lunch' => $lunch,
-            'total' => $total,
-            'housing_enabled' => $this->includesHousingAllowance(),
-            'housing_rate' => $this->getHousingAllowanceRate()
+            'employee_id'    => $employee->id,
+            'basic_salary'   => $basicSalary,
+            'housing'        => $housing,
+            'transport'      => $transport,
+            'lunch'          => $lunch,
+            'total'          => $total,
+            'housing_enabled'=> $this->includesHousingAllowance(),
+            'housing_rate'   => $this->getHousingAllowanceRate(),
         ]);
 
         return [
-            'housing' => $this->applyRounding($housing),
+            'housing'   => $this->applyRounding($housing),
             'transport' => $this->applyRounding($transport),
-            'lunch' => $this->applyRounding($lunch),
-            'total' => $this->applyRounding($total)
+            'lunch'     => $this->applyRounding($lunch),
+            'total'     => $this->applyRounding($total),
         ];
     }
 
@@ -365,32 +349,32 @@ class TaxConfiguration extends Model
     {
         $deductions = $this->config_data['statutory_deductions'] ?? [];
 
-        $breakdown = [];
+        $breakdown     = [];
         $totalEmployee = 0.0;
         $totalEmployer = 0.0;
 
         foreach ($deductions as $deduction) {
             $name = $deduction['name'];
             $type = $deduction['type'];
-            
+
             // Skip pension for non-full-time employees
             if ($type === 'pension' && $employee->employment_type !== 'full_time') {
                 Log::debug("Skipping {$name} for non-full-time employee", [
-                    'employee_id' => $employee->id,
-                    'employment_type' => $employee->employment_type
+                    'employee_id'     => $employee->id,
+                    'employment_type' => $employee->employment_type,
                 ]);
                 continue;
             }
 
             // Get base amount from config
-            $base = $deduction['base'] ?? 'basic';
+            $base       = $deduction['base'] ?? 'basic';
             $baseAmount = ($base === 'gross') ? $grossSalary : $basicSalary;
 
             // Apply ceiling if specified
-            $ceiling = isset($deduction['ceiling']) && $deduction['ceiling'] > 0 
-                ? (float) $deduction['ceiling'] 
+            $ceiling = isset($deduction['ceiling']) && $deduction['ceiling'] > 0
+                ? (float) $deduction['ceiling']
                 : null;
-            
+
             if ($ceiling && $baseAmount > $ceiling) {
                 $baseAmount = $ceiling;
             }
@@ -400,40 +384,36 @@ class TaxConfiguration extends Model
             $employerRate = (float) ($deduction['employer_rate'] ?? 0);
 
             // Calculate amounts
-            $employeeAmount = ($baseAmount * $employeeRate) / 100;
-            $employerAmount = ($baseAmount * $employerRate) / 100;
-
-            // Apply rounding
-            $employeeAmount = $this->applyRounding($employeeAmount);
-            $employerAmount = $this->applyRounding($employerAmount);
+            $employeeAmount = $this->applyRounding(($baseAmount * $employeeRate) / 100);
+            $employerAmount = $this->applyRounding(($baseAmount * $employerRate) / 100);
 
             $breakdown[] = [
-                'name' => $name,
-                'type' => $type,
-                'base' => $base,
-                'base_amount' => round($baseAmount, 2),
-                'employee_rate' => $employeeRate,
-                'employer_rate' => $employerRate,
-                'amount' => $employeeAmount,
-                'employer_contribution' => $employerAmount,
-                'ceiling' => $ceiling,
+                'name'                => $name,
+                'type'                => $type,
+                'base'                => $base,
+                'base_amount'         => round($baseAmount, 2),
+                'employee_rate'       => $employeeRate,
+                'employer_rate'       => $employerRate,
+                'amount'              => $employeeAmount,
+                'employer_contribution'=> $employerAmount,
+                'ceiling'             => $ceiling,
             ];
 
             $totalEmployee += $employeeAmount;
             $totalEmployer += $employerAmount;
 
             Log::debug("Statutory deduction calculated: {$name}", [
-                'employee_id' => $employee->id,
-                'type' => $type,
-                'base' => $base,
-                'base_amount' => $baseAmount,
+                'employee_id'     => $employee->id,
+                'type'            => $type,
+                'base'            => $base,
+                'base_amount'     => $baseAmount,
                 'employee_amount' => $employeeAmount,
-                'employer_amount' => $employerAmount
+                'employer_amount' => $employerAmount,
             ]);
         }
 
         return [
-            'breakdown' => $breakdown,
+            'breakdown'      => $breakdown,
             'total_employee' => $this->applyRounding($totalEmployee),
             'total_employer' => $this->applyRounding($totalEmployer),
         ];
@@ -444,13 +424,13 @@ class TaxConfiguration extends Model
      */
     public function calculatePAYE(float $taxableIncome): float
     {
-        $taxBands = $this->config_data['taxBands'] ?? [];
+        $taxBands          = $this->config_data['taxBands'] ?? [];
         $calculationMethod = $this->getTaxCalculationMethod();
 
         Log::debug('Calculating PAYE', [
             'taxable_income' => $taxableIncome,
-            'method' => $calculationMethod,
-            'bands_count' => count($taxBands)
+            'method'         => $calculationMethod,
+            'bands_count'    => count($taxBands),
         ]);
 
         if ($calculationMethod === 'cumulative') {
@@ -461,7 +441,18 @@ class TaxConfiguration extends Model
     }
 
     /**
-     * Calculate non-cumulative PAYE (monthly)
+     * Calculate non-cumulative PAYE (monthly).
+     *
+     * FIX: Band boundaries in the config use overlapping limits (e.g. 5100 / 5100.01)
+     * to prevent double-counting visually, but using them as raw lower limits causes
+     * each band to be K0.01 narrower than intended, producing a cumulative K0.01–K0.03
+     * rounding shortfall on the final PAYE figure.
+     *
+     * Solution: track the previous band's upperLimit and use that as the effective
+     * lower boundary for the next band. This guarantees each band is exactly the
+     * correct width regardless of how lowerLimit is stored in the config.
+     * Each band's tax contribution is also rounded independently before accumulation
+     * to prevent floating point drift on rates like 37%.
      */
     private function calculateNonCumulativePAYE(float $monthlyIncome, array $taxBands): float
     {
@@ -472,39 +463,41 @@ class TaxConfiguration extends Model
 
         $tax = 0.0;
 
-        usort($taxBands, function($a, $b) {
-            return ($a['lowerLimit'] ?? 0) <=> ($b['lowerLimit'] ?? 0);
-        });
+        usort($taxBands, fn($a, $b) => ($a['lowerLimit'] ?? 0) <=> ($b['lowerLimit'] ?? 0));
+
+        // Track the previous band's upper boundary as the effective floor for the
+        // next band, avoiding the K0.01 gap caused by config values like 5100/5100.01.
+        $prevUpper = 0.0;
 
         foreach ($taxBands as $band) {
-            $lowerLimit = (float) ($band['lowerLimit'] ?? 0);
             $upperLimit = isset($band['upperLimit']) ? (float) $band['upperLimit'] : PHP_FLOAT_MAX;
-            $rate = (float) ($band['rate'] ?? 0);
+            $rate       = (float) ($band['rate'] ?? 0);
+            $lower      = $prevUpper;  // ← effective lower, not config lowerLimit
 
-            if ($monthlyIncome <= $lowerLimit) {
+            if ($monthlyIncome <= $lower) {
                 break;
             }
 
             if ($upperLimit === PHP_FLOAT_MAX) {
-                $taxableInBand = $monthlyIncome - $lowerLimit;
-                $tax += ($taxableInBand * $rate) / 100;
+                $taxableInBand = $monthlyIncome - $lower;
+                $tax += $this->applyRounding(($taxableInBand * $rate) / 100);
                 break;
-            } else {
-                if ($monthlyIncome > $upperLimit) {
-                    $taxableInBand = $upperLimit - $lowerLimit;
-                } else {
-                    $taxableInBand = $monthlyIncome - $lowerLimit;
-                }
-                
-                $tax += ($taxableInBand * $rate) / 100;
             }
+
+            $taxableInBand = $monthlyIncome > $upperLimit
+                ? $upperLimit - $lower
+                : $monthlyIncome - $lower;
+
+            $tax      += $this->applyRounding(($taxableInBand * $rate) / 100);
+            $prevUpper = $upperLimit;
         }
 
         return $this->applyRounding($tax);
     }
 
     /**
-     * Calculate cumulative PAYE (annual converted to monthly)
+     * Calculate cumulative PAYE (annual converted to monthly).
+     * Same boundary fix applied for consistency.
      */
     private function calculateCumulativePAYE(float $monthlyIncome, array $taxBands): float
     {
@@ -514,39 +507,36 @@ class TaxConfiguration extends Model
         }
 
         $annualIncome = $monthlyIncome * 12;
-        $annualTax = 0.0;
+        $annualTax    = 0.0;
 
-        usort($taxBands, function($a, $b) {
-            return ($a['lowerLimit'] ?? 0) <=> ($b['lowerLimit'] ?? 0);
-        });
+        usort($taxBands, fn($a, $b) => ($a['lowerLimit'] ?? 0) <=> ($b['lowerLimit'] ?? 0));
+
+        $prevUpper = 0.0;
 
         foreach ($taxBands as $band) {
-            $lowerLimit = (float) ($band['lowerLimit'] ?? 0);
             $upperLimit = isset($band['upperLimit']) ? (float) $band['upperLimit'] : PHP_FLOAT_MAX;
-            $rate = (float) ($band['rate'] ?? 0);
+            $rate       = (float) ($band['rate'] ?? 0);
+            $lower      = $prevUpper;
 
-            if ($annualIncome <= $lowerLimit) {
+            if ($annualIncome <= $lower) {
                 break;
             }
 
             if ($upperLimit === PHP_FLOAT_MAX) {
-                $taxableInBand = $annualIncome - $lowerLimit;
-                $annualTax += ($taxableInBand * $rate) / 100;
+                $taxableInBand = $annualIncome - $lower;
+                $annualTax += $this->applyRounding(($taxableInBand * $rate) / 100);
                 break;
-            } else {
-                if ($annualIncome > $upperLimit) {
-                    $taxableInBand = $upperLimit - $lowerLimit;
-                } else {
-                    $taxableInBand = $annualIncome - $lowerLimit;
-                }
-                
-                $annualTax += ($taxableInBand * $rate) / 100;
             }
+
+            $taxableInBand = $annualIncome > $upperLimit
+                ? $upperLimit - $lower
+                : $annualIncome - $lower;
+
+            $annualTax += $this->applyRounding(($taxableInBand * $rate) / 100);
+            $prevUpper  = $upperLimit;
         }
 
-        $monthlyTax = $annualTax / 12;
-
-        return $this->applyRounding($monthlyTax);
+        return $this->applyRounding($annualTax / 12);
     }
 
     /**
@@ -555,13 +545,13 @@ class TaxConfiguration extends Model
     public function calculatePayroll(Employee $employee, float $overtimePay = 0, float $bonuses = 0): array
     {
         $basicSalary = (float) $employee->base_salary;
-        
+
         // Calculate allowances
         $allowances = $this->calculateAllowances($employee);
-        
-        // Calculate gross salary
+
+        // Calculate gross salary (bonuses included before deductions)
         $grossSalary = $basicSalary + $allowances['total'] + $overtimePay + $bonuses;
-        
+
         // Calculate statutory deductions
         $statutory = $this->calculateStatutoryDeductions($employee, $basicSalary, $grossSalary);
 
@@ -578,36 +568,36 @@ class TaxConfiguration extends Model
 
         // Calculate totals
         $totalDeductions = $paye + $statutory['total_employee'];
-        $netSalary = $grossSalary - $totalDeductions;
+        $netSalary       = $grossSalary - $totalDeductions;
 
         Log::info('Payroll calculation complete', [
-            'employee_id' => $employee->id,
-            'basic_salary' => $basicSalary,
-            'gross_salary' => $grossSalary,
-            'taxable_income' => $taxableIncome,
-            'paye' => $paye,
+            'employee_id'     => $employee->id,
+            'basic_salary'    => $basicSalary,
+            'gross_salary'    => $grossSalary,
+            'taxable_income'  => $taxableIncome,
+            'paye'            => $paye,
             'statutory_total' => $statutory['total_employee'],
-            'total_deductions' => $totalDeductions,
-            'net_salary' => $netSalary
+            'total_deductions'=> $totalDeductions,
+            'net_salary'      => $netSalary,
         ]);
 
         return [
-            'basic_salary' => $basicSalary,
-            'allowances' => $allowances,
-            'overtime_pay' => $overtimePay,
-            'bonuses' => $bonuses,
-            'gross_salary' => $grossSalary,
+            'basic_salary'   => $basicSalary,
+            'allowances'     => $allowances,
+            'overtime_pay'   => $overtimePay,
+            'bonuses'        => $bonuses,
+            'gross_salary'   => $grossSalary,
             'taxable_income' => $taxableIncome,
-            'deductions' => [
-                'paye_tax' => $paye,
-                'statutory' => $statutory['breakdown'],
-                'total_statutory' => $statutory['total_employee'],
+            'deductions'     => [
+                'paye_tax'         => $paye,
+                'statutory'        => $statutory['breakdown'],
+                'total_statutory'  => $statutory['total_employee'],
                 'total_deductions' => $totalDeductions,
             ],
             'employer_costs' => [
-                'statutory_contributions' => $statutory['total_employer']
+                'statutory_contributions' => $statutory['total_employer'],
             ],
-            'net_salary' => $netSalary
+            'net_salary' => $netSalary,
         ];
     }
 
@@ -619,9 +609,9 @@ class TaxConfiguration extends Model
         $method = $this->config_data['roundingMethod'] ?? 'nearest';
 
         return match ($method) {
-            'up' => ceil($amount),
-            'down' => floor($amount),
-            'none' => $amount,
+            'up'    => ceil($amount),
+            'down'  => floor($amount),
+            'none'  => $amount,
             default => round($amount, 2),
         };
     }

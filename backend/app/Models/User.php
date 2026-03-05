@@ -11,10 +11,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use App\Traits\ManagesTokens;
+use App\Traits\HasEncryptedFields;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, ManagesTokens;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, ManagesTokens,HasEncryptedFields;
     
     protected $fillable = [
         'first_name',
@@ -36,6 +37,11 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
     
+
+     public function getEncryptedFields(): array
+{
+    return ['email'];
+}
     /**
      * Get the employee profile associated with the user.
      */

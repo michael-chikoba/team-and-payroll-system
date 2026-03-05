@@ -7,36 +7,35 @@
         <div class="filter-controls">
           <div class="date-range-filter">
             <label>Date Range:</label>
-            <input 
-              type="date" 
-              v-model="filter.startDate" 
+            <input
+              type="date"
+              v-model="filter.startDate"
               class="date-input"
               :max="filter.endDate"
             >
             <span>to</span>
-            <input 
-              type="date" 
-              v-model="filter.endDate" 
+            <input
+              type="date"
+              v-model="filter.endDate"
               class="date-input"
               :min="filter.startDate"
             >
-            <button 
-              @click="applyDateFilter" 
+            <button
+              @click="applyDateFilter"
               class="btn-filter"
               :disabled="!filter.startDate || !filter.endDate"
             >
               Apply
             </button>
-            <button 
-              @click="clearDateFilter" 
+            <button
+              @click="clearDateFilter"
               class="btn-clear"
             >
               Clear
             </button>
           </div>
-          
+        
           <div class="additional-filters">
-            <!-- Priority Filter -->
             <select v-model="filter.priority" class="filter-select">
               <option value="">All Priorities</option>
               <option value="low">Low</option>
@@ -44,8 +43,7 @@
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
-            
-            <!-- ADDED: Status Filter -->
+          
             <select v-model="filter.status" class="filter-select">
               <option value="">All Statuses</option>
               <option value="todo">To Do</option>
@@ -53,8 +51,7 @@
               <option value="under_review">Under Review</option>
               <option value="completed">Completed</option>
             </select>
-            
-            <!-- Assignee Filter -->
+          
             <select v-model="filter.assignedTo" class="filter-select">
               <option value="">All Assignees</option>
               <option v-for="employee in employees" :key="employee.id" :value="employee.id">
@@ -64,11 +61,11 @@
           </div>
         </div>
       </div>
-      
+    
       <div class="header-right">
         <div class="report-actions">
-          <button 
-            @click="showReportModal = true" 
+          <button
+            @click="showReportModal = true"
             class="btn-report"
             :disabled="filteredTasks.length === 0"
           >
@@ -121,7 +118,7 @@
         @delete-task="handleDeleteTask"
         @view-task="handleViewTask"
       />
-      
+    
       <TaskColumn
         title="In Progress"
         status="in_progress"
@@ -132,7 +129,7 @@
         @delete-task="handleDeleteTask"
         @view-task="handleViewTask"
       />
-      
+    
       <TaskColumn
         title="Under Review"
         status="under_review"
@@ -143,7 +140,7 @@
         @delete-task="handleDeleteTask"
         @view-task="handleViewTask"
       />
-      
+    
       <TaskColumn
         title="Completed"
         status="completed"
@@ -156,170 +153,175 @@
       />
     </div>
 
+    <!-- Create/Edit Task Modal -->
+    <Teleport to="body">
+      <TaskModal
+        v-if="showCreateModal || showEditModal"
+        :task="editingTask"
+        :employees="employees"
+        :loading-employees="loadingEmployees"
+        :user-role="userRole"
+        @close="closeModals"
+        @save="handleSaveTask"
+      />
+    </Teleport>
+
+    <!-- View Task Modal -->
+    <Teleport to="body">
+      <TaskDetailModal
+        v-if="showDetailModal"
+        :task="selectedTask"
+        :user-role="userRole"
+        @close="showDetailModal = false"
+        @add-comment="handleAddComment"
+        @delete-comment="handleDeleteComment"
+      />
+    </Teleport>
+
     <!-- Report Generation Modal -->
-    <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false">
-      <div class="modal-content report-modal">
-        <div class="modal-header">
-          <h2>Generate Task Report</h2>
-          <button @click="showReportModal = false" class="close-btn">&times;</button>
-        </div>
-        
-        <div class="modal-body">
-          <div class="report-options">
-            <div class="form-group">
-              <label for="reportType">Report Type</label>
-              <select id="reportType" v-model="reportOptions.type" class="form-control">
-                <option value="weekly">Weekly Report</option>
-                <option value="custom">Custom Date Range</option>
-                <option value="all">All Tasks</option>
-              </select>
-            </div>
-            
-            <div v-if="reportOptions.type === 'custom'" class="form-group">
-              <label for="reportStartDate">Start Date</label>
-              <input 
-                id="reportStartDate" 
-                type="date" 
-                v-model="reportOptions.startDate" 
-                class="form-control"
-              >
-            </div>
-            
-            <div v-if="reportOptions.type === 'custom'" class="form-group">
-              <label for="reportEndDate">End Date</label>
-              <input 
-                id="reportEndDate" 
-                type="date" 
-                v-model="reportOptions.endDate" 
-                class="form-control"
-                :min="reportOptions.startDate"
-              >
-            </div>
-            
-            <div class="form-group">
-              <label>
-                <input type="checkbox" v-model="reportOptions.includeDetails" class="checkbox">
-                Include task details
-              </label>
-            </div>
-            
-            <div class="form-group">
-              <label>
-                <input type="checkbox" v-model="reportOptions.includeComments" class="checkbox">
-                Include comments
-              </label>
-            </div>
-            
-            <div class="form-group">
-              <label>
-                <input type="checkbox" v-model="reportOptions.includeSubtasks" class="checkbox">
-                Include subtasks
-              </label>
-            </div>
-            
-            <div class="form-group">
-              <label for="reportFormat">Format</label>
-              <select id="reportFormat" v-model="reportOptions.format" class="form-control">
-                <option value="pdf">PDF</option>
-                <option value="excel">Excel</option>
-              </select>
-            </div>
-            
-            <div class="selected-count">
-              <strong>Selected Tasks:</strong> {{ selectedTasksForReport.length }}
-              <span v-if="selectedTasksForReport.length === 0" class="warning-text">
-                (No tasks match your criteria)
-              </span>
-            </div>
+    <Teleport to="body">
+      <div v-if="showReportModal" class="modal-overlay" @click.self="showReportModal = false">
+        <div class="modal-content report-modal">
+          <div class="modal-header">
+            <h2>Generate Task Report</h2>
+            <button @click="showReportModal = false" class="close-btn">&times;</button>
           </div>
-          
-          <!-- Task Selection -->
-          <div v-if="filteredTasks.length > 0" class="task-selection">
-            <h3>Select Tasks for Report</h3>
-            <div class="select-all-controls">
-              <label>
-                <input 
-                  type="checkbox" 
-                  :checked="allTasksSelected" 
-                  @change="toggleSelectAll"
-                  class="checkbox"
-                >
-                Select All ({{ filteredTasks.length }} tasks)
-              </label>
-            </div>
+        
+          <div class="modal-body">
+            <div class="report-options">
+              <div class="form-group">
+                <label for="reportType">Report Type</label>
+                <select id="reportType" v-model="reportOptions.type" class="form-control">
+                  <option value="weekly">Weekly Report</option>
+                  <option value="custom">Custom Date Range</option>
+                  <option value="all">All Tasks</option>
+                </select>
+              </div>
             
-            <div class="tasks-list">
-              <div 
-                v-for="task in filteredTasks" 
-                :key="task.id" 
-                class="task-select-item"
-                :class="{ 'selected': selectedReportTasks.includes(task.id) }"
-              >
-                <label class="task-select-label">
-                  <input 
-                    type="checkbox" 
-                    :value="task.id" 
-                    v-model="selectedReportTasks"
-                    class="task-checkbox"
-                  >
-                  <div class="task-info">
-                    <span class="task-title">{{ task.title }}</span>
-                    <div class="task-meta">
-                      <span class="task-priority" :class="`priority-${task.priority}`">
-                        {{ task.priority }}
-                      </span>
-                      <span class="task-assignee">{{ task.assigned_to.name }}</span>
-                      <span class="task-date">
-                        {{ task.created_at ? formatDate(task.created_at) : 'No date' }}
-                      </span>
-                    </div>
-                  </div>
+              <div v-if="reportOptions.type === 'custom'" class="form-group">
+                <label for="reportStartDate">Start Date</label>
+                <input
+                  id="reportStartDate"
+                  type="date"
+                  v-model="reportOptions.startDate"
+                  class="form-control"
+                >
+              </div>
+            
+              <div v-if="reportOptions.type === 'custom'" class="form-group">
+                <label for="reportEndDate">End Date</label>
+                <input
+                  id="reportEndDate"
+                  type="date"
+                  v-model="reportOptions.endDate"
+                  class="form-control"
+                  :min="reportOptions.startDate"
+                >
+              </div>
+            
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" v-model="reportOptions.includeDetails" class="checkbox">
+                  Include task details
                 </label>
+              </div>
+            
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" v-model="reportOptions.includeComments" class="checkbox">
+                  Include comments
+                </label>
+              </div>
+            
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" v-model="reportOptions.includeSubtasks" class="checkbox">
+                  Include subtasks
+                </label>
+              </div>
+            
+              <div class="form-group">
+                <label for="reportFormat">Format</label>
+                <select id="reportFormat" v-model="reportOptions.format" class="form-control">
+                  <option value="pdf">PDF</option>
+                  <option value="excel">Excel</option>
+                </select>
+              </div>
+            
+              <div class="selected-count">
+                <strong>Selected Tasks:</strong> {{ selectedTasksForReport.length }}
+                <span v-if="selectedTasksForReport.length === 0" class="warning-text">
+                  (No tasks match your criteria)
+                </span>
+              </div>
+            </div>
+          
+            <div v-if="filteredTasks.length > 0" class="task-selection">
+              <h3>Select Tasks for Report</h3>
+              <div class="select-all-controls">
+                <label>
+                  <input
+                    type="checkbox"
+                    :checked="allTasksSelected"
+                    @change="toggleSelectAll"
+                    class="checkbox"
+                  >
+                  Select All ({{ filteredTasks.length }} tasks)
+                </label>
+              </div>
+            
+              <div class="tasks-list">
+                <div
+                  v-for="task in filteredTasks"
+                  :key="task.id"
+                  class="task-select-item"
+                  :class="{ 'selected': selectedReportTasks.includes(task.id) }"
+                >
+                  <label class="task-select-label">
+                    <input
+                      type="checkbox"
+                      :value="task.id"
+                      v-model="selectedReportTasks"
+                      class="task-checkbox"
+                    >
+                    <div class="task-info">
+                      <span class="task-title">{{ task.title }}</span>
+                      <div class="task-meta">
+                        <span class="task-priority" :class="`priority-${task.priority}`">
+                          {{ task.priority }}
+                        </span>
+                        <span class="task-assignee">{{ task.assigned_to.name }}</span>
+                        <span class="task-date">
+                          {{ task.created_at ? formatDate(task.created_at) : 'No date' }}
+                        </span>
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
-        </div>
         
-        <div class="modal-footer">
-          <button 
-            @click="showReportModal = false" 
-            class="btn-secondary"
-            :disabled="generatingReport"
-          >
-            Cancel
-          </button>
-          <button 
-            @click="generateReport" 
-            class="btn-primary"
-            :disabled="generatingReport || selectedReportTasks.length === 0"
-          >
-            <span v-if="generatingReport">Generating...</span>
-            <span v-else>Generate {{ reportOptions.format.toUpperCase() }} Report</span>
-          </button>
+          <div class="modal-footer">
+            <button
+              @click="showReportModal = false"
+              class="btn-secondary"
+              :disabled="generatingReport"
+            >
+              Cancel
+            </button>
+            <button
+              @click="generateReport"
+              class="btn-primary"
+              :disabled="generatingReport || selectedReportTasks.length === 0"
+            >
+              <span v-if="generatingReport">Generating...</span>
+              <span v-else>Generate {{ reportOptions.format.toUpperCase() }} Report</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-
-    <!-- Create/Edit Task Modal -->
-    <TaskModal
-      v-if="showCreateModal || showEditModal"
-      :task="editingTask"
-      :employees="employees"
-      :loading-employees="loadingEmployees"
-      :user-role="userRole"
-      @close="closeModals"
-      @save="handleSaveTask"
-    />
-
-    <!-- View Task Modal -->
-    <TaskDetailModal
-      v-if="showDetailModal"
-      :task="selectedTask"
-      :user-role="userRole"
-      @close="showDetailModal = false"
-      @add-comment="handleAddComment"
-      @delete-comment="handleDeleteComment"
-    />
+    </Teleport>
   </div>
 </template>
 
@@ -331,19 +333,19 @@ import TaskModal from './TaskModal.vue';
 import TaskDetailModal from './TaskDetailModal.vue';
 import axios from 'axios';
 
-const { 
-  tasks, 
-  employees, 
-  loading, 
-  error, 
-  fetchTasks, 
-  createTask, 
-  updateTask, 
+const {
+  tasks,
+  employees,
+  loading,
+  error,
+  fetchTasks,
+  createTask,
+  updateTask,
   updateTaskStatus,
   deleteTask,
   fetchEmployees,
   addComment,
-  deleteComment 
+  deleteComment
 } = useTasks();
 
 const userRole = ref('');
@@ -357,7 +359,6 @@ const loadingEmployees = ref(false);
 const generatingReport = ref(false);
 const selectedReportTasks = ref([]);
 
-// Filter state
 const filter = ref({
   startDate: '',
   endDate: '',
@@ -366,7 +367,6 @@ const filter = ref({
   status: ''
 });
 
-// Report options
 const reportOptions = ref({
   type: 'weekly',
   startDate: '',
@@ -381,86 +381,64 @@ onMounted(async () => {
   const data = await fetchTasks();
   userRole.value = data.user_role;
   
-  // Set default date range to last 30 days
   const endDate = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - 30);
-  
   filter.value.endDate = formatDateForInput(endDate);
   filter.value.startDate = formatDateForInput(startDate);
   
-  // Set report dates to last week by default
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
   reportOptions.value.startDate = formatDateForInput(weekAgo);
   reportOptions.value.endDate = formatDateForInput(new Date());
 });
 
-// Computed properties
 const filteredTasks = computed(() => {
   if (!tasks.value) return [];
   
   return tasks.value.filter(task => {
-    // Date filter
     if (filter.value.startDate && filter.value.endDate) {
       const taskDate = task.created_at ? new Date(task.created_at) : new Date();
       const startDate = new Date(filter.value.startDate);
       const endDate = new Date(filter.value.endDate);
-      endDate.setHours(23, 59, 59, 999); // Include entire end day
-      
-      if (taskDate < startDate || taskDate > endDate) {
-        return false;
-      }
+      endDate.setHours(23, 59, 59, 999);
+      if (taskDate < startDate || taskDate > endDate) return false;
     }
-    
-    // Priority filter
-    if (filter.value.priority && task.priority !== filter.value.priority) {
-      return false;
-    }
-    
-    // Assigned to filter
-    if (filter.value.assignedTo && task.assigned_to.id !== filter.value.assignedTo) {
-      return false;
-    }
-    
-    // Status filter
-    if (filter.value.status && task.status !== filter.value.status) {
-      return false;
-    }
-    
+    if (filter.value.priority && task.priority !== filter.value.priority) return false;
+    if (filter.value.assignedTo && task.assigned_to.id !== filter.value.assignedTo) return false;
+    if (filter.value.status && task.status !== filter.value.status) return false;
     return true;
   });
 });
 
-const selectedTasksForReport = computed(() => {
-  return filteredTasks.value.filter(task => selectedReportTasks.value.includes(task.id));
-});
+const selectedTasksForReport = computed(() =>
+  filteredTasks.value.filter(task => selectedReportTasks.value.includes(task.id))
+);
 
-const allTasksSelected = computed(() => {
-  return filteredTasks.value.length > 0 && 
-         selectedReportTasks.value.length === filteredTasks.value.length;
-});
+const allTasksSelected = computed(() =>
+  filteredTasks.value.length > 0 &&
+  selectedReportTasks.value.length === filteredTasks.value.length
+);
 
-const completedTasksCount = computed(() => {
-  return filteredTasks.value.filter(task => task.status === 'completed').length;
-});
+const completedTasksCount = computed(() =>
+  filteredTasks.value.filter(task => task.status === 'completed').length
+);
 
-const inProgressTasksCount = computed(() => {
-  return filteredTasks.value.filter(task => task.status === 'in_progress').length;
-});
+const inProgressTasksCount = computed(() =>
+  filteredTasks.value.filter(task => task.status === 'in_progress').length
+);
 
-const overdueTasksCount = computed(() => {
-  return filteredTasks.value.filter(task => {
+const overdueTasksCount = computed(() =>
+  filteredTasks.value.filter(task => {
     if (!task.deadline || task.status === 'completed') return false;
     return new Date(task.deadline) < new Date();
-  }).length;
-});
+  }).length
+);
 
 const thisWeekTasksCount = computed(() => {
   const today = new Date();
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
-  
   return filteredTasks.value.filter(task => {
     if (!task.created_at) return false;
     const taskDate = new Date(task.created_at);
@@ -468,23 +446,18 @@ const thisWeekTasksCount = computed(() => {
   }).length;
 });
 
-// Watch for filter changes to update selected tasks
 watch(filteredTasks, (newTasks) => {
-  // Auto-select all tasks when filter changes
   selectedReportTasks.value = newTasks.map(task => task.id);
 }, { deep: true });
 
-// Methods
-const getTasksByStatus = (status) => {
-  return filteredTasks.value.filter(task => task.status === status);
-};
+const getTasksByStatus = (status) =>
+  filteredTasks.value.filter(task => task.status === status);
 
 const applyDateFilter = () => {
   if (!filter.value.startDate || !filter.value.endDate) {
     alert('Please select both start and end dates');
     return;
   }
-  console.log('Date filter applied:', filter.value.startDate, 'to', filter.value.endDate);
 };
 
 const clearDateFilter = () => {
@@ -508,10 +481,8 @@ const generateReport = async () => {
     alert('Please select at least one task for the report');
     return;
   }
-
   try {
     generatingReport.value = true;
-    
     const reportData = {
       task_ids: selectedReportTasks.value,
       report_type: reportOptions.value.type,
@@ -522,50 +493,38 @@ const generateReport = async () => {
       include_subtasks: reportOptions.value.includeSubtasks,
       format: reportOptions.value.format
     };
-
     const response = await axios.post('/api/tasks/reports/generate', reportData, {
       responseType: 'blob',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': reportOptions.value.format === 'pdf' 
-          ? 'application/pdf' 
+        'Accept': reportOptions.value.format === 'pdf'
+          ? 'application/pdf'
           : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       }
     });
-
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');
     const fileName = `task-report-${new Date().toISOString().split('T')[0]}.${reportOptions.value.format}`;
-    
     link.href = url;
     link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
-    
     link.remove();
     window.URL.revokeObjectURL(url);
-    
     showReportModal.value = false;
     alert('Report generated successfully!');
-    
   } catch (err) {
     console.error('Failed to generate report:', err);
     let errorMessage = 'Failed to generate report. ';
-    
     if (err.response) {
-      if (err.response.status === 404) {
-        errorMessage += 'Report endpoint not found. Please check if the backend route is configured.';
-      } else if (err.response.status === 500) {
-        errorMessage += 'Server error occurred. Please try again later.';
-      } else {
-        errorMessage += `Error: ${err.response.data?.message || err.response.statusText}`;
-      }
+      if (err.response.status === 404) errorMessage += 'Report endpoint not found.';
+      else if (err.response.status === 500) errorMessage += 'Server error occurred.';
+      else errorMessage += `Error: ${err.response.data?.message || err.response.statusText}`;
     } else if (err.request) {
-      errorMessage += 'No response from server. Please check your connection.';
+      errorMessage += 'No response from server.';
     } else {
       errorMessage += err.message;
     }
-    
     alert(errorMessage);
   } finally {
     generatingReport.value = false;
@@ -581,11 +540,8 @@ const formatDateForInput = (date) => {
 
 const formatDate = (dateString) => {
   if (!dateString) return 'No date';
-  const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric'
   });
 };
 
@@ -595,7 +551,6 @@ const handleCreateTask = async () => {
     await fetchEmployees();
     showCreateModal.value = true;
   } catch (err) {
-    console.error('Failed to fetch employees:', err);
     alert('Failed to load team members. Please try again.');
   } finally {
     loadingEmployees.value = false;
@@ -606,7 +561,6 @@ const handleStatusUpdate = async (taskId, newStatus) => {
   try {
     await updateTaskStatus(taskId, newStatus);
   } catch (err) {
-    console.error('Failed to update status:', err);
     alert('Failed to update task status. Please try again.');
   }
 };
@@ -618,7 +572,6 @@ const handleEditTask = async (task) => {
     editingTask.value = { ...task };
     showEditModal.value = true;
   } catch (err) {
-    console.error('Failed to fetch employees:', err);
     alert('Failed to load team members. Please try again.');
   } finally {
     loadingEmployees.value = false;
@@ -630,7 +583,6 @@ const handleDeleteTask = async (taskId) => {
     try {
       await deleteTask(taskId);
     } catch (err) {
-      console.error('Failed to delete task:', err);
       alert('Failed to delete task. Please try again.');
     }
   }
@@ -650,7 +602,6 @@ const handleSaveTask = async (taskData) => {
     }
     closeModals();
   } catch (err) {
-    console.error('Failed to save task:', err);
     alert('Failed to save task. Please try again.');
   }
 };
@@ -665,7 +616,6 @@ const handleAddComment = async (taskId, comment) => {
   try {
     await addComment(taskId, comment);
   } catch (err) {
-    console.error('Failed to add comment:', err);
     alert('Failed to add comment. Please try again.');
   }
 };
@@ -674,7 +624,6 @@ const handleDeleteComment = async (commentId, taskId) => {
   try {
     await deleteComment(commentId, taskId);
   } catch (err) {
-    console.error('Failed to delete comment:', err);
     alert('Failed to delete comment. Please try again.');
   }
 };
@@ -682,22 +631,34 @@ const handleDeleteComment = async (commentId, taskId) => {
 
 <style scoped>
 /* =========================================
-   CORE LAYOUT & VISIBILITY FIXES
+   CORE LAYOUT & BACKGROUND
    ========================================= */
-
 .task-board {
   padding: 20px;
   min-height: 100vh;
-  background-color: #eef0f3;
-  color: #1a202c; /* Ensure global dark text */
+  background-color: #f8fafc;
+  color: #1e293b;
 }
 
-/* INPUT VISIBILITY FIXES */
 input, select, textarea {
-  color: #1a202c !important; /* Force dark text on inputs */
-  background-color: #ffffff !important; /* Force white background */
+  color: #1e293b;
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
 }
 
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* =========================================
+   HEADER SECTION
+   ========================================= */
 .board-header {
   display: flex;
   justify-content: space-between;
@@ -715,15 +676,15 @@ input, select, textarea {
 .header-left h1 {
   font-size: 28px;
   font-weight: 600;
-  color: #2d3748;
+  color: #0f172a;
   margin-bottom: 15px;
 }
 
 .filter-controls {
   background: white;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
 }
 
 .date-range-filter {
@@ -736,56 +697,53 @@ input, select, textarea {
 
 .date-range-filter label {
   font-weight: 600;
-  color: #2d3748;
+  color: #334155;
 }
 
-/* Updated Date Input Styling */
 .date-input {
-  padding: 6px 10px;
-  border: 1px solid #cbd5e0;
-  border-radius: 4px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   font-size: 14px;
-  color: #1a202c; /* Dark text */
+  color: #1e293b;
   background-color: #ffffff;
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: #4299e1;
-  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.1);
+  min-width: 140px;
 }
 
 .btn-filter, .btn-clear {
-  padding: 6px 12px;
+  padding: 8px 16px;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
 }
 
 .btn-filter {
-  background-color: #4299e1;
+  background-color: #3b82f6;
   color: white;
 }
 
 .btn-filter:hover:not(:disabled) {
-  background-color: #3182ce;
+  background-color: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
 }
 
 .btn-filter:disabled {
-  background-color: #a0aec0;
+  background-color: #94a3b8;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .btn-clear {
-  background-color: #e2e8f0;
-  color: #4a5568;
+  background-color: #f1f5f9;
+  color: #475569;
 }
 
 .btn-clear:hover {
-  background-color: #cbd5e0;
+  background-color: #e2e8f0;
 }
 
 .additional-filters {
@@ -794,21 +752,15 @@ input, select, textarea {
   flex-wrap: wrap;
 }
 
-/* Updated Select Styling */
 .filter-select {
-  padding: 6px 10px;
-  border: 1px solid #cbd5e0;
-  border-radius: 4px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
   font-size: 14px;
   background-color: white;
-  color: #1a202c; /* Dark text */
+  color: #1e293b;
   min-width: 150px;
-}
-
-.filter-select:focus {
-  outline: none;
-  border-color: #4299e1;
-  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.1);
+  cursor: pointer;
 }
 
 .header-right {
@@ -825,95 +777,115 @@ input, select, textarea {
 .btn-report, .btn-primary {
   padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .btn-report {
-  background-color: #48bb78;
+  background-color: #10b981;
   color: white;
 }
 
 .btn-report:hover:not(:disabled) {
-  background-color: #38a169;
+  background-color: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);
 }
 
 .btn-report:disabled {
-  background-color: #a0aec0;
+  background-color: #94a3b8;
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .btn-primary {
-  background-color: #4299e1;
+  background-color: #3b82f6;
   color: white;
 }
 
-.btn-primary:hover {
-  background-color: #3182ce;
+.btn-primary:hover:not(:disabled) {
+  background-color: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
 }
 
-/* Stats Summary */
+/* =========================================
+   STATS SUMMARY — no shadow, clean border
+   ========================================= */
 .stats-summary {
   display: flex;
-  gap: 15px;
-  margin-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 30px;
   flex-wrap: wrap;
 }
 
 .stat-card {
   background: white;
-  padding: 15px 20px;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 16px 24px;
+  border-radius: 12px;
+  /* Shadow completely removed — clean 1px border keeps cards visible */
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 120px;
+  min-width: 130px;
+  transition: border-color 0.2s ease;
+}
+
+.stat-card:hover {
+  /* Subtle border darkening on hover instead of shadow lift */
+  border-color: #cbd5e1;
 }
 
 .stat-label {
   font-size: 12px;
-  color: #4a5568;
+  color: #64748b;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 
 .stat-value {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
-  color: #2d3748;
+  color: #0f172a;
+  line-height: 1.2;
 }
 
-/* Report Modal */
+/* =========================================
+   MODAL STYLES
+   ========================================= */
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
 }
 
 .report-modal {
   max-width: 800px;
   max-height: 90vh;
   overflow-y: auto;
-  background-color: white !important;
-  border-radius: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-  border: 1px solid #e2e8f0;
+  background-color: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+              0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: none;
 }
 
 .modal-header {
@@ -921,15 +893,15 @@ input, select, textarea {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #f1f5f9;
   background-color: white;
-  border-radius: 12px 12px 0 0;
+  border-radius: 16px 16px 0 0;
 }
 
 .modal-header h2 {
   font-size: 20px;
   font-weight: 600;
-  color: #2d3748;
+  color: #0f172a;
   margin: 0;
 }
 
@@ -937,16 +909,16 @@ input, select, textarea {
   background: none;
   border: none;
   font-size: 24px;
-  color: #a0aec0;
+  color: #94a3b8;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: color 0.2s, background-color 0.2s;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
 }
 
 .close-btn:hover {
-  color: #2d3748;
-  background-color: #f7fafc;
+  color: #0f172a;
+  background-color: #f8fafc;
 }
 
 .modal-body {
@@ -957,100 +929,106 @@ input, select, textarea {
 .report-options {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  gap: 20px;
   margin-bottom: 24px;
   background-color: white;
 }
 
 .form-group {
   margin-bottom: 16px;
-  background-color: transparent;
 }
 
 .form-group label {
   display: block;
   margin-bottom: 6px;
   font-size: 14px;
-  font-weight: 600;
-  color: #2d3748;
-  background-color: transparent;
+  font-weight: 500;
+  color: #334155;
 }
 
 .form-control {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #cbd5e0;
-  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
   font-size: 14px;
   background-color: white;
-  color: #1a202c; /* Input Text */
-  transition: border-color 0.2s, box-shadow 0.2s;
+  color: #1e293b;
+  transition: all 0.2s;
 }
 
 .form-control:focus {
   outline: none;
-  border-color: #4299e1;
-  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
-  background-color: white;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .checkbox {
   margin-right: 8px;
-  accent-color: #4299e1;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3b82f6;
 }
 
 .selected-count {
   grid-column: 1 / -1;
   padding: 12px 16px;
-  background-color: #f7fafc;
+  background-color: #f8fafc;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #f1f5f9;
   font-size: 14px;
-  color: #4a5568;
+  color: #475569;
 }
 
 .warning-text {
-  color: #e53e3e;
+  color: #ef4444;
   font-weight: 500;
+  margin-left: 8px;
 }
 
-/* Task Selection */
 .task-selection {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 2px solid #e2e8f0;
-  background-color: white;
+  border-top: 2px solid #f1f5f9;
 }
 
 .task-selection h3 {
   font-size: 16px;
   font-weight: 600;
-  color: #2d3748;
+  color: #0f172a;
   margin-bottom: 16px;
-  background-color: transparent;
 }
 
 .select-all-controls {
   margin-bottom: 16px;
   padding: 12px 16px;
-  background-color: #f7fafc;
+  background-color: #f8fafc;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #f1f5f9;
+}
+
+.select-all-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #334155;
 }
 
 .tasks-list {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #f1f5f9;
   border-radius: 8px;
   background-color: white;
 }
 
 .task-select-item {
   padding: 12px 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #f1f5f9;
   transition: background-color 0.2s;
-  background-color: white;
 }
 
 .task-select-item:last-child {
@@ -1058,11 +1036,11 @@ input, select, textarea {
 }
 
 .task-select-item:hover {
-  background-color: #f7fafc;
+  background-color: #f8fafc;
 }
 
 .task-select-item.selected {
-  background-color: #ebf8ff;
+  background-color: #eff6ff;
 }
 
 .task-select-label {
@@ -1070,33 +1048,33 @@ input, select, textarea {
   align-items: flex-start;
   gap: 12px;
   cursor: pointer;
-  background-color: transparent;
 }
 
 .task-checkbox {
   margin-top: 2px;
-  accent-color: #4299e1;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3b82f6;
 }
 
 .task-info {
   flex: 1;
-  background-color: transparent;
 }
 
 .task-title {
   display: block;
   font-weight: 500;
-  color: #2d3748;
+  color: #0f172a;
   margin-bottom: 4px;
-  background-color: transparent;
 }
 
 .task-meta {
   display: flex;
   gap: 12px;
   font-size: 12px;
-  color: #718096;
-  background-color: transparent;
+  color: #64748b;
+  flex-wrap: wrap;
 }
 
 .task-priority {
@@ -1107,10 +1085,10 @@ input, select, textarea {
   font-size: 10px;
 }
 
-.priority-critical { background-color: #fed7d7; color: #c53030; }
-.priority-high { background-color: #feebc8; color: #c05621; }
-.priority-moderate { background-color: #fefcbf; color: #975a16; }
-.priority-low { background-color: #c6f6d5; color: #276749; }
+.priority-critical { background-color: #fee2e2; color: #b91c1c; }
+.priority-high     { background-color: #ffedd5; color: #c2410c; }
+.priority-moderate { background-color: #fef9c3; color: #854d0e; }
+.priority-low      { background-color: #dcfce7; color: #166534; }
 
 .task-assignee {
   font-weight: 500;
@@ -1121,162 +1099,99 @@ input, select, textarea {
   justify-content: flex-end;
   gap: 12px;
   padding: 20px 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #f1f5f9;
   background-color: white;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 16px 16px;
 }
 
 .btn-secondary {
-  background-color: #e2e8f0;
-  color: #2d3748;
+  background-color: #f1f5f9;
+  color: #334155;
   padding: 10px 20px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #cbd5e0;
+  background-color: #e2e8f0;
+  transform: translateY(-1px);
 }
 
 .btn-secondary:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* Board Columns */
+/* =========================================
+   BOARD COLUMNS
+   ========================================= */
 .board-columns {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
+  margin-top: 20px;
 }
 
 .loading, .error {
   text-align: center;
-  padding: 40px;
+  padding: 60px 40px;
   font-size: 16px;
-  background-color: transparent;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  margin: 40px auto;
+  max-width: 400px;
+  color: #475569;
 }
 
 .error {
-  color: #e53e3e;
+  color: #b91c1c;
+  background-color: #fee2e2;
 }
 
-/* Scrollbar styling */
-.tasks-list::-webkit-scrollbar {
-  width: 8px;
-}
+.tasks-list::-webkit-scrollbar { width: 8px; }
+.tasks-list::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+.tasks-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.tasks-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-.tasks-list::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
-}
-
-.tasks-list::-webkit-scrollbar-thumb {
-  background: #cbd5e0;
-  border-radius: 4px;
-}
-
-.tasks-list::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0;
-}
-
-/* Responsive Design */
+/* =========================================
+   RESPONSIVE
+   ========================================= */
 @media (max-width: 1200px) {
-  .board-columns {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .report-options {
-    grid-template-columns: 1fr;
-  }
+  .board-columns    { grid-template-columns: repeat(2, 1fr); }
+  .report-options   { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
-  .board-columns {
-    grid-template-columns: 1fr;
-  }
-  
-  .board-header {
-    flex-direction: column;
-  }
-  
-  .header-left, .header-right {
-    width: 100%;
-  }
-  
-  .stats-summary {
-    justify-content: center;
-  }
-  
-  .date-range-filter {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  
-  .date-range-filter label {
-    margin-bottom: 5px;
-  }
-  
-  .date-input {
-    width: 100%;
-  }
-  
-  .additional-filters {
-    flex-direction: column;
-  }
-  
-  .filter-select {
-    width: 100%;
-  }
-  
-  .report-actions {
-    flex-direction: column;
-    width: 100%;
-  }
-  
-  .btn-report, .btn-primary {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .report-modal {
-    width: 95%;
-    margin: 10px;
-  }
+  .task-board       { padding: 16px; }
+  .board-columns    { grid-template-columns: 1fr; }
+  .board-header     { flex-direction: column; }
+  .header-left, .header-right { width: 100%; }
+  .stats-summary    { justify-content: center; }
+  .stat-card        { min-width: calc(50% - 8px); flex: 1 1 auto; }
+  .date-range-filter { flex-direction: column; align-items: stretch; }
+  .date-range-filter label { margin-bottom: 5px; }
+  .date-input       { width: 100%; }
+  .additional-filters { flex-direction: column; }
+  .filter-select    { width: 100%; }
+  .report-actions   { flex-direction: column; width: 100%; }
+  .btn-report, .btn-primary { width: 100%; justify-content: center; }
+  .report-modal     { width: 95%; margin: 10px; }
+  .task-meta        { flex-direction: column; gap: 4px; }
 }
 
 @media (max-width: 480px) {
-  .task-board {
-    padding: 10px;
-  }
-  
-  .stat-card {
-    min-width: 100px;
-    padding: 12px 15px;
-  }
-  
-  .stat-value {
-    font-size: 20px;
-  }
-  
-  .modal-header {
-    padding: 16px 20px;
-  }
-  
-  .modal-body {
-    padding: 20px;
-  }
-  
-  .modal-footer {
-    padding: 16px 20px;
-  }
-  
-  .form-control {
-    padding: 8px 10px;
-  }
+  .task-board       { padding: 12px; }
+  .stat-card        { min-width: 100%; }
+  .stat-value       { font-size: 24px; }
+  .modal-header     { padding: 16px 20px; }
+  .modal-body       { padding: 20px; }
+  .modal-footer     { padding: 16px 20px; flex-direction: column; }
+  .btn-secondary, .btn-primary { width: 100%; }
+  .form-control     { padding: 8px 10px; }
 }
 </style>

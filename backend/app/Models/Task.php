@@ -19,9 +19,10 @@ class Task extends Model
         'assigned_to',
         'created_by',
         'deadline',
+        'planned_start_date', // NEW: User-defined start date
         'tags',
         'completed_at',
-        'started_at',
+        'started_at', // Auto-set when work actually begins
         'estimated_hours',
         'actual_hours',
         'sla_hours',
@@ -32,15 +33,16 @@ class Task extends Model
 
     protected $casts = [
         'deadline' => 'datetime',
+        'planned_start_date' => 'datetime', // NEW
         'tags' => 'array',
-         'completed_at' => 'datetime',
+        'completed_at' => 'datetime',
         'started_at' => 'datetime',
         'sla_breached' => 'boolean',
         'completed_on_time' => 'boolean',
     ];
 
     /**
-     * UPDATED: Load business relationships by default
+     * Load business relationships by default
      */
     protected $with = ['assignedTo.employee', 'createdBy.employee'];
 
@@ -51,11 +53,24 @@ class Task extends Model
     {
         parent::boot();
 
+        static::creating(function ($task) {
+            // If no planned_start_date is set, default to creation time
+            if (!$task->planned_start_date) {
+                $task->planned_start_date = now();
+            }
+            
+            // If task is created with status 'in_progress' or 'completed', set started_at
+            if (in_array($task->status, ['in_progress', 'under_review', 'completed']) && !$task->started_at) {
+                $task->started_at = now();
+            }
+        });
+
         static::updating(function ($task) {
             if ($task->isDirty('status') && $task->status === 'completed') {
                 $task->handleCompletion();
             }
             
+            // Auto-set started_at when status changes to in_progress (but allow manual override)
             if ($task->isDirty('status') && $task->status === 'in_progress' && !$task->started_at) {
                 $task->started_at = now();
             }
@@ -78,8 +93,9 @@ class Task extends Model
      */
     protected function calculateCompletionMetrics()
     {
-        // Calculate actual time from creation to completion
-        $completionTime = $this->created_at->diffInHours($this->completed_at, true);
+        // Calculate actual time from START (use started_at if available, otherwise planned_start_date)
+        $startTime = $this->started_at ?? $this->planned_start_date ?? $this->created_at;
+        $completionTime = $startTime->diffInHours($this->completed_at, true);
         $this->actual_completion_time = round($completionTime, 2);
 
         // Check if completed on time (before deadline)
@@ -88,7 +104,7 @@ class Task extends Model
             
             // Check SLA breach
             if ($this->sla_hours) {
-                $slaDeadline = $this->created_at->copy()->addHours($this->sla_hours);
+                $slaDeadline = $startTime->copy()->addHours($this->sla_hours);
                 $this->sla_breached = $this->completed_at > $slaDeadline;
             } else {
                 $this->sla_breached = !$this->completed_on_time;
@@ -99,6 +115,38 @@ class Task extends Model
         if ($this->workLogs()->exists()) {
             $this->actual_hours = $this->workLogs()->sum('hours');
         }
+    }
+
+    /**
+     * Get the effective start date (started_at if available, otherwise planned_start_date)
+     */
+    public function getEffectiveStartDateAttribute()
+    {
+        return $this->started_at ?? $this->planned_start_date ?? $this->created_at;
+    }
+
+    /**
+     * Check if task was started before it was planned
+     */
+    public function getStartedEarlyAttribute(): bool
+    {
+        if (!$this->started_at || !$this->planned_start_date) {
+            return false;
+        }
+        
+        return $this->started_at < $this->planned_start_date;
+    }
+
+    /**
+     * Check if task was started late
+     */
+    public function getStartedLateAttribute(): bool
+    {
+        if (!$this->started_at || !$this->planned_start_date) {
+            return false;
+        }
+        
+        return $this->started_at > $this->planned_start_date;
     }
 
     /**
@@ -140,15 +188,15 @@ class Task extends Model
             return 'overdue';
         }
 
-        $totalTime = $this->created_at->diffInHours($this->deadline, true);
+        $totalTime = $this->effective_start_date->diffInHours($this->deadline, true);
         $percentRemaining = ($remaining / $totalTime) * 100;
 
         if ($percentRemaining < 10) {
-            return 'critical'; // Less than 10% time remaining
+            return 'critical';
         }
 
         if ($percentRemaining < 25) {
-            return 'warning'; // Less than 25% time remaining
+            return 'warning';
         }
 
         return 'on_track';
@@ -281,7 +329,7 @@ class Task extends Model
     }
     
     /**
-     * NEW: Check if task is cross-business
+     * Check if task is cross-business
      */
     public function getIsCrossBusinessAttribute(): bool
     {

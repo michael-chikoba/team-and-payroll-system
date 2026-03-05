@@ -16,7 +16,11 @@ class ActivityTrackingController extends Controller
     ) {}
 
     /**
-     * Record activity heartbeat from frontend
+     * Record an activity heartbeat from the frontend.
+     *
+     * The response tells the frontend exactly what state the overtime session
+     * is in so it can render the appropriate UI (nothing / warning banner / countdown).
+     *
      * POST /api/attendance/heartbeat
      */
     public function heartbeat(Request $request): JsonResponse
@@ -27,38 +31,43 @@ class ActivityTrackingController extends Controller
             if (!$employee) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Employee profile not found'
+                    'message' => 'Employee profile not found.',
                 ], 404);
             }
 
-            // Optional metadata from client
             $metadata = [
-                'user_agent' => $request->userAgent(),
-                'ip_address' => $request->ip(),
-                'screen_active' => $request->input('screen_active', true),
-                'page_visible' => $request->input('page_visible', true),
+                'user_agent'   => $request->userAgent(),
+                'ip_address'   => $request->ip(),
+                // Frontend should send these based on Page Visibility API + user interaction events.
+                'screen_active'=> $request->boolean('screen_active', true),
+                'page_visible' => $request->boolean('page_visible', true),
             ];
 
             $result = $this->activityService->recordHeartbeat($employee, $metadata);
 
-            return response()->json($result);
+            // If the session is in 'closing' state, return 202 so the frontend
+            // can distinguish "recorded fine" (200) from "you're about to be closed" (202).
+            $httpStatus = ($result['idle_status'] ?? 'active') === 'closing' ? 202 : 200;
+
+            return response()->json($result, $httpStatus);
 
         } catch (\Exception $e) {
             Log::error('Heartbeat endpoint failed', [
                 'user_id' => $request->user()->id,
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to record heartbeat',
-                'error' => $e->getMessage()
+                'message' => 'Failed to record heartbeat.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Get current activity status
+     * Get the current activity / idle status for the authenticated employee.
+     *
      * GET /api/attendance/activity-status
      */
     public function getStatus(Request $request): JsonResponse
@@ -69,7 +78,7 @@ class ActivityTrackingController extends Controller
             if (!$employee) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Employee profile not found'
+                    'message' => 'Employee profile not found.',
                 ], 404);
             }
 
@@ -77,25 +86,27 @@ class ActivityTrackingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $status
+                'data'    => $status,
             ]);
 
         } catch (\Exception $e) {
             Log::error('Activity status failed', [
                 'user_id' => $request->user()->id,
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get activity status',
-                'error' => $e->getMessage()
+                'message' => 'Failed to get activity status.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Manually refresh activity
+     * "I'm still working" — manual activity refresh.
+     * Clears any pending idle warning and resets the countdown.
+     *
      * POST /api/attendance/refresh-activity
      */
     public function refreshActivity(Request $request): JsonResponse
@@ -106,7 +117,7 @@ class ActivityTrackingController extends Controller
             if (!$employee) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Employee profile not found'
+                    'message' => 'Employee profile not found.',
                 ], 404);
             }
 
@@ -117,19 +128,22 @@ class ActivityTrackingController extends Controller
         } catch (\Exception $e) {
             Log::error('Refresh activity failed', [
                 'user_id' => $request->user()->id,
-                'error' => $e->getMessage()
+                'error'   => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to refresh activity',
-                'error' => $e->getMessage()
+                'message' => 'Failed to refresh activity.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
 
     /**
-     * Check all idle sessions (admin/cron)
+     * Sweep all open overtime sessions and apply two-stage idle logic.
+     * Called by the scheduler every minute — should be protected by middleware
+     * (e.g., internal-only or signed URL) in production.
+     *
      * POST /api/attendance/check-idle-sessions
      */
     public function checkIdleSessions(Request $request): JsonResponse
@@ -139,18 +153,18 @@ class ActivityTrackingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'results' => $results
+                'results' => $results,
             ]);
 
         } catch (\Exception $e) {
             Log::error('Check idle sessions failed', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to check idle sessions',
-                'error' => $e->getMessage()
+                'message' => 'Failed to check idle sessions.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }

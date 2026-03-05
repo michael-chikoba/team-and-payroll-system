@@ -6,44 +6,39 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class EmployeeResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return array
-     */
     public function toArray($request)
     {
-        return [
+        $user = $request->user();
+        $isOwnRecord = $user && $user->id === $this->user_id;
+        $role = $user->role ?? 'guest';
+
+        // Base data everyone can see
+        $data = [
             'id' => $this->id,
-            'user_id' => $this->user_id,
-            'manager_id' => $this->manager_id,
             'employee_id' => $this->employee_id,
+            'full_name' => $this->user->full_name ?? null,
             'position' => $this->position,
             'department' => $this->department,
-            'base_salary' => $this->base_salary,
-            'transport_allowance' => $this->transport_allowance,
-            'lunch_allowance' => $this->lunch_allowance,
-            'hire_date' => $this->hire_date,
-            'employment_type' => $this->employment_type,
-            'bank_details' => $this->bank_details,
-            'phone' => $this->phone,
-            'date_of_birth' => $this->date_of_birth,
-            'national_id' => $this->national_id,
-            'address' => $this->address,
-            'emergency_contact' => $this->emergency_contact,
             'profile_pic' => $this->profile_pic,
-            'full_name' => $this->full_name,
-            'email' => $this->email,
-            'user' => $this->whenLoaded('user'),
-            'manager' => $this->whenLoaded('manager'),
-            'attendances' => $this->whenLoaded('attendances'),
-            'leaves' => $this->whenLoaded('leaves'),
-            'leave_balances' => $this->whenLoaded('leaveBalances'),
-            'payslips' => $this->whenLoaded('payslips'),
-            'documents' => $this->whenLoaded('documents'),
-            'advances' => $this->whenLoaded('advances'),
-            'loans' => $this->whenLoaded('loans'),
         ];
+
+        // Role-based additional data
+        if ($isOwnRecord || $role === 'admin' || $role === 'superadmin') {
+            $data['phone'] = $this->phone;
+            $data['email'] = $this->email;
+            $data['date_of_birth'] = $this->date_of_birth;
+            $data['national_id'] = $this->national_id;
+            $data['address'] = $this->address;
+            $data['emergency_contact'] = $this->emergency_contact;
+        }
+
+        if ($role === 'admin' || $role === 'superadmin') {
+            $data['base_salary'] = $this->base_salary;
+            $data['transport_allowance'] = $this->transport_allowance;
+            $data['lunch_allowance'] = $this->lunch_allowance;
+            $data['bank_details'] = $this->bank_details;
+        }
+
+        return $data;
     }
 }

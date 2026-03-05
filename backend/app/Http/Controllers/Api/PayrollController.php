@@ -34,107 +34,52 @@ class PayrollController extends Controller
             'requested_business_id' => $requestedBusinessId,
         ]);
 
-        // If user is admin
         if ($user->role === 'admin') {
-            // If admin has a current business, they can only see that business
             if ($user->current_business_id) {
-                // If they request a different business, deny access
                 if ($requestedBusinessId && (int)$requestedBusinessId !== $user->current_business_id) {
-                    // Check if they have explicit access through businesses relationship
                     if (!$user->businesses()->where('businesses.id', $requestedBusinessId)->exists()) {
                         Log::warning('PAYROLL_CONTROLLER: Admin attempting to access unauthorized business', [
                             'admin_id' => $user->id,
                             'admin_business_id' => $user->current_business_id,
                             'requested_business_id' => $requestedBusinessId,
                         ]);
-                        // Return empty query
                         $query->where('business_id', 0);
                         return $query;
                     }
                 }
-                
-                // Use requested business if authorized, otherwise use current business
                 $businessId = $requestedBusinessId ?: $user->current_business_id;
                 $query->where('business_id', $businessId);
-                
                 Log::info('PAYROLL_CONTROLLER: Admin filtering by business', [
                     'admin_id' => $user->id,
                     'business_id' => $businessId,
                 ]);
-            }
-            // If admin manages specific businesses (multi-business admin)
-            elseif ($user->businesses()->exists()) {
+            } elseif ($user->businesses()->exists()) {
                 if ($requestedBusinessId) {
-                    // Verify they manage this business
                     if ($user->businesses()->where('businesses.id', $requestedBusinessId)->exists()) {
                         $query->where('business_id', $requestedBusinessId);
-                        Log::info('PAYROLL_CONTROLLER: Multi-business admin filtering by requested business', [
-                            'admin_id' => $user->id,
-                            'business_id' => $requestedBusinessId,
-                        ]);
                     } else {
-                        Log::warning('PAYROLL_CONTROLLER: Multi-business admin attempting to access unauthorized business', [
-                            'admin_id' => $user->id,
-                            'requested_business_id' => $requestedBusinessId,
-                        ]);
-                        // Return empty query
                         $query->where('business_id', 0);
                         return $query;
                     }
                 } else {
-                    // Show all businesses they manage
                     $businessIds = $user->businesses()->pluck('businesses.id');
                     $query->whereIn('business_id', $businessIds);
-                    
-                    Log::info('PAYROLL_CONTROLLER: Multi-business admin filtering by managed businesses', [
-                        'admin_id' => $user->id,
-                        'business_ids' => $businessIds,
-                    ]);
                 }
-            }
-            // Super admin without business restrictions
-            else {
+            } else {
                 if ($requestedBusinessId) {
                     $query->where('business_id', $requestedBusinessId);
-                    Log::info('PAYROLL_CONTROLLER: Super admin filtering by requested business', [
-                        'admin_id' => $user->id,
-                        'business_id' => $requestedBusinessId,
-                    ]);
-                } else {
-                    Log::info('PAYROLL_CONTROLLER: Super admin - showing all employees', [
-                        'admin_id' => $user->id,
-                    ]);
                 }
             }
-        }
-        // For managers
-        elseif ($user->role === 'manager') {
+        } elseif ($user->role === 'manager') {
             $managerEmployee = Employee::where('user_id', $user->id)->first();
-            
             if ($managerEmployee && $managerEmployee->business_id) {
                 $query->where('business_id', $managerEmployee->business_id)
                       ->where('manager_id', $user->id);
-                      
-                Log::info('PAYROLL_CONTROLLER: Manager filtering by business and team', [
-                    'manager_id' => $user->id,
-                    'business_id' => $managerEmployee->business_id,
-                ]);
             } else {
-                // Manager without business can only see their direct reports
                 $query->where('manager_id', $user->id);
-                
-                Log::info('PAYROLL_CONTROLLER: Manager filtering team only', [
-                    'manager_id' => $user->id,
-                ]);
             }
-        }
-        // For regular employees
-        elseif ($user->role === 'employee') {
+        } elseif ($user->role === 'employee') {
             $query->where('user_id', $user->id);
-            
-            Log::info('PAYROLL_CONTROLLER: Employee viewing own record', [
-                'employee_user_id' => $user->id,
-            ]);
         }
 
         return $query;
@@ -165,24 +110,13 @@ class PayrollController extends Controller
 
         try {
             $employeeIds = $validated['employee_ids'] ?? [];
-            
-            // Get business-scoped employees
             $scopedEmployeesQuery = $this->getBusinessScopedEmployees($request);
-            
+
             if (empty($employeeIds)) {
                 $employeeIds = $scopedEmployeesQuery->pluck('id')->toArray();
             } else {
-                // Verify all requested employee IDs are within scope
                 $authorizedIds = $scopedEmployeesQuery->pluck('id')->toArray();
                 $employeeIds = array_intersect($employeeIds, $authorizedIds);
-                
-                if (count($employeeIds) !== count($validated['employee_ids'] ?? [])) {
-                    Log::warning('PAYROLL_CONTROLLER: Some employee IDs were filtered out due to access restrictions', [
-                        'user_id' => $user->id,
-                        'requested_count' => count($validated['employee_ids'] ?? []),
-                        'authorized_count' => count($employeeIds),
-                    ]);
-                }
             }
 
             if (empty($employeeIds)) {
@@ -196,17 +130,8 @@ class PayrollController extends Controller
                 $employee = Employee::find($empId);
                 if (!$employee) continue;
 
-                // Double-check business access
                 if ($user->role === 'admin' && $user->current_business_id) {
-                    if ($employee->business_id !== $user->current_business_id) {
-                        Log::warning('PAYROLL_CONTROLLER: Skipping employee from different business', [
-                            'user_id' => $user->id,
-                            'user_business_id' => $user->current_business_id,
-                            'employee_business_id' => $employee->business_id,
-                            'employee_id' => $empId,
-                        ]);
-                        continue;
-                    }
+                    if ($employee->business_id !== $user->current_business_id) continue;
                 }
 
                 $employeeAdjustments = $adjustments[$empId] ?? [];
@@ -249,31 +174,44 @@ class PayrollController extends Controller
         }
     }
 
-    private function applyAdjustmentsToPayslip(Payslip $payslip, array $adjustments): void
-    {
-        $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
-        $deductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
-        
-        $payslip->gross_salary += $bonuses;
-        $payslip->bonuses += $bonuses;
-        $payslip->other_deductions += $deductions;
-        
-        // Recalculate total deductions based on stored dynamic breakdown if available
-        $statutoryTotal = 0;
-        if (isset($payslip->breakdown['deductions_breakdown']['statutory_total'])) {
-            $statutoryTotal = $payslip->breakdown['deductions_breakdown']['statutory_total'];
-        } else {
-            // Fallback for old records
-            $statutoryTotal = ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0) + ($payslip->pension ?? 0);
-        }
+   private function applyAdjustmentsToPayslip(Payslip $payslip, array $adjustments): void
+{
+    $bonuses = ($adjustments['overtime_bonus'] ?? 0) + ($adjustments['other_bonuses'] ?? 0);
+    $deductions = ($adjustments['loan_deductions'] ?? 0) + ($adjustments['advance_deductions'] ?? 0);
 
-        $payslip->total_deductions = $payslip->paye + $statutoryTotal + $payslip->other_deductions;
-        $payslip->net_pay = $payslip->gross_salary - $payslip->total_deductions;
-        
-        $breakdown = $payslip->breakdown ?? [];
-        $breakdown['adjustments'] = $adjustments;
-        $payslip->breakdown = $breakdown;
+    // These will auto-decrypt via the trait when accessed
+    $currentGross = $payslip->gross_salary;
+    $currentBonuses = $payslip->bonuses;
+    $currentOtherDeductions = $payslip->other_deductions;
+    $currentPaye = $payslip->paye;
+
+    // Calculate new values
+    $newGross = $currentGross + $bonuses;
+    $newBonuses = $currentBonuses + $bonuses;
+    $newOtherDeductions = $currentOtherDeductions + $deductions;
+
+    // Get statutory total from breakdown or legacy fields
+    $statutoryTotal = 0;
+    if (isset($payslip->breakdown['deductions_breakdown']['statutory_total'])) {
+        $statutoryTotal = $payslip->breakdown['deductions_breakdown']['statutory_total'];
+    } else {
+        $statutoryTotal = ($payslip->napsa ?? 0) + ($payslip->nhima ?? 0) + ($payslip->pension ?? 0);
     }
+
+    $newTotalDeductions = $currentPaye + $statutoryTotal + $newOtherDeductions;
+    $newNetPay = $newGross - $newTotalDeductions;
+
+    // Update the model - these will be auto-encrypted on save
+    $payslip->gross_salary = $newGross;
+    $payslip->bonuses = $newBonuses;
+    $payslip->other_deductions = $newOtherDeductions;
+    $payslip->total_deductions = $newTotalDeductions;
+    $payslip->net_pay = $newNetPay;
+
+    $breakdown = $payslip->breakdown ?? [];
+    $breakdown['adjustments'] = $adjustments;
+    $payslip->breakdown = $breakdown;
+}
 
     public function employeesSummary(Request $request): JsonResponse
     {
@@ -302,7 +240,6 @@ class PayrollController extends Controller
             'status' => 'draft',
         ]);
 
-        // Get business-scoped employees
         $employees = $this->getBusinessScopedEmployees($request)
             ->with(['user', 'business'])
             ->get();
@@ -351,6 +288,15 @@ class PayrollController extends Controller
         ]);
     }
 
+    /**
+     * Update payroll status for one or more employees.
+     *
+     * KEY BEHAVIOUR CHANGE:
+     * When reverting to 'pending', we DELETE the existing payslip entirely
+     * rather than just updating the status field. This forces a full
+     * recalculation the next time the employee is processed, preventing
+     * stale or incorrectly-calculated values from persisting.
+     */
     public function updateStatus(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -370,40 +316,25 @@ class PayrollController extends Controller
         $user = $request->user();
         $period = $validated['payroll_period'];
         $adjustments = $validated['adjustments'] ?? [];
-        
+        $isReverting = $validated['status'] === 'pending';
+
         Log::info('PAYROLL_CONTROLLER: Updating payroll status', [
             'user_id' => $user->id,
             'user_role' => $user->role,
             'user_business_id' => $user->current_business_id,
             'employee_count' => count($validated['employee_ids']),
+            'target_status' => $validated['status'],
+            'is_reverting' => $isReverting,
         ]);
 
-        // Get business-scoped employees to verify access
         $scopedEmployeesQuery = $this->getBusinessScopedEmployees($request);
         $authorizedIds = $scopedEmployeesQuery->pluck('id')->toArray();
-        
-        // Filter employee IDs to only those the user has access to
         $employeeIds = array_intersect($validated['employee_ids'], $authorizedIds);
-        
+
         if (empty($employeeIds)) {
-            Log::warning('PAYROLL_CONTROLLER: No authorized employees found', [
-                'user_id' => $user->id,
-                'requested_count' => count($validated['employee_ids']),
-            ]);
-            return response()->json([
-                'message' => 'No authorized employees found to update'
-            ], 403);
+            return response()->json(['message' => 'No authorized employees found to update'], 403);
         }
 
-        if (count($employeeIds) !== count($validated['employee_ids'])) {
-            Log::warning('PAYROLL_CONTROLLER: Some employee IDs were filtered out', [
-                'user_id' => $user->id,
-                'requested_count' => count($validated['employee_ids']),
-                'authorized_count' => count($employeeIds),
-            ]);
-        }
-        
-        // Find or create payroll for the period
         $payroll = Payroll::firstOrCreate(
             ['payroll_period' => $period],
             [
@@ -414,60 +345,99 @@ class PayrollController extends Controller
         );
 
         $updatedCount = 0;
+        $deletedCount = 0;
         $createdCount = 0;
 
         foreach ($employeeIds as $empId) {
             $employee = Employee::find($empId);
-            
-            if (!$employee) {
-                continue;
-            }
+            if (!$employee) continue;
 
-            // Double-check business access
             if ($user->role === 'admin' && $user->current_business_id) {
-                if ($employee->business_id !== $user->current_business_id) {
-                    Log::warning('PAYROLL_CONTROLLER: Skipping employee from different business in update', [
-                        'user_id' => $user->id,
-                        'user_business_id' => $user->current_business_id,
-                        'employee_business_id' => $employee->business_id,
-                        'employee_id' => $empId,
-                    ]);
-                    continue;
-                }
+                if ($employee->business_id !== $user->current_business_id) continue;
             }
 
-            // Get adjustments for this employee
+            // Find ALL payslips for this employee in this payroll period
+            // (catches duplicates too)
+            $existingPayslips = Payslip::where('payroll_id', $payroll->id)
+                ->where('employee_id', $empId)
+                ->get();
+
+            // ----------------------------------------------------------------
+            // REVERT TO PENDING — delete all payslips for this employee
+            // so the next process run does a full fresh recalculation.
+            // ----------------------------------------------------------------
+            if ($isReverting) {
+                if ($existingPayslips->isNotEmpty()) {
+                    $deleteCount = $existingPayslips->count();
+                    Payslip::where('payroll_id', $payroll->id)
+                        ->where('employee_id', $empId)
+                        ->delete();
+
+                    $deletedCount += $deleteCount;
+
+                    Log::info('PAYROLL_CONTROLLER: Payslip(s) deleted on revert to pending', [
+                        'employee_id' => $empId,
+                        'payroll_id' => $payroll->id,
+                        'deleted_count' => $deleteCount,
+                    ]);
+                } else {
+                    Log::info('PAYROLL_CONTROLLER: No payslip found to delete on revert', [
+                        'employee_id' => $empId,
+                        'payroll_id' => $payroll->id,
+                    ]);
+                }
+
+                $updatedCount++;
+                continue; // Skip to next employee — no payslip creation needed
+            }
+
+            // ----------------------------------------------------------------
+            // MARK AS PAID — update existing payslip or create a new one
+            // ----------------------------------------------------------------
+            $payslip = $existingPayslips->first();
             $employeeAdjustments = $adjustments[$empId] ?? [];
 
-            // Find existing payslip
-            $payslip = Payslip::where('payroll_id', $payroll->id)
-                ->where('employee_id', $empId)
-                ->first();
-
             if ($payslip) {
-                // Update existing payslip status and apply adjustments
                 if (!empty($employeeAdjustments)) {
                     $this->applyAdjustmentsToPayslip($payslip, $employeeAdjustments);
                 }
-                $payslip->status = $validated['status'];
+                $payslip->status = 'paid';
                 $payslip->save();
                 $updatedCount++;
             } else {
-                // Create new payslip with calculated values and adjustments
                 if (!empty($employeeAdjustments)) {
-                    $this->payrollService->createPayslipWithAdjustments($employee, $payroll, $validated['status'], $employeeAdjustments);
+                    $this->payrollService->createPayslipWithAdjustments($employee, $payroll, 'paid', $employeeAdjustments);
                 } else {
-                    $this->payrollService->createPayslip($employee, $payroll, $validated['status']);
+                    $this->payrollService->createPayslip($employee, $payroll, 'paid');
                 }
                 $createdCount++;
             }
         }
 
-        // Update payroll totals
-        if ($updatedCount > 0 || $createdCount > 0) {
-            $this->payrollService->updatePayrollTotals($payroll);
-            
-            // Mark payroll as completed if it was draft
+        // Always recalculate payroll totals after any change
+        $this->payrollService->updatePayrollTotals($payroll);
+
+        // If reverting caused all payslips to be removed, set payroll back to draft
+        $remainingPayslips = Payslip::where('payroll_id', $payroll->id)->count();
+
+        if ($isReverting) {
+            if ($remainingPayslips === 0) {
+                $payroll->status = 'draft';
+                $payroll->processed_at = null;
+                $payroll->save();
+
+                Log::info('PAYROLL_CONTROLLER: Payroll reset to draft — no payslips remaining', [
+                    'payroll_id' => $payroll->id,
+                ]);
+            } else {
+                // Some employees are still paid, keep completed status
+                Log::info('PAYROLL_CONTROLLER: Payroll still has paid payslips after revert', [
+                    'payroll_id' => $payroll->id,
+                    'remaining_payslips' => $remainingPayslips,
+                ]);
+            }
+        } else {
+            // Marking as paid — ensure payroll is completed
             if ($payroll->status === 'draft') {
                 $payroll->status = 'completed';
                 $payroll->processed_at = now();
@@ -475,21 +445,23 @@ class PayrollController extends Controller
             }
         }
 
-        $message = sprintf(
-            'Successfully processed: %d updated, %d created.',
-            $updatedCount,
-            $createdCount
-        );
+        $message = $isReverting
+            ? sprintf('Successfully reverted %d employee(s) to pending. %d payslip(s) removed for recalculation.', $updatedCount, $deletedCount)
+            : sprintf('Successfully processed: %d updated, %d created.', $updatedCount, $createdCount);
 
-        Log::info('PAYROLL_CONTROLLER: Status updated successfully', [
+        Log::info('PAYROLL_CONTROLLER: Status update completed', [
             'user_id' => $user->id,
+            'target_status' => $validated['status'],
             'updated_count' => $updatedCount,
+            'deleted_count' => $deletedCount,
             'created_count' => $createdCount,
+            'remaining_payslips' => $remainingPayslips,
         ]);
 
         return response()->json([
             'message' => $message,
             'updated_count' => $updatedCount,
+            'deleted_count' => $deletedCount,
             'created_count' => $createdCount,
             'payroll_id' => $payroll->id,
         ]);
@@ -499,21 +471,16 @@ class PayrollController extends Controller
     {
         $user = $request->user();
         $payrollPeriod = $request->query('payroll_period');
-        
-        // Verify access to this employee
+
         $scopedEmployees = $this->getBusinessScopedEmployees($request)->pluck('id')->toArray();
-        
+
         if (!in_array($employeeId, $scopedEmployees)) {
-            Log::warning('PAYROLL_CONTROLLER: Unauthorized access to employee payslip', [
-                'user_id' => $user->id,
-                'employee_id' => $employeeId,
-            ]);
             return response()->json(['message' => 'Unauthorized access to employee payslip'], 403);
         }
-        
+
         $employee = Employee::with('user')->findOrFail($employeeId);
-        
         $payroll = Payroll::where('payroll_period', $payrollPeriod)->first();
+
         if (!$payroll) {
             return response()->json(['message' => 'No payroll found', 'data' => null], 404);
         }
@@ -534,9 +501,6 @@ class PayrollController extends Controller
         ]);
     }
 
-    /**
-     * Format PREVIEW data (Generic Statutory Array)
-     */
     private function formatPreviewPayslip(array $previewData, Employee $employee, Payroll $payroll): array
     {
         return [
@@ -563,107 +527,90 @@ class PayrollController extends Controller
         ];
     }
 
-    /**
-     * Format DETAILED Payslip from DB (Hybrid: Legacy + Dynamic)
-     */
     private function formatDetailedPayslip(Payslip $payslip): array
-    {
-        $breakdown = $payslip->breakdown ?? [];
-        
-        // Try to get dynamic deductions from stored breakdown
-        $statutory = $breakdown['deductions_breakdown']['statutory_breakdown'] ?? [];
-        
-        // If empty (old record), reconstruct basic list from legacy columns
-        if (empty($statutory)) {
-            if ($payslip->napsa > 0) $statutory[] = ['name' => 'NAPSA', 'amount' => $payslip->napsa];
-            if ($payslip->nhima > 0) $statutory[] = ['name' => 'NHIMA', 'amount' => $payslip->nhima];
-            if ($payslip->pension > 0) $statutory[] = ['name' => 'Pension', 'amount' => $payslip->pension];
-        }
+{
+    $breakdown = $payslip->breakdown ?? [];
+    $statutory = $breakdown['deductions_breakdown']['statutory_breakdown'] ?? [];
 
-        return [
-            'id' => $payslip->id,
-            'employee' => [
-                'name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
-                'department' => $payslip->employee->department,
-                'position' => $payslip->employee->position,
-            ],
-            'period' => [
-                'payroll_period' => $payslip->payroll->payroll_period,
-                'start_date' => $payslip->pay_period_start?->format('Y-m-d'),
-                'end_date' => $payslip->pay_period_end?->format('Y-m-d'),
-            ],
-            'earnings' => [
-                'basic_salary' => (float) $payslip->basic_salary,
-                'house_allowance' => (float) $payslip->house_allowance,
-                'transport_allowance' => (float) $payslip->transport_allowance,
-                'lunch_allowance' => (float) $payslip->other_allowances,
-                'overtime_pay' => (float) $payslip->overtime_pay,
-                'bonuses' => (float) $payslip->bonuses,
-                'gross_salary' => (float) $payslip->gross_salary,
-            ],
-            'deductions' => [
-                'paye' => (float) $payslip->paye,
-                'statutory' => $statutory,
-                'other_deductions' => (float) $payslip->other_deductions,
-                'total_deductions' => (float) $payslip->total_deductions,
-            ],
-            'summary' => [
-                'gross_pay' => (float) $payslip->gross_salary,
-                'total_deductions' => (float) $payslip->total_deductions,
-                'net_pay' => (float) $payslip->net_pay,
-            ],
-            'status' => $payslip->status,
-            'pdf_available' => !empty($payslip->pdf_path),
-        ];
+    if (empty($statutory)) {
+        // These will auto-decrypt when accessed
+        if ($payslip->napsa > 0) $statutory[] = ['name' => 'NAPSA', 'amount' => (float) $payslip->napsa];
+        if ($payslip->nhima > 0) $statutory[] = ['name' => 'NHIMA', 'amount' => (float) $payslip->nhima];
+        if ($payslip->pension > 0) $statutory[] = ['name' => 'Pension', 'amount' => (float) $payslip->pension];
     }
 
-    public function history(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        $period = $request->query('payroll_period', Carbon::now()->format('Y-m'));
-        
-        Log::info('PAYROLL_CONTROLLER: Fetching payroll history', [
-            'user_id' => $user->id,
-            'user_role' => $user->role,
-            'user_business_id' => $user->current_business_id,
-            'payroll_period' => $period,
-        ]);
-        
-        // Get the payroll for this period
-        $payroll = Payroll::where('payroll_period', $period)->first();
-        
-        $data = [];
-        
-        if ($payroll) {
-            // Get business-scoped employee IDs
-            $scopedEmployeeIds = $this->getBusinessScopedEmployees($request)->pluck('id')->toArray();
-            
-            // Get all payslips for this payroll that belong to authorized employees
-            $payslips = Payslip::where('payroll_id', $payroll->id)
-                ->whereIn('employee_id', $scopedEmployeeIds)
-                ->with(['employee.user', 'payroll'])
-                ->get();
-            
-            // Map payslips to response format
-            $data = $payslips->map(function ($ps) {
-                return [
-                    'employee_id' => $ps->employee_id,
-                    'status' => $ps->status ?? 'pending',
-                    'pay_period' => $ps->payroll->payroll_period,
-                    'amount' => $ps->net_pay,
-                    'payslip_id' => $ps->id,
-                    'created_at' => $ps->created_at,
-                    'updated_at' => $ps->updated_at,
-                ];
-            })->toArray();
-        }
-        
-        return response()->json([
-            'data' => $data,
-            'payroll_period' => $period,
-            'payroll_id' => $payroll->id ?? null,
-        ]);
+    return [
+        'id' => $payslip->id,
+        'employee' => [
+            'name' => $payslip->employee->user->first_name . ' ' . $payslip->employee->user->last_name,
+            'department' => $payslip->employee->department,
+            'position' => $payslip->employee->position,
+        ],
+        'period' => [
+            'payroll_period' => $payslip->payroll->payroll_period,
+            'start_date' => $payslip->pay_period_start?->format('Y-m-d'),
+            'end_date' => $payslip->pay_period_end?->format('Y-m-d'),
+        ],
+        'earnings' => [
+            'basic_salary' => (float) $payslip->basic_salary, // Auto-decrypts
+            'house_allowance' => (float) $payslip->house_allowance,
+            'transport_allowance' => (float) $payslip->transport_allowance,
+            'lunch_allowance' => (float) $payslip->other_allowances,
+            'overtime_pay' => (float) $payslip->overtime_pay,
+            'bonuses' => (float) $payslip->bonuses,
+            'gross_salary' => (float) $payslip->gross_salary, // Auto-decrypts
+        ],
+        'deductions' => [
+            'paye' => (float) $payslip->paye,
+            'statutory' => $statutory,
+            'other_deductions' => (float) $payslip->other_deductions,
+            'total_deductions' => (float) $payslip->total_deductions, // Auto-decrypts
+        ],
+        'summary' => [
+            'gross_pay' => (float) $payslip->gross_salary, // Auto-decrypts
+            'total_deductions' => (float) $payslip->total_deductions, // Auto-decrypts
+            'net_pay' => (float) $payslip->net_pay, // Auto-decrypts
+        ],
+        'status' => $payslip->status,
+        'pdf_available' => !empty($payslip->pdf_path),
+    ];
+}
+
+   public function history(Request $request): JsonResponse
+{
+    $user = $request->user();
+    $period = $request->query('payroll_period', Carbon::now()->format('Y-m'));
+
+    $payroll = Payroll::where('payroll_period', $period)->first();
+    $data = [];
+
+    if ($payroll) {
+        $scopedEmployeeIds = $this->getBusinessScopedEmployees($request)->pluck('id')->toArray();
+
+        $payslips = Payslip::where('payroll_id', $payroll->id)
+            ->whereIn('employee_id', $scopedEmployeeIds)
+            ->with(['employee.user', 'payroll'])
+            ->get();
+
+        $data = $payslips->map(function ($ps) {
+            return [
+                'employee_id' => $ps->employee_id,
+                'status' => $ps->status ?? 'pending',
+                'pay_period' => $ps->payroll->payroll_period,
+                'amount' => (float) $ps->net_pay, // Auto-decrypts
+                'payslip_id' => $ps->id,
+                'created_at' => $ps->created_at,
+                'updated_at' => $ps->updated_at,
+            ];
+        })->toArray();
     }
+
+    return response()->json([
+        'data' => $data,
+        'payroll_period' => $period,
+        'payroll_id' => $payroll->id ?? null,
+    ]);
+}
 
     public function cycles(Request $request): JsonResponse
     {
@@ -673,30 +620,23 @@ class PayrollController extends Controller
             ->get()
             ->pluck('payroll_period');
 
-        return response()->json([
-            'cycles' => $cycles
-        ]);
+        return response()->json(['cycles' => $cycles]);
     }
 
     public function show(Payroll $payroll): PayrollResource
     {
         $payroll->load(['payslips.employee.user', 'payslips.payroll']);
-        
         return new PayrollResource($payroll);
     }
 
     public function destroy(Payroll $payroll): JsonResponse
     {
         if ($payroll->status !== 'draft') {
-            return response()->json([
-                'message' => 'Only draft payrolls can be deleted'
-            ], 422);
+            return response()->json(['message' => 'Only draft payrolls can be deleted'], 422);
         }
-
         $payroll->delete();
-
-        return response()->json([
-            'message' => 'Payroll deleted successfully'
-        ]);
+        return response()->json(['message' => 'Payroll deleted successfully']);
     }
+
+    
 }

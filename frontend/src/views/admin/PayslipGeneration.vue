@@ -1,397 +1,103 @@
 <template>
-  <div class="payslip-generation">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-content">
-        <h1 class="header-title">Payslip Management</h1>
-        <p class="header-subtitle">Generate, view, and distribute employee payslips.</p>
-        <div class="filter-indicator" v-if="getFilterDisplayText">
-          <span class="filter-label">Current View:</span>
-          <span class="filter-value">{{ getFilterDisplayText }}</span>
-        </div>
-      </div>
-      <div class="header-actions">
-        <div class="view-toggle">
-          <button
-            @click="viewMode = 'grid'"
-            :class="['toggle-btn', { active: viewMode === 'grid' }]"
-            title="Grid View">
-            <span class="icon">⊞</span>
-          </button>
-          <button
-            @click="viewMode = 'table'"
-            :class="['toggle-btn', { active: viewMode === 'table' }]"
-            title="Table View">
-            <span class="icon">☰</span>
-          </button>
-        </div>
-        <button @click="showBulkGenerate = true" class="btn-secondary-icon">
-          <span class="icon">📑</span>
-          <span>Bulk Generate</span>
-        </button>
-        <button @click="showGenerateModal = true" class="btn-primary-icon">
-          <span class="icon">➕</span>
-          <span>Generate Single</span>
-        </button>
-      </div>
-    </header>
-    <!-- Filters -->
-    <div class="filter-controls-card">
-      <div class="filter-group-container">
-       
-        <!-- Business Filter -->
-        <div class="filter-group">
-          <label class="filter-label">Business</label>
-          <select v-model="filters.business_id" class="select-input" @change="handleBusinessChange">
-            <option value="">All Businesses</option>
-            <option v-for="business in businesses" :key="business.id" :value="business.id">
-              {{ business.name }}
-            </option>
-          </select>
-        </div>
-        <div class="filter-group">
-          <label class="filter-label">Pay Period</label>
-          <select v-model="filters.pay_period" class="select-input" @change="handlePeriodChange">
-            <option value="current">Current Month</option>
-            <option value="last">Last Month</option>
-            <option value="custom">Select Specific Month</option>
-            <option value="date_range">Custom Date Range</option>
-          </select>
-        </div>
-       
-        <div class="filter-group" v-if="filters.pay_period === 'custom'">
-          <label class="filter-label">Select Month</label>
-          <input type="month" v-model="filters.custom_month" class="date-input" @change="fetchPayslips">
-        </div>
-       
-        <div class="filter-group" v-if="filters.pay_period === 'date_range'">
-          <label class="filter-label">Start Date</label>
-          <input type="date" v-model="filters.start_date" class="date-input" @change="fetchPayslips">
-        </div>
-       
-        <div class="filter-group" v-if="filters.pay_period === 'date_range'">
-          <label class="filter-label">End Date</label>
-          <input type="date" v-model="filters.end_date" class="date-input" @change="fetchPayslips">
-        </div>
-       
-        <div class="filter-group">
-          <label class="filter-label">Department</label>
-          <select v-model="filters.department" class="select-input">
-            <option value="">All Departments</option>
-            <option value="IT">IT</option>
-            <option value="HR">HR</option>
-            <option value="Finance">Finance</option>
-            <option value="Sales">Sales</option>
-            <option value="Operations">Operations</option>
-          </select>
-        </div>
-       
-        <div class="filter-group">
-          <label class="filter-label">Status</label>
-          <select v-model="filters.status" class="select-input">
-            <option value="">All Statuses</option>
-            <option value="draft">Draft</option>
-            <option value="generated">Generated</option>
-            <option value="paid">Paid</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <!-- Content -->
-    <div v-if="loading" class="state-indicator loading-state">
-      <div class="spinner"></div>
-      <p>Loading payslip records...</p>
-    </div>
-   
-    <div v-else-if="error" class="state-indicator error-state">
-      <span class="error-icon">⚠️</span>
-      <p>{{ error }}</p>
-      <button @click="fetchPayslips" class="btn-text">Try Again</button>
-    </div>
-   
-    <div v-else class="payslips-dashboard-grid">
-      <!-- Grid View -->
-      <div class="payslip-grid-container" v-if="payslips.length > 0 && viewMode === 'grid'">
-        <!-- Payslip Card -->
-        <div v-for="payslip in payslips" :key="payslip.id" class="payslip-item-card">
-          <div class="card-header-status">
-            <div>
-              <h3 class="employee-name">{{ getEmployeeName(payslip) }}</h3>
-              <p class="employee-meta">{{ payslip.employee_id || '#' }} • {{ payslip.department || 'General' }}</p>
-              <!-- Show Business Name if All Businesses selected -->
-              <span v-if="!filters.business_id && payslip.business_name" class="business-tag">
-                🏢 {{ payslip.business_name }}
-              </span>
-            </div>
-            <span :class="['status-badge', `status-${payslip.status}`]">
-              {{ formatStatus(payslip.status) }}
-            </span>
+  <div class="payslip-view">
+
+    <!-- ── Sticky Action Bar ───────────────────────── -->
+    <transition name="sticky-fade">
+      <div v-if="showStickyBar" class="sticky-action-bar">
+        <div class="sticky-inner">
+          <div class="sticky-title">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            Payslip Management
           </div>
-         
-          <div class="payslip-summary-details">
-            <div class="detail-pair">
-              <span class="detail-label">Period</span>
-              <span class="detail-value">{{ formatDate(payslip.pay_period_start) }} - {{ formatDate(payslip.pay_period_end) }}</span>
-            </div>
-            <div class="detail-pair">
-              <span class="detail-label">Gross Pay</span>
-              <span class="detail-value">K{{ formatNumber(payslip.gross_salary) }}</span>
-            </div>
-            <div class="detail-pair net-pay-row">
-              <span class="detail-label">Net Pay</span>
-              <span class="detail-net-pay">K{{ formatNumber(payslip.net_pay) }}</span>
-            </div>
-          </div>
-          <div class="card-actions-footer">
-            <button @click="viewPayslip(payslip)" class="btn-action view" title="View Details">
-              👁️ View
+          <div class="sticky-actions">
+            <button @click="showBulkGenerate = true" class="btn-outline">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              Bulk Generate
             </button>
-            <button @click="downloadPayslip(payslip)" class="btn-action download" title="Download PDF">
-              ⬇️ PDF
-            </button>
-            <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="btn-action send" title="Email to Employee">
-              📧 Send
+            <button @click="showGenerateModal = true" class="btn-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Generate Single
             </button>
           </div>
         </div>
       </div>
-      <!-- Table View -->
-      <div class="payslip-table-container" v-if="payslips.length > 0 && viewMode === 'table'">
-        <table class="payslip-table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th v-if="!filters.business_id">Business</th>
-              <th>Department</th>
-              <th>Period</th>
-              <th>Gross Pay</th>
-              <th>Net Pay</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="payslip in payslips" :key="payslip.id">
-              <td>
-                <div class="table-employee-cell">
-                  <span class="employee-name-table">{{ getEmployeeName(payslip) }}</span>
-                  <span class="employee-id-table">{{ payslip.employee_id || '#' }}</span>
-                </div>
-              </td>
-              <td v-if="!filters.business_id">
-                <span class="business-tag-table">{{ payslip.business_name }}</span>
-              </td>
-              <td>{{ payslip.department || 'General' }}</td>
-              <td>
-                <div class="table-period-cell">
-                  <div>{{ formatDate(payslip.pay_period_start) }}</div>
-                  <div class="period-to">to</div>
-                  <div>{{ formatDate(payslip.pay_period_end) }}</div>
-                </div>
-              </td>
-              <td class="amount-cell">K{{ formatNumber(payslip.gross_salary) }}</td>
-              <td class="amount-cell net-amount">K{{ formatNumber(payslip.net_pay) }}</td>
-              <td>
-                <span :class="['status-badge', `status-${payslip.status}`]">
-                  {{ formatStatus(payslip.status) }}
-                </span>
-              </td>
-              <td>
-                <div class="table-actions">
-                  <button @click="viewPayslip(payslip)" class="btn-action-small view" title="View">👁️</button>
-                  <button @click="downloadPayslip(payslip)" class="btn-action-small download" title="Download">⬇️</button>
-                  <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="btn-action-small send" title="Send">📧</button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-     
-      <div v-else class="state-indicator empty-state">
-        <div class="empty-icon">📂</div>
-        <h3>No Payslips Found</h3>
-        <p>No records match your current filters.</p>
-        <button @click="showGenerateModal = true" class="btn-primary-icon mt-3">Generate New Payslip</button>
-      </div>
-    </div>
-    <!-- ============================================== -->
-    <!-- MODAL: View Payslip Detail (Dynamic)           -->
-    <!-- ============================================== -->
-    <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
-      <div class="modal-card large-modal">
-        <div class="modal-header">
-          <h2 class="modal-title">Payslip Details</h2>
-          <button @click="selectedPayslip = null" class="close-btn">×</button>
-        </div>
-     
-        <div class="modal-body payslip-detail-view">
-          <!-- Header -->
-          <div class="payslip-branding">
-            <div class="company-details">
-              <h2>{{ selectedPayslip.business_name || 'Castle Holdings Ltd' }}</h2>
-              <p>54 Seble Road, Lusaka, Zambia</p>
-            </div>
-            <div class="payslip-period-badge">
-              <span>{{ formatDate(selectedPayslip.pay_period_end, 'month') }}</span>
-            </div>
+    </transition>
+
+    <!-- ── Header Card ─────────────────────────────── -->
+    <div class="dashboard-header-card" ref="headerCardRef">
+      <div class="header-accent"></div>
+      <div class="header-inner">
+        <div class="header-left">
+          <div class="header-avatar">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
           </div>
-          <!-- Employee Info -->
-          <div class="info-grid-box">
-            <div class="info-cell">
-              <label>Employee Name</label>
-              <span>{{ getEmployeeName(selectedPayslip) }}</span>
+          <div class="header-text">
+            <h1>Payslip Management</h1>
+            <p>Generate, view and distribute employee payslips</p>
+            <div class="header-badges">
+              <span class="badge-role">Admin View</span>
+              <span v-if="getFilterDisplayText !== 'All Records'" class="badge-filter">{{ getFilterDisplayText }}</span>
             </div>
-            <div class="info-cell">
-              <label>Employee ID</label>
-              <span>{{ selectedPayslip.employee_id || 'N/A' }}</span>
-            </div>
-            <div class="info-cell">
-              <label>Department</label>
-              <span>{{ selectedPayslip.department || 'N/A' }}</span>
-            </div>
-            <div class="info-cell">
-              <label>Pay Date</label>
-              <span>{{ formatDate(selectedPayslip.payment_date) }}</span>
-            </div>
-          </div>
-       
-          <div class="earnings-deductions-grid">
-            <!-- Dynamic Earnings -->
-            <section class="detail-section">
-              <h3 class="section-title earnings">Earnings</h3>
-              <div class="amount-list">
-                <div class="amount-item">
-                  <label>Basic Salary</label>
-                  <span>K{{ formatNumber(selectedPayslip.basic_salary) }}</span>
-                </div>
-                <div class="amount-item" v-if="selectedPayslip.house_allowance > 0">
-                  <label>Housing Allowance</label>
-                  <span>K{{ formatNumber(selectedPayslip.house_allowance) }}</span>
-                </div>
-                <div class="amount-item" v-if="selectedPayslip.transport_allowance > 0">
-                  <label>Transport Allowance</label>
-                  <span>K{{ formatNumber(selectedPayslip.transport_allowance) }}</span>
-                </div>
-                <div class="amount-item" v-if="selectedPayslip.lunch_allowance > 0">
-                  <label>Lunch/Other Allowance</label>
-                  <span>K{{ formatNumber(selectedPayslip.lunch_allowance) }}</span>
-                </div>
-                <div class="amount-item" v-if="selectedPayslip.overtime_pay > 0">
-                  <label>Overtime Pay</label>
-                  <span>K{{ formatNumber(selectedPayslip.overtime_pay) }}</span>
-                </div>
-                <div class="amount-item" v-if="selectedPayslip.bonuses > 0">
-                  <label>Bonuses</label>
-                  <span>K{{ formatNumber(selectedPayslip.bonuses) }}</span>
-                </div>
-                <div class="amount-item total">
-                  <label>Gross Earnings</label>
-                  <span>K{{ formatNumber(selectedPayslip.gross_salary) }}</span>
-                </div>
-              </div>
-            </section>
-         
-            <!-- Dynamic Deductions -->
-            <section class="detail-section">
-              <h3 class="section-title deductions">Deductions</h3>
-              <div class="amount-list">
-                <!-- Iterate through dynamically computed deductions list -->
-                <div v-for="(item, idx) in getDynamicDeductions(selectedPayslip)" :key="idx" class="amount-item">
-                  <label>{{ item.name }}</label>
-                  <span>K{{ formatNumber(item.amount) }}</span>
-                </div>
-               
-                <div class="amount-item total">
-                  <label>Total Deductions</label>
-                  <span>K{{ formatNumber(selectedPayslip.total_deductions) }}</span>
-                </div>
-              </div>
-            </section>
-          </div>
-       
-          <!-- Net Pay -->
-          <div class="net-pay-banner">
-            <div class="label">NET PAYABLE</div>
-            <div class="amount">K{{ formatNumber(selectedPayslip.net_pay) }}</div>
-            <div class="words">{{ convertToWords(selectedPayslip.net_pay) }}</div>
           </div>
         </div>
-     
-        <div class="modal-footer">
-          <button @click="downloadPayslip(selectedPayslip)" class="btn-primary-icon">
-            Download PDF
+        <div class="header-actions">
+          <div class="layout-toggle">
+            <button :class="['layout-btn', { active: viewMode === 'grid' }]"  @click="viewMode = 'grid'"  title="Grid view">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </button>
+            <button :class="['layout-btn', { active: viewMode === 'table' }]" @click="viewMode = 'table'" title="Table view">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+          </div>
+          <button @click="showBulkGenerate = true" class="btn-outline">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Bulk Generate
           </button>
-          <button @click="selectedPayslip = null" class="btn-secondary">
-            Close
+          <button @click="showGenerateModal = true" class="btn-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Generate Single
           </button>
         </div>
       </div>
     </div>
-    <!-- Generate Single Modal -->
-    <div v-if="showGenerateModal" class="modal-overlay" @click.self="closeModals">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2 class="modal-title">Generate Single Payslip</h2>
-          <button @click="closeModals" class="close-btn">×</button>
-        </div>
-        <form @submit.prevent="generatePayslip" class="modal-body-content">
-          <!-- Only show employees for the selected business -->
-          <div class="form-group">
-            <label class="form-label">Employee</label>
-            <select v-model="generateForm.employee_id" @change="onEmployeeSelected($event.target.value)" required class="select-input">
-              <option value="" disabled>Select Employee</option>
-              <option v-for="emp in employees" :key="emp.id" :value="emp.id">
-                {{ getEmployeeName(emp) }}
-              </option>
+
+    <!-- ── Filter + Content Card ───────────────────── -->
+    <div class="section-card">
+
+      <!-- Controls Bar -->
+      <div class="controls-bar">
+        <div class="filters-row">
+          <div class="filter-group">
+            <label>Business</label>
+            <select v-model="filters.business_id" @change="handleBusinessChange" class="filter-select">
+              <option value="">All Businesses</option>
+              <option v-for="b in businesses" :key="b.id" :value="b.id">{{ b.name }}</option>
             </select>
-            <small v-if="employees.length === 0" class="text-muted">No employees found for selected business.</small>
           </div>
-         
-          <div class="form-row-grid">
-            <div class="form-group">
-              <label class="form-label">Start Date</label>
-              <input type="date" v-model="generateForm.pay_period_start" required class="text-input">
-            </div>
-            <div class="form-group">
-              <label class="form-label">End Date</label>
-              <input type="date" v-model="generateForm.pay_period_end" required class="text-input">
-            </div>
+          <div class="filter-group">
+            <label>Pay Period</label>
+            <select v-model="filters.pay_period" @change="handlePeriodChange" class="filter-select">
+              <option value="current">Current Month</option>
+              <option value="last">Last Month</option>
+              <option value="custom">Select Month</option>
+              <option value="date_range">Date Range</option>
+            </select>
           </div>
-          <div class="form-group">
-            <label class="form-label">Basic Salary</label>
-            <input type="number" v-model.number="generateForm.basic_salary" class="text-input" step="0.01">
+          <div class="filter-group" v-if="filters.pay_period === 'custom'">
+            <label>Month</label>
+            <input type="month" v-model="filters.custom_month" @change="fetchPayslips" class="filter-select" />
           </div>
-          <div class="modal-footer">
-            <button type="button" @click="closeModals" class="btn-secondary">Cancel</button>
-            <button type="submit" class="btn-primary" :disabled="submitting">
-              {{ submitting ? 'Generating...' : 'Generate' }}
-            </button>
+          <div class="filter-group" v-if="filters.pay_period === 'date_range'">
+            <label>Start Date</label>
+            <input type="date" v-model="filters.start_date" @change="fetchPayslips" class="filter-select" />
           </div>
-        </form>
-      </div>
-    </div>
-    <!-- Bulk Generate Modal -->
-    <div v-if="showBulkGenerate" class="modal-overlay" @click.self="closeModals">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h2 class="modal-title">Bulk Generate</h2>
-          <button @click="closeModals" class="close-btn">×</button>
-        </div>
-        <form @submit.prevent="bulkGeneratePayslips" class="modal-body-content">
-          <div class="form-row-grid">
-            <div class="form-group">
-              <label class="form-label">Period Start</label>
-              <input type="date" v-model="bulkForm.pay_period_start" required class="text-input">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Period End</label>
-              <input type="date" v-model="bulkForm.pay_period_end" required class="text-input">
-            </div>
+          <div class="filter-group" v-if="filters.pay_period === 'date_range'">
+            <label>End Date</label>
+            <input type="date" v-model="filters.end_date" @change="fetchPayslips" class="filter-select" />
           </div>
-          <div class="form-group">
-            <label class="form-label">Department</label>
-            <select v-model="bulkForm.department" class="select-input">
+          <div class="filter-group">
+            <label>Department</label>
+            <select v-model="filters.department" class="filter-select">
               <option value="">All Departments</option>
               <option value="IT">IT</option>
               <option value="HR">HR</option>
@@ -400,493 +106,858 @@
               <option value="Operations">Operations</option>
             </select>
           </div>
-         
-          <div class="selection-summary">
-            <p>
-              Will generate payslips for <strong>{{ availableEmployees.length }}</strong> employees
-              <span v-if="filters.business_id">in selected business</span>.
-            </p>
+          <div class="filter-group">
+            <label>Status</label>
+            <select v-model="filters.status" class="filter-select">
+              <option value="">All Statuses</option>
+              <option value="draft">Draft</option>
+              <option value="generated">Generated</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+        </div>
+        <span class="records-badge" v-if="!loading">{{ payslips.length }} record{{ payslips.length !== 1 ? 's' : '' }}</span>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="loading" class="state-empty">
+        <div class="spinner"></div>
+        <p>Loading payslip records…</p>
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="error" class="state-empty">
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <p style="color:#ef4444;">{{ error }}</p>
+        <button @click="fetchPayslips" class="btn-primary">Try Again</button>
+      </div>
+
+      <!-- ── Grid View ────────────────────────────── -->
+      <div v-else-if="viewMode === 'grid' && payslips.length > 0" class="payslip-grid">
+        <div v-for="payslip in payslips" :key="payslip.id" class="payslip-card">
+
+          <div class="card-head">
+            <div class="card-avatar" :style="{ background: getAvatarColor(getEmployeeName(payslip)) }">
+              {{ getInitials(getEmployeeName(payslip)) }}
+            </div>
+            <div class="card-meta">
+              <div class="card-name">{{ getEmployeeName(payslip) }}</div>
+              <div class="card-sub">
+                <span class="mono-id">{{ payslip.employee_id || '#—' }}</span>
+                <span class="dept-chip">{{ payslip.department || 'General' }}</span>
+              </div>
+              <span v-if="!filters.business_id && payslip.business_name" class="biz-chip">🏢 {{ payslip.business_name }}</span>
+            </div>
+            <span :class="['status-badge', statusClass(payslip.status)]">
+              <span class="dot"></span>{{ formatStatus(payslip.status) }}
+            </span>
+          </div>
+
+          <div class="amount-strip">
+            <div class="amount-cell">
+              <span class="amt-lbl">Period</span>
+              <span class="amt-val small-val">{{ formatDate(payslip.pay_period_start) }} → {{ formatDate(payslip.pay_period_end) }}</span>
+            </div>
+            <div class="amount-cell">
+              <span class="amt-lbl">Gross</span>
+              <span class="amt-val">K{{ formatNumber(payslip.gross_salary) }}</span>
+            </div>
+            <div class="amount-cell">
+              <span class="amt-lbl">Net Pay</span>
+              <span class="amt-val net-green">K{{ formatNumber(payslip.net_pay) }}</span>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button @click="viewPayslip(payslip)" class="card-btn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View
+            </button>
+            <button @click="downloadPayslip(payslip)" class="card-btn download">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PDF
+            </button>
+            <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="card-btn send">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Send
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Table View ───────────────────────────── -->
+      <div v-else-if="viewMode === 'table' && payslips.length > 0" class="table-wrap">
+        <div :class="['list-header', 'ps-grid', { 'with-biz': !filters.business_id }]">
+          <div>Employee</div>
+          <div v-if="!filters.business_id">Business</div>
+          <div>Department</div>
+          <div>Period</div>
+          <div class="text-right">Gross</div>
+          <div class="text-right">Net Pay</div>
+          <div>Status</div>
+          <div class="text-right">Actions</div>
+        </div>
+
+        <div
+          v-for="payslip in payslips"
+          :key="payslip.id"
+          :class="['list-row', 'ps-grid', { 'with-biz': !filters.business_id }]"
+          @click="viewPayslip(payslip)"
+        >
+          <div class="emp-cell">
+            <div class="emp-av" :style="{ background: getAvatarColor(getEmployeeName(payslip)) }">{{ getInitials(getEmployeeName(payslip)) }}</div>
+            <div>
+              <div class="emp-name">{{ getEmployeeName(payslip) }}</div>
+              <div class="mono-id">{{ payslip.employee_id || '#—' }}</div>
+            </div>
+          </div>
+          <div v-if="!filters.business_id"><span class="biz-chip-sm">{{ payslip.business_name || '—' }}</span></div>
+          <div><span class="dept-tag">{{ payslip.department || 'General' }}</span></div>
+          <div class="period-cell">
+            <span>{{ formatDate(payslip.pay_period_start) }}</span>
+            <span class="period-sep">→</span>
+            <span>{{ formatDate(payslip.pay_period_end) }}</span>
+          </div>
+          <div class="text-right mono text-muted">K{{ formatNumber(payslip.gross_salary) }}</div>
+          <div class="text-right mono text-success fw-700">K{{ formatNumber(payslip.net_pay) }}</div>
+          <div><span :class="['status-badge', statusClass(payslip.status)]"><span class="dot"></span>{{ formatStatus(payslip.status) }}</span></div>
+          <div class="row-actions" @click.stop>
+            <button @click="viewPayslip(payslip)" class="icon-btn" title="View">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button @click="downloadPayslip(payslip)" class="icon-btn dl" title="Download">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
+            <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="icon-btn send" title="Send">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty -->
+      <div v-else-if="!loading" class="state-empty">
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <p>No payslips found for the current filters.</p>
+        <button @click="showGenerateModal = true" class="btn-primary">Generate New Payslip</button>
+      </div>
+
+    </div><!-- /section-card -->
+
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--  MODAL — View Payslip Detail               -->
+    <!-- ═══════════════════════════════════════════ -->
+    <transition name="modal-fade">
+      <div v-if="selectedPayslip" class="modal-overlay" @click.self="selectedPayslip = null">
+        <div class="modal-box large">
+          <div class="modal-header">
+            <div class="mh-left">
+              <div class="mh-avatar">{{ getInitials(getEmployeeName(selectedPayslip)) }}</div>
+              <div>
+                <h3 class="mh-name">{{ getEmployeeName(selectedPayslip) }}</h3>
+                <p class="mh-sub">{{ selectedPayslip.department || 'General' }} · {{ selectedPayslip.employee_id }}</p>
+              </div>
+            </div>
+            <button @click="selectedPayslip = null" class="mh-close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="modal-body">
+            <!-- Company strip -->
+            <div class="company-strip">
+              <div class="co-name">{{ selectedPayslip.business_name || 'Castle Holdings Ltd' }}</div>
+              <div class="co-addr">54 Seble Road, Lusaka, Zambia</div>
+              <span class="period-pill">{{ formatDate(selectedPayslip.pay_period_end, 'month') }}</span>
+            </div>
+
+            <!-- Quick stats -->
+            <div class="modal-stats">
+              <div class="mstat"><small>Employee ID</small><strong class="mono-id">{{ selectedPayslip.employee_id || 'N/A' }}</strong></div>
+              <div class="mstat"><small>Department</small><strong>{{ selectedPayslip.department || 'N/A' }}</strong></div>
+              <div class="mstat"><small>Pay Date</small><strong>{{ formatDate(selectedPayslip.payment_date) }}</strong></div>
+              <div class="mstat">
+                <small>Status</small>
+                <span :class="['status-badge', statusClass(selectedPayslip.status)]"><span class="dot"></span>{{ formatStatus(selectedPayslip.status) }}</span>
+              </div>
+            </div>
+
+            <!-- Earnings / Deductions -->
+            <div class="detail-split">
+              <div class="detail-col">
+                <h5 class="detail-heading"><span class="col-dot green"></span>Earnings</h5>
+                <div class="line-items">
+                  <div class="line-item"><span>Basic Salary</span><span>K{{ formatNumber(selectedPayslip.basic_salary) }}</span></div>
+                  <div v-if="selectedPayslip.house_allowance > 0"     class="line-item"><span>Housing Allowance</span><span>K{{ formatNumber(selectedPayslip.house_allowance) }}</span></div>
+                  <div v-if="selectedPayslip.transport_allowance > 0" class="line-item"><span>Transport Allowance</span><span>K{{ formatNumber(selectedPayslip.transport_allowance) }}</span></div>
+                  <div v-if="selectedPayslip.lunch_allowance > 0"     class="line-item"><span>Lunch/Other Allowance</span><span>K{{ formatNumber(selectedPayslip.lunch_allowance) }}</span></div>
+                  <div v-if="selectedPayslip.overtime_pay > 0"        class="line-item"><span>Overtime Pay</span><span>K{{ formatNumber(selectedPayslip.overtime_pay) }}</span></div>
+                  <div v-if="selectedPayslip.bonuses > 0"             class="line-item"><span>Bonuses</span><span>K{{ formatNumber(selectedPayslip.bonuses) }}</span></div>
+                </div>
+                <div class="line-total"><span>Gross Earnings</span><span class="text-success">K{{ formatNumber(selectedPayslip.gross_salary) }}</span></div>
+              </div>
+              <div class="detail-col">
+                <h5 class="detail-heading"><span class="col-dot red"></span>Deductions</h5>
+                <div class="line-items">
+                  <div v-for="(item, i) in getDynamicDeductions(selectedPayslip)" :key="i" class="line-item">
+                    <span>{{ item.name }}</span><span>K{{ formatNumber(item.amount) }}</span>
+                  </div>
+                </div>
+                <div class="line-total"><span>Total Deductions</span><span class="text-danger">K{{ formatNumber(selectedPayslip.total_deductions) }}</span></div>
+              </div>
+            </div>
+
+            <!-- Net Pay -->
+            <div class="net-pay-card">
+              <div>
+                <div class="np-label">NET PAYABLE</div>
+                <div class="np-amount">K{{ formatNumber(selectedPayslip.net_pay) }}</div>
+                <div class="np-words">{{ convertToWords(selectedPayslip.net_pay) }}</div>
+              </div>
+              <div class="np-bg">ZMW</div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button @click="selectedPayslip = null" class="btn-secondary">Close</button>
+            <button @click="downloadPayslip(selectedPayslip)" class="btn-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Download PDF
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--  MODAL — Generate Single                   -->
+    <!-- ═══════════════════════════════════════════ -->
+    <transition name="modal-fade">
+      <div v-if="showGenerateModal" class="modal-overlay" @click.self="closeModals">
+        <div class="modal-box">
+          <div class="modal-header">
+            <div class="mh-left">
+              <div class="mh-avatar icon-av">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </div>
+              <h3 class="mh-name">Generate Single Payslip</h3>
+            </div>
+            <button @click="closeModals" class="mh-close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body form-body">
+            <div class="form-group">
+              <label>Employee</label>
+              <select v-model="generateForm.employee_id" @change="onEmployeeSelected($event.target.value)" required class="filter-select full-w">
+                <option value="" disabled>Select Employee</option>
+                <option v-for="emp in employees" :key="emp.id" :value="emp.id">{{ getEmployeeName(emp) }}</option>
+              </select>
+              <small v-if="employees.length === 0" class="hint">No employees found for selected business.</small>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" v-model="generateForm.pay_period_start" required class="filter-select full-w" />
+              </div>
+              <div class="form-group">
+                <label>End Date</label>
+                <input type="date" v-model="generateForm.pay_period_end" required class="filter-select full-w" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Basic Salary</label>
+              <input type="number" v-model.number="generateForm.basic_salary" class="filter-select full-w" step="0.01" />
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" @click="closeModals" class="btn-secondary">Cancel</button>
-            <button type="submit" class="btn-primary" :disabled="submitting || availableEmployees.length === 0">
-              {{ submitting ? 'Processing...' : 'Generate All' }}
+            <button @click="generatePayslip" class="btn-primary" :disabled="submitting">
+              {{ submitting ? 'Generating…' : 'Generate' }}
             </button>
           </div>
-        </form>
+        </div>
       </div>
-    </div>
+    </transition>
+
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!--  MODAL — Bulk Generate                     -->
+    <!-- ═══════════════════════════════════════════ -->
+    <transition name="modal-fade">
+      <div v-if="showBulkGenerate" class="modal-overlay" @click.self="closeModals">
+        <div class="modal-box">
+          <div class="modal-header">
+            <div class="mh-left">
+              <div class="mh-avatar icon-av">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              </div>
+              <h3 class="mh-name">Bulk Generate Payslips</h3>
+            </div>
+            <button @click="closeModals" class="mh-close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body form-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Period Start</label>
+                <input type="date" v-model="bulkForm.pay_period_start" required class="filter-select full-w" />
+              </div>
+              <div class="form-group">
+                <label>Period End</label>
+                <input type="date" v-model="bulkForm.pay_period_end" required class="filter-select full-w" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Department</label>
+              <select v-model="bulkForm.department" class="filter-select full-w">
+                <option value="">All Departments</option>
+                <option value="IT">IT</option>
+                <option value="HR">HR</option>
+                <option value="Finance">Finance</option>
+                <option value="Sales">Sales</option>
+                <option value="Operations">Operations</option>
+              </select>
+            </div>
+            <div class="info-notice">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Will generate payslips for <strong>{{ availableEmployees.length }}</strong> employees
+              <span v-if="filters.business_id">in selected business</span>.
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" @click="closeModals" class="btn-secondary">Cancel</button>
+            <button @click="bulkGeneratePayslips" class="btn-primary" :disabled="submitting || availableEmployees.length === 0">
+              {{ submitting ? 'Processing…' : 'Generate All' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
   </div>
 </template>
+
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
 import jsPDF from 'jspdf';
-// --- State ---
-const loading = ref(false);
-const error = ref(null);
-const payslips = ref([]);
-const employees = ref([]);
-const businesses = ref([]);
-const selectedPayslip = ref(null);
+
+const loading           = ref(false);
+const error             = ref(null);
+const payslips          = ref([]);
+const employees         = ref([]);
+const businesses        = ref([]);
+const selectedPayslip   = ref(null);
 const showGenerateModal = ref(false);
-const showBulkGenerate = ref(false);
-const submitting = ref(false);
-const viewMode = ref('grid'); // 'grid' or 'table'
+const showBulkGenerate  = ref(false);
+const submitting        = ref(false);
+const viewMode          = ref('grid');
+const headerCardRef     = ref(null);
+const showStickyBar     = ref(false);
+
 const filters = reactive({
-  pay_period: 'current',
-  department: '',
-  status: '',
-  custom_month: '',
-  business_id: '',
-  start_date: '',
-  end_date: ''
+  pay_period: 'current', department: '', status: '',
+  custom_month: '', business_id: '', start_date: '', end_date: ''
 });
 const generateForm = reactive({
-  employee_id: '',
-  pay_period_start: '',
-  pay_period_end: '',
-  payment_date: '',
-  basic_salary: 0,
-  overtime_hours: 0,
-  overtime_rate: 0
+  employee_id: '', pay_period_start: '', pay_period_end: '',
+  payment_date: '', basic_salary: 0, overtime_hours: 0, overtime_rate: 0
 });
 const bulkForm = reactive({
-  pay_period_start: '',
-  pay_period_end: '',
-  payment_date: '',
-  department: '',
-  employee_ids: []
+  pay_period_start: '', pay_period_end: '', payment_date: '', department: '', employee_ids: []
 });
-// --- Lifecycle ---
+
+// ── Sticky bar scroll logic ───────────────────────────
+const handleScroll = () => {
+  if (!headerCardRef.value) return;
+  const rect = headerCardRef.value.getBoundingClientRect();
+  // Show sticky bar once the header card has scrolled out of view (bottom edge above viewport)
+  showStickyBar.value = rect.bottom < 0;
+};
+
 onMounted(() => {
   initializeDates();
   fetchBusinesses();
   fetchEmployees();
   fetchPayslips();
+  window.addEventListener('scroll', handleScroll, { passive: true });
 });
-// --- Computed ---
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll);
+});
+
 const getFilterDisplayText = computed(() => {
-  let text = [];
- 
-  if (filters.business_id) {
-    const b = businesses.value.find(b => b.id === filters.business_id);
-    if(b) text.push(b.name);
-  }
-  if (filters.pay_period === 'current') text.push('Current Month');
-  else if (filters.pay_period === 'last') text.push('Last Month');
-  else if (filters.custom_month) text.push(`Month: ${filters.custom_month}`);
-  else if (filters.start_date && filters.end_date) text.push(`${filters.start_date} to ${filters.end_date}`);
- 
-  return text.length ? text.join(' • ') : 'All Records';
+  const parts = [];
+  if (filters.business_id) { const b = businesses.value.find(b => b.id === filters.business_id); if (b) parts.push(b.name); }
+  if      (filters.pay_period === 'current') parts.push('Current Month');
+  else if (filters.pay_period === 'last')    parts.push('Last Month');
+  else if (filters.custom_month)             parts.push(`Month: ${filters.custom_month}`);
+  else if (filters.start_date && filters.end_date) parts.push(`${filters.start_date} → ${filters.end_date}`);
+  return parts.length ? parts.join(' · ') : 'All Records';
 });
-const availableEmployees = computed(() => {
-  return employees.value.filter(emp =>
-    !bulkForm.department || emp.department === bulkForm.department
-  );
-});
-// --- Methods: Data Fetching ---
+const availableEmployees = computed(() =>
+  employees.value.filter(e => !bulkForm.department || e.department === bulkForm.department)
+);
+
 const initializeDates = () => {
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const last  = new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().split('T')[0];
   const today = now.toISOString().split('T')[0];
-  generateForm.pay_period_start = firstDay;
-  generateForm.pay_period_end = lastDay;
-  generateForm.payment_date = today;
-  bulkForm.pay_period_start = firstDay;
-  bulkForm.pay_period_end = lastDay;
-  bulkForm.payment_date = today;
+  Object.assign(generateForm, { pay_period_start: first, pay_period_end: last, payment_date: today });
+  Object.assign(bulkForm,     { pay_period_start: first, pay_period_end: last, payment_date: today });
 };
 const fetchBusinesses = async () => {
-  try {
-    const res = await axios.get('/api/admin/businesses');
-    businesses.value = res.data.data || res.data.businesses || res.data || [];
-  } catch (err) {
-    console.error('Failed to load businesses', err);
-  }
+  try { const r = await axios.get('/api/admin/businesses'); businesses.value = r.data.data || r.data.businesses || r.data || []; } catch {}
 };
 const fetchEmployees = async () => {
   try {
-    const params = {};
-    if (filters.business_id) {
-      params.business_id = filters.business_id;
-    }
-   
-    const res = await axios.get('/api/admin/employees', { params });
-    employees.value = res.data.data || res.data.employees || [];
-  } catch (err) {
-    console.error('Failed to load employees', err);
-  }
+    const params = filters.business_id ? { business_id: filters.business_id } : {};
+    const r = await axios.get('/api/admin/employees', { params });
+    employees.value = r.data.data || r.data.employees || [];
+  } catch {}
 };
 const fetchPayslips = async () => {
-  loading.value = true;
-  error.value = null;
+  loading.value = true; error.value = null;
   try {
-    const params = {
-      department: filters.department || undefined,
-      status: filters.status || undefined,
-      business_id: filters.business_id || undefined
-    };
-    if (filters.pay_period === 'current') {
-      params.pay_period = 'current';
-    } else if (filters.pay_period === 'last') {
-      params.pay_period = 'last';
-    } else if (filters.pay_period === 'custom' && filters.custom_month) {
-      // Convert YYYY-MM to proper date range
-      const [year, month] = filters.custom_month.split('-');
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0); // Last day of month
-     
-      params.start = startDate.toISOString().split('T')[0];
-      params.end = endDate.toISOString().split('T')[0];
+    const params = { department: filters.department||undefined, status: filters.status||undefined, business_id: filters.business_id||undefined };
+    if      (filters.pay_period === 'current') { params.pay_period = 'current'; }
+    else if (filters.pay_period === 'last')    { params.pay_period = 'last'; }
+    else if (filters.pay_period === 'custom' && filters.custom_month) {
+      const [y,m] = filters.custom_month.split('-');
+      params.start = new Date(y,m-1,1).toISOString().split('T')[0];
+      params.end   = new Date(y,m,0).toISOString().split('T')[0];
     } else if (filters.pay_period === 'date_range') {
-      // Custom date range
-      if (filters.start_date) {
-        params.start = filters.start_date;
-      }
-      if (filters.end_date) {
-        params.end = filters.end_date;
-      }
+      if (filters.start_date) params.start = filters.start_date;
+      if (filters.end_date)   params.end   = filters.end_date;
     }
-    const res = await axios.get('/api/admin/payslips', { params });
-    payslips.value = res.data.data || res.data;
-  } catch (err) {
-    error.value = "Failed to load payslips.";
-    console.error(err);
-  } finally {
-    loading.value = false;
-  }
+    const r = await axios.get('/api/admin/payslips', { params });
+    payslips.value = r.data.data || r.data;
+  } catch { error.value = 'Failed to load payslips.'; }
+  finally { loading.value = false; }
 };
-const handleBusinessChange = () => {
-  fetchEmployees();
+const handleBusinessChange = () => { fetchEmployees(); fetchPayslips(); };
+const handlePeriodChange   = () => {
+  if (filters.pay_period !== 'custom') filters.custom_month = '';
+  if (filters.pay_period !== 'date_range') { filters.start_date = ''; filters.end_date = ''; }
   fetchPayslips();
 };
-const handlePeriodChange = () => {
-  // Clear custom dates when switching period types
-  if (filters.pay_period !== 'custom') {
-    filters.custom_month = '';
-  }
-  if (filters.pay_period !== 'date_range') {
-    filters.start_date = '';
-    filters.end_date = '';
-  }
-  fetchPayslips();
-};
-// --- Methods: Logic ---
+
 const getEmployeeName = (emp) => {
-  if (!emp) return 'Unknown Employee';
- 
-  if (emp.user && emp.user.first_name) {
-    return `${emp.user.first_name} ${emp.user.last_name || ''}`.trim();
-  }
- 
-  if (emp.employee_name) return emp.employee_name;
-  if (emp.first_name) {
-    return `${emp.first_name} ${emp.last_name || ''}`.trim();
-  }
-  if (emp.name) return emp.name;
-  return 'Unknown';
+  if (!emp) return 'Unknown';
+  if (emp.user?.first_name) return `${emp.user.first_name} ${emp.user.last_name||''}`.trim();
+  if (emp.employee_name)    return emp.employee_name;
+  if (emp.first_name)       return `${emp.first_name} ${emp.last_name||''}`.trim();
+  return emp.name || 'Unknown';
 };
-const getDynamicDeductions = (payslip) => {
-  let list = [];
- 
-  if (payslip.paye > 0) list.push({ name: 'PAYE Tax', amount: payslip.paye });
-  if (payslip.breakdown?.deductions_breakdown?.statutory_breakdown) {
-    payslip.breakdown.deductions_breakdown.statutory_breakdown.forEach(d => {
-      list.push({ name: d.name, amount: d.amount });
-    });
+const getDynamicDeductions = (p) => {
+  const list = [];
+  if (p.paye > 0) list.push({ name:'PAYE Tax', amount:p.paye });
+  if (p.breakdown?.deductions_breakdown?.statutory_breakdown) {
+    p.breakdown.deductions_breakdown.statutory_breakdown.forEach(d => list.push({ name:d.name, amount:d.amount }));
   } else {
-    if (payslip.napsa > 0) list.push({ name: 'NAPSA', amount: payslip.napsa });
-    if (payslip.nhima > 0) list.push({ name: 'NHIMA', amount: payslip.nhima });
-    if (payslip.pension > 0) list.push({ name: 'Pension', amount: payslip.pension });
+    if (p.napsa   > 0) list.push({ name:'NAPSA',   amount:p.napsa });
+    if (p.nhima   > 0) list.push({ name:'NHIMA',   amount:p.nhima });
+    if (p.pension > 0) list.push({ name:'Pension', amount:p.pension });
   }
-  if (payslip.other_deductions > 0) list.push({ name: 'Other Deductions', amount: payslip.other_deductions });
+  if (p.other_deductions > 0) list.push({ name:'Other Deductions', amount:p.other_deductions });
   return list;
 };
 const onEmployeeSelected = (id) => {
   const emp = employees.value.find(e => e.id == id);
-  if (emp) {
-    generateForm.basic_salary = emp.base_salary;
-  }
+  if (emp) generateForm.basic_salary = emp.base_salary;
 };
-const viewPayslip = (payslip) => {
-  selectedPayslip.value = payslip;
-};
+const viewPayslip = (p) => { selectedPayslip.value = p; };
 const generatePayslip = async () => {
   submitting.value = true;
-  try {
-    const payload = { ...generateForm, generate_pdf: true };
-    await axios.post('/api/admin/payslips', payload);
-    await fetchPayslips();
-    closeModals();
-    alert('Payslip Generated!');
-  } catch (err) {
-    alert(err.response?.data?.message || 'Generation failed');
-  } finally {
-    submitting.value = false;
-  }
+  try { await axios.post('/api/admin/payslips', { ...generateForm, generate_pdf: true }); await fetchPayslips(); closeModals(); }
+  catch (err) { alert(err.response?.data?.message || 'Generation failed'); }
+  finally { submitting.value = false; }
 };
 const bulkGeneratePayslips = async () => {
   submitting.value = true;
   try {
     const ids = availableEmployees.value.map(e => e.id);
-   
-    if (ids.length === 0) {
-      alert('No employees found to generate payslips for.');
-      submitting.value = false;
-      return;
-    }
+    if (!ids.length) { alert('No employees found.'); submitting.value = false; return; }
     for (const id of ids) {
       const emp = employees.value.find(e => e.id == id);
-      await axios.post('/api/admin/payslips', {
-        employee_id: id,
-        pay_period_start: bulkForm.pay_period_start,
-        pay_period_end: bulkForm.pay_period_end,
-        payment_date: bulkForm.payment_date,
-        basic_salary: emp.base_salary,
-        generate_pdf: true
-      });
+      await axios.post('/api/admin/payslips', { employee_id:id, pay_period_start:bulkForm.pay_period_start, pay_period_end:bulkForm.pay_period_end, payment_date:bulkForm.payment_date, basic_salary:emp.base_salary, generate_pdf:true });
     }
-    await fetchPayslips();
-    closeModals();
-    alert('Bulk Generation Complete');
-  } catch (err) {
-    console.error(err);
-    alert('Some payslips might have failed.');
-  } finally {
-    submitting.value = false;
-  }
+    await fetchPayslips(); closeModals();
+  } catch { alert('Some payslips may have failed.'); }
+  finally { submitting.value = false; }
 };
-const downloadPayslip = async (payslip) => {
+const downloadPayslip = async (p) => {
   try {
-    if (!payslip.pdf_available && !payslip.pdf_path) {
-      generateClientPdf(payslip);
-      return;
-    }
-   
-    const response = await axios.get(`/api/admin/payslips/${payslip.id}/download`, { responseType: 'blob' });
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `payslip_${payslip.employee_id}.pdf`);
-    document.body.appendChild(link);
-    link.click();
-  } catch (err) {
-    console.error('Download failed, trying client generation', err);
-    generateClientPdf(payslip);
-  }
+    if (!p.pdf_available && !p.pdf_path) { generateClientPdf(p); return; }
+    const r = await axios.get(`/api/admin/payslips/${p.id}/download`, { responseType:'blob' });
+    const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([r.data]));
+    link.download = `payslip_${p.employee_id}.pdf`; link.click();
+  } catch { generateClientPdf(p); }
 };
-const generateClientPdf = (payslip) => {
+const generateClientPdf = (p) => {
   const doc = new jsPDF();
-  const companyName = payslip.business_name || 'Castle Holdings Ltd';
- 
-  doc.setFontSize(18);
-  doc.text('PAYSLIP', 105, 20, { align: 'center' });
- 
-  doc.setFontSize(12);
-  doc.text(companyName, 20, 40);
-  doc.setFontSize(10);
-  doc.text(`Period: ${formatDate(payslip.pay_period_start)} to ${formatDate(payslip.pay_period_end)}`, 20, 50);
-  doc.text(`Employee: ${getEmployeeName(payslip)}`, 20, 60);
- 
-  let y = 80;
-  doc.text('Earnings:', 20, y);
-  doc.text(`Basic: K${formatNumber(payslip.basic_salary)}`, 120, y, { align: 'right' });
- 
-  y += 10;
-  doc.text('Deductions:', 20, y);
- 
-  const deductions = getDynamicDeductions(payslip);
-  deductions.forEach(d => {
-    y += 7;
-    doc.text(`${d.name}`, 30, y);
-    doc.text(`K${formatNumber(d.amount)}`, 120, y, { align: 'right' });
-  });
- 
-  y += 15;
-  doc.setFontSize(14);
-  doc.text(`Net Pay: K${formatNumber(payslip.net_pay)}`, 120, y, { align: 'right' });
- 
-  doc.save(`payslip_client_${payslip.id}.pdf`);
+  doc.setFontSize(18); doc.text('PAYSLIP', 105, 20, { align:'center' });
+  doc.setFontSize(12); doc.text(p.business_name || 'Castle Holdings Ltd', 20, 40);
+  doc.setFontSize(10); doc.text(`Period: ${formatDate(p.pay_period_start)} to ${formatDate(p.pay_period_end)}`, 20, 50);
+  doc.text(`Employee: ${getEmployeeName(p)}`, 20, 60);
+  let y = 80; doc.text('Basic: K' + formatNumber(p.basic_salary), 120, y, { align:'right' });
+  getDynamicDeductions(p).forEach(d => { y+=7; doc.text(d.name,30,y); doc.text('K'+formatNumber(d.amount),120,y,{align:'right'}); });
+  y+=15; doc.setFontSize(14); doc.text(`Net Pay: K${formatNumber(p.net_pay)}`,120,y,{align:'right'});
+  doc.save(`payslip_${p.id}.pdf`);
 };
-const sendPayslip = async (payslip) => {
-  if(!confirm('Send email notification?')) return;
-  try {
-    await axios.post(`/api/admin/payslips/${payslip.id}/send`);
-    alert('Email sent.');
-  } catch (e) { alert('Failed to send email'); }
+const sendPayslip = async (p) => {
+  if (!confirm('Send email notification?')) return;
+  try { await axios.post(`/api/admin/payslips/${p.id}/send`); }
+  catch { alert('Failed to send email.'); }
 };
-// --- Helpers ---
-const closeModals = () => {
-  showGenerateModal.value = false;
-  showBulkGenerate.value = false;
+
+const closeModals    = () => { showGenerateModal.value = false; showBulkGenerate.value = false; };
+const formatNumber   = (n) => new Intl.NumberFormat('en-ZM',{minimumFractionDigits:2}).format(n||0);
+const formatDate     = (d, type='full') => {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return type==='month' ? dt.toLocaleDateString('en-US',{month:'long',year:'numeric'}) : dt.toLocaleDateString('en-GB');
 };
-const formatNumber = (n) => new Intl.NumberFormat('en-ZM', { minimumFractionDigits: 2 }).format(n || 0);
-const formatDate = (d, type='full') => {
-  if(!d) return '-';
-  const date = new Date(d);
-  if(type === 'month') return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  return date.toLocaleDateString('en-GB');
-};
-const formatStatus = (s) => s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Unknown';
-const convertToWords = (amount) => {
-  return `${formatNumber(amount)} Kwacha`;
-};
-// Watch filters
-watch(() => filters.pay_period, handlePeriodChange);
-watch(() => filters.department, fetchPayslips);
-watch(() => filters.status, fetchPayslips);
-watch(() => filters.start_date, () => {
-  if (filters.pay_period === 'date_range' && filters.start_date) {
-    fetchPayslips();
-  }
-});
-watch(() => filters.end_date, () => {
-  if (filters.pay_period === 'date_range' && filters.end_date) {
-    fetchPayslips();
-  }
-});
+const formatStatus   = (s) => s ? s.charAt(0).toUpperCase()+s.slice(1) : 'Unknown';
+const convertToWords = (n) => `${formatNumber(n)} Kwacha`;
+const statusClass    = (s) => ({paid:'status-success',generated:'status-info',draft:'status-warning'}[s]||'status-neutral');
+const getInitials    = (name) => { const p=(name||'').split(' ').filter(Boolean); return ((p[0]?.[0]||'')+(p.length>1?p[p.length-1][0]:'')).toUpperCase(); };
+const AVATAR_COLORS  = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#06b6d4','#f97316','#6366f1'];
+const getAvatarColor = () => '#3b82f6';
+
+watch(()=>filters.pay_period,  handlePeriodChange);
+watch(()=>filters.department,  fetchPayslips);
+watch(()=>filters.status,      fetchPayslips);
+watch(()=>filters.start_date,  ()=>{ if(filters.pay_period==='date_range'&&filters.start_date) fetchPayslips(); });
+watch(()=>filters.end_date,    ()=>{ if(filters.pay_period==='date_range'&&filters.end_date)   fetchPayslips(); });
 </script>
+
 <style scoped>
-/* Core Layout */
-.payslip-generation { max-width: 1200px; margin: 0 auto; padding: 2rem; font-family: 'Inter', sans-serif; color: #1e293b; }
-/* Header */
-.app-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-.header-title { font-size: 1.5rem; font-weight: 700; color: #0f172a; margin: 0; }
-.header-subtitle { color: #64748b; margin: 0.25rem 0 0; font-size: 0.9rem; }
-.filter-indicator { margin-top: 0.5rem; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; background: #f1f5f9; padding: 0.25rem 0.75rem; border-radius: 20px; color: #475569; }
-.header-actions { display: flex; gap: 0.75rem; align-items: center; }
-/* View Toggle */
-.view-toggle { display: flex; gap: 0; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; background: white; }
-.toggle-btn { padding: 0.6rem 1rem; border: none; background: white; color: #64748b; cursor: pointer; transition: all 0.2s; font-size: 1.2rem; border-right: 1px solid #cbd5e1; }
-.toggle-btn:last-child { border-right: none; }
-.toggle-btn:hover { background: #f8fafc; color: #475569; }
-.toggle-btn.active { background: #4f46e5; color: white; }
-.toggle-btn .icon { display: block; }
-/* Controls */
-.filter-controls-card { background: white; padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
-.filter-group-container { display: flex; gap: 1.5rem; flex-wrap: wrap; }
-.filter-group { flex: 1; min-width: 200px; }
-.filter-label { display: block; font-size: 0.75rem; font-weight: 600; color: #64748b; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.select-input, .date-input { width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; transition: border 0.2s; }
-.select-input:focus, .date-input:focus { border-color: #6366f1; }
-/* Grid */
-.payslip-grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1.5rem; }
-.payslip-item-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem; transition: transform 0.2s, box-shadow 0.2s; }
-.payslip-item-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-/* Card Content */
-.card-header-status { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
-.employee-name { font-weight: 600; color: #0f172a; margin: 0; font-size: 1rem; }
-.employee-meta { font-size: 0.8rem; color: #64748b; margin: 0.1rem 0 0; }
-.business-tag { font-size: 0.75rem; background: #f0f9ff; color: #0284c7; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 4px; }
-.status-badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 99px; font-weight: 600; text-transform: uppercase; }
-.status-paid { background: #dcfce7; color: #166534; }
-.status-generated { background: #e0f2fe; color: #0369a1; }
-.status-draft { background: #fef9c3; color: #854d0e; }
-.payslip-summary-details { margin: 1rem 0; padding: 0.75rem; background: #f8fafc; border-radius: 8px; }
-.detail-pair { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.35rem; }
-.detail-label { color: #64748b; }
-.detail-value { font-weight: 500; color: #334155; }
-.net-pay-row { border-top: 1px dashed #cbd5e1; margin-top: 0.5rem; padding-top: 0.5rem; font-weight: 700; font-size: 0.95rem; }
-.detail-net-pay { color: #059669; }
-.card-actions-footer { display: flex; gap: 0.5rem; justify-content: flex-end; }
-.btn-action { padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #e2e8f0; background: white; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
-.btn-action:hover { background: #f1f5f9; border-color: #cbd5e1; }
-.btn-action.download { color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
-.btn-action.view { color: #475569; }
+*,*::before,*::after{box-sizing:border-box;}
+
+.payslip-view{
+  min-height:100vh;
+  background:linear-gradient(180deg,#f8fafc 0%,#f1f5f9 100%);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  color:#1e293b;
+  padding:1.5rem 2rem 3rem;
+  max-width:1300px;
+  margin:0 auto;
+}
+
+/* ── Sticky Action Bar ───────────────────────────── */
+.sticky-action-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.1);
+}
+.sticky-inner {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: .65rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.sticky-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .875rem;
+  font-weight: 700;
+  color: #334155;
+}
+.sticky-title svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+.sticky-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+/* Sticky bar transition */
+.sticky-fade-enter-active {
+  transition: opacity .2s ease, transform .2s ease;
+}
+.sticky-fade-leave-active {
+  transition: opacity .15s ease, transform .15s ease;
+}
+.sticky-fade-enter-from,
+.sticky-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-100%);
+}
+
+/* ── Header ──────────────────────────────────────── */
+.dashboard-header-card{
+  position:relative;overflow:hidden;background:white;border-radius:16px;
+  padding:1.5rem 1.75rem;margin-bottom:1.25rem;
+  box-shadow:0 2px 4px -1px rgba(0,0,0,.05);border:1px solid #e2e8f0;
+}
+.header-accent{
+  position:absolute;top:0;left:0;right:0;height:3px;
+  background:#e2e8f0;
+}
+.header-inner{display:flex;justify-content:space-between;align-items:center;gap:1.5rem;flex-wrap:wrap;}
+.header-left{display:flex;align-items:center;gap:1rem;}
+.header-avatar{
+  width:52px;height:52px;border-radius:14px;flex-shrink:0;
+  background:#f1f5f9;
+  border:1px solid #e2e8f0;
+  display:flex;align-items:center;justify-content:center;
+  color:#64748b;
+}
+.header-text h1{margin:0;font-size:1.375rem;font-weight:700;color:#1e293b;line-height:1.2;}
+.header-text p{margin:0;color:#64748b;font-size:.875rem;}
+.header-badges{display:flex;align-items:center;gap:.4rem;margin-top:.2rem;flex-wrap:wrap;}
+.badge-role{
+  background:#f1f5f9;border:1px solid #e2e8f0;
+  padding:.1rem .55rem;border-radius:6px;
+  font-size:.68rem;font-weight:700;color:#475569;
+}
+.badge-filter{
+  background:#f1f5f9;border:1px solid #e2e8f0;
+  padding:.1rem .55rem;border-radius:6px;
+  font-size:.68rem;font-weight:700;color:#475569;
+  max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.header-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
+
+/* Layout toggle */
+.layout-toggle{display:flex;background:#f1f5f9;border-radius:8px;padding:2px;gap:2px;}
+.layout-btn{width:32px;height:32px;border:none;background:transparent;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#94a3b8;cursor:pointer;transition:all .15s;}
+.layout-btn:hover{background:#e2e8f0;color:#475569;}
+.layout-btn.active{background:white;color:#334155;box-shadow:0 1px 3px rgba(0,0,0,.1);}
+
 /* Buttons */
-.btn-primary-icon { background: #4f46e5; color: white; padding: 0.6rem 1.2rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
-.btn-primary-icon:hover { background: #4338ca; }
-.btn-secondary-icon { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 0.6rem 1.2rem; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; }
-.btn-secondary-icon:hover { background: #f8fafc; }
+.btn-primary{
+  display:inline-flex;align-items:center;gap:.4rem;
+  background:#334155;
+  color:white;border:none;padding:.5rem 1.2rem;border-radius:8px;
+  font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;
+}
+.btn-primary:hover:not(:disabled){background:#1e293b;transform:translateY(-1px);}
+.btn-primary:disabled{opacity:.55;cursor:not-allowed;transform:none;}
+.btn-outline{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;background:white;border:1px solid #e2e8f0;color:#475569;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;}
+.btn-outline:hover{background:#f8fafc;border-color:#cbd5e1;}
+.btn-secondary{padding:.5rem 1.2rem;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:8px;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;}
+.btn-secondary:hover{background:#e2e8f0;}
+
+/* Section card */
+.section-card{background:white;border-radius:16px;padding:1.5rem;box-shadow:0 2px 4px -1px rgba(0,0,0,.05);border:1px solid #e2e8f0;}
+
+/* Controls bar */
+.controls-bar{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;}
+.filters-row{display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end;}
+.filter-group{display:flex;flex-direction:column;gap:.25rem;}
+.filter-group label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;}
+.filter-select{padding:.45rem .875rem;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;color:#334155;font-size:.875rem;font-weight:500;cursor:pointer;transition:all .2s;font-family:inherit;min-width:148px;appearance:none;}
+.filter-select.full-w{width:100%;min-width:0;appearance:auto;}
+input.filter-select{min-width:138px;appearance:auto;}
+.filter-select:focus{outline:none;border-color:#94a3b8;box-shadow:0 0 0 3px rgba(148,163,184,.15);}
+.records-badge{font-size:.75rem;font-weight:700;color:#64748b;background:#f1f5f9;padding:.2rem .7rem;border-radius:9999px;white-space:nowrap;align-self:flex-end;}
+
+/* Grid */
+.payslip-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(315px,1fr));gap:1.125rem;}
+.payslip-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1.125rem;display:flex;flex-direction:column;gap:.875rem;transition:transform .18s,box-shadow .18s;}
+.payslip-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px -6px rgba(0,0,0,.1);border-color:#cbd5e1;}
+.card-head{display:flex;align-items:flex-start;gap:.75rem;}
+.card-avatar{
+  width:42px;height:42px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-weight:700;font-size:.82rem;
+  background:#3b82f6 !important;
+  box-shadow:none;
+}
+.card-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:.15rem;}
+.card-name{font-size:.9rem;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card-sub{display:flex;align-items:center;gap:.4rem;}
+.dept-chip{font-size:.68rem;background:#f1f5f9;color:#64748b;padding:.05rem .4rem;border-radius:4px;font-weight:600;}
+.biz-chip{display:inline-block;margin-top:.15rem;font-size:.68rem;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:.1rem .4rem;border-radius:4px;font-weight:600;}
+.amount-strip{display:flex;background:white;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;}
+.amount-cell{flex:1;padding:.5rem .65rem;display:flex;flex-direction:column;gap:.1rem;border-right:1px solid #e2e8f0;}
+.amount-cell:last-child{border-right:none;}
+.amt-lbl{font-size:.58rem;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+.amt-val{font-size:.78rem;font-weight:700;color:#334155;font-family:'SFMono-Regular',Consolas,monospace;}
+.amt-val.net-green{color:#10b981;font-size:.85rem;}
+.small-val{font-size:.65rem;font-family:inherit;}
+.card-actions{display:flex;gap:.4rem;}
+.card-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:.3rem;padding:.4rem .5rem;border:1px solid #e2e8f0;background:white;color:#64748b;border-radius:7px;font-size:.7rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;}
+.card-btn:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
+.card-btn.download:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
+.card-btn.send:hover{background:#f0fdf4;color:#059669;border-color:#bbf7d0;}
+
+/* Table */
+.table-wrap{border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;}
+.ps-grid{display:grid;grid-template-columns:2fr 1fr 1.4fr 1fr 1fr .9fr .65fr;padding:.75rem 1rem;align-items:center;gap:.75rem;}
+.ps-grid.with-biz{grid-template-columns:1.8fr 1fr 1fr 1.4fr 1fr 1fr .9fr .65fr;}
+.list-header{background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:.67rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.055em;}
+.list-row{background:white;border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background .12s;}
+.list-row:last-child{border-bottom:none;}
+.list-row:hover{background:#f8fafc;}
+.emp-cell{display:flex;align-items:center;gap:.65rem;}
+.emp-av{
+  width:34px;height:34px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-weight:700;font-size:.7rem;flex-shrink:0;
+  background:#3b82f6 !important;
+}
+.emp-name{font-size:.83rem;font-weight:700;color:#1e293b;}
+.mono-id{font-family:'SFMono-Regular',Consolas,monospace;font-size:.7rem;color:#94a3b8;}
+.biz-chip-sm{font-size:.7rem;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:.1rem .4rem;border-radius:4px;font-weight:600;}
+.dept-tag{display:inline-block;padding:.18rem .5rem;background:#f1f5f9;color:#475569;border-radius:5px;font-size:.7rem;font-weight:600;border:1px solid #e2e8f0;}
+.period-cell{display:flex;align-items:center;gap:.3rem;font-size:.75rem;color:#475569;flex-wrap:wrap;}
+.period-sep{color:#94a3b8;font-size:.65rem;}
+.text-right{text-align:right;}
+.text-muted{color:#94a3b8;}
+.text-success{color:#10b981;}
+.text-danger{color:#ef4444;}
+.fw-700{font-weight:700;}
+.mono{font-family:'SFMono-Regular',Consolas,monospace;font-size:.78rem;}
+.row-actions{display:flex;justify-content:flex-end;gap:.3rem;}
+.icon-btn{width:30px;height:30px;border-radius:6px;border:1px solid #e2e8f0;background:white;color:#64748b;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
+.icon-btn:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
+.icon-btn.dl:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
+.icon-btn.send:hover{background:#f0fdf4;color:#059669;border-color:#bbf7d0;}
+
+/* Status badges */
+.status-badge{display:inline-flex;align-items:center;gap:5px;padding:.22rem .6rem;border-radius:9999px;font-size:.68rem;font-weight:700;white-space:nowrap;}
+.dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.status-success{background:#d1fae5;color:#065f46;}
+.status-info{background:#f1f5f9;color:#475569;}
+.status-warning{background:#fef3c7;color:#92400e;}
+.status-neutral{background:#f1f5f9;color:#64748b;}
+
+/* Empty / loading */
+.state-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.875rem;padding:4rem 2rem;text-align:center;color:#94a3b8;}
+.state-empty p{margin:0;font-size:.875rem;color:#64748b;}
+.spinner{width:40px;height:40px;border:3px solid #e2e8f0;border-top-color:#64748b;border-radius:50%;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
 /* Modal */
-.modal-overlay { position: fixed; inset: 0; background: rgba(15,23,42,0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 50; }
-.modal-card { background: white; border-radius: 16px; width: 100%; max-width: 500px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
-.large-modal { max-width: 800px; }
-.modal-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
-.modal-title { margin: 0; font-size: 1.1rem; color: #0f172a; }
-.close-btn { background: none; border: none; font-size: 1.5rem; color: #94a3b8; cursor: pointer; }
-.modal-body { padding: 1.5rem; overflow-y: auto; flex: 1; }
-.modal-footer { padding: 1.25rem 1.5rem; border-top: 1px solid #e2e8f0; display: flex; justify-content: flex-end; gap: 0.75rem; background: #f8fafc; }
-/* Payslip View Styling */
-.payslip-branding { text-align: center; margin-bottom: 2rem; border-bottom: 2px solid #0f172a; padding-bottom: 1rem; }
-.company-details h2 { margin: 0; color: #0f172a; }
-.payslip-period-badge { margin-top: 0.5rem; display: inline-block; background: #f1f5f9; padding: 0.25rem 1rem; border-radius: 20px; font-weight: 600; font-size: 0.9rem; }
-.info-grid-box { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; background: #f8fafc; padding: 1rem; border-radius: 8px; }
-.info-cell label { display: block; font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 600; margin-bottom: 0.25rem; }
-.info-cell span { font-weight: 600; color: #0f172a; font-size: 1rem; }
-.earnings-deductions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
-.section-title { font-size: 0.9rem; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; margin-bottom: 1rem; }
-.section-title.earnings { color: #0369a1; border-color: #bae6fd; }
-.section-title.deductions { color: #be123c; border-color: #fecdd3; }
-.amount-item { display: flex; justify-content: space-between; font-size: 0.9rem; padding: 0.35rem 0; border-bottom: 1px dashed #f1f5f9; }
-.amount-item label { color: #475569; }
-.amount-item span { font-family: monospace; font-weight: 600; font-size: 0.95rem; }
-.amount-item.total { border-top: 2px solid #e2e8f0; margin-top: 0.5rem; padding-top: 0.5rem; font-weight: 700; font-size: 1rem; color: #0f172a; border-bottom: none; }
-.net-pay-banner { background: #0f172a; color: white; padding: 1.5rem; text-align: center; border-radius: 12px; }
-.net-pay-banner .label { font-size: 0.8rem; letter-spacing: 0.1em; opacity: 0.8; }
-.net-pay-banner .amount { font-size: 2.5rem; font-weight: 700; margin: 0.25rem 0; }
-.net-pay-banner .words { font-style: italic; opacity: 0.7; font-size: 0.9rem; }
-/* Table View Styles */
-.payslip-table-container { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-.payslip-table { width: 100%; border-collapse: collapse; }
-.payslip-table thead { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
-.payslip-table th { padding: 1rem; text-align: left; font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; }
-.payslip-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
-.payslip-table tbody tr:hover { background: #f8fafc; }
-.payslip-table td { padding: 1rem; font-size: 0.9rem; color: #334155; }
-.table-employee-cell { display: flex; flex-direction: column; gap: 0.25rem; }
-.employee-name-table { font-weight: 600; color: #0f172a; }
-.employee-id-table { font-size: 0.8rem; color: #64748b; }
-.business-tag-table { font-size: 0.8rem; background: #f0f9ff; color: #0284c7; padding: 2px 8px; border-radius: 4px; display: inline-block; }
-.table-period-cell { display: flex; flex-direction: column; gap: 0.15rem; font-size: 0.85rem; }
-.period-to { color: #94a3b8; font-size: 0.75rem; }
-.amount-cell { font-family: 'Courier New', monospace; font-weight: 600; text-align: right; }
-.net-amount { color: #059669; font-weight: 700; }
-.table-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-.btn-action-small { padding: 0.4rem 0.6rem; border-radius: 6px; border: 1px solid #e2e8f0; background: white; font-size: 1rem; cursor: pointer; transition: all 0.2s; }
-.btn-action-small:hover { background: #f1f5f9; transform: scale(1.1); }
-.btn-action-small.download { color: #2563eb; border-color: #bfdbfe; background: #eff6ff; }
-.btn-action-small.view { color: #475569; }
-.btn-action-small.send { color: #059669; border-color: #86efac; background: #f0fdf4; }
-/* Form Styles */
-.modal-body-content { padding: 1.5rem; }
-.form-group { margin-bottom: 1.25rem; }
-.form-label { display: block; font-size: 0.875rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem; }
-.text-input { width: 100%; padding: 0.625rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; outline: none; transition: border 0.2s; }
-.text-input:focus { border-color: #6366f1; }
-.form-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.text-muted { font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; display: block; }
-.selection-summary { background: #f8fafc; padding: 1rem; border-radius: 8px; margin: 1rem 0; border-left: 3px solid #4f46e5; }
-.selection-summary p { margin: 0; color: #475569; }
-.selection-summary strong { color: #4f46e5; }
-.btn-primary { background: #4f46e5; color: white; padding: 0.625rem 1.25rem; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-.btn-primary:hover:not(:disabled) { background: #4338ca; }
-.btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
-.btn-secondary { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 0.625rem 1.25rem; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-.btn-secondary:hover { background: #f8fafc; }
-/* State Indicators */
-.state-indicator { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4rem 2rem; text-align: center; }
-.loading-state .spinner { width: 3rem; height: 3rem; border: 4px solid #4f46e5; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.error-state .error-icon { font-size: 3rem; margin-bottom: 1rem; }
-.error-state p { color: #dc2626; margin: 0 0 1rem; }
-.btn-text { background: none; border: none; color: #4f46e5; text-decoration: underline; cursor: pointer; font-size: 0.9rem; }
-.empty-state { background: white; border-radius: 12px; border: 2px dashed #e2e8f0; }
-.empty-state .empty-icon { font-size: 4rem; margin-bottom: 1rem; }
-.empty-state h3 { margin: 0 0 0.5rem; color: #0f172a; }
-.empty-state p { color: #64748b; margin: 0 0 1rem; }
-.mt-3 { margin-top: 1rem; }
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);backdrop-filter:blur(4px);z-index:100;display:flex;justify-content:center;align-items:center;padding:1rem;}
+.modal-box{background:white;width:100%;max-width:480px;max-height:92vh;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden;border:1px solid #e2e8f0;animation:slideUp .22s ease-out;}
+.modal-box.large{max-width:760px;}
+@keyframes slideUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:none;}}
+.modal-header{
+  padding:1.375rem 1.625rem;
+  background:#f8fafc;
+  border-bottom:1px solid #e2e8f0;
+  display:flex;justify-content:space-between;align-items:center;flex-shrink:0;
+}
+.mh-left{display:flex;align-items:center;gap:.875rem;}
+.mh-avatar{
+  width:46px;height:46px;border-radius:11px;flex-shrink:0;
+  background:#f1f5f9;
+  border:1px solid #e2e8f0;
+  display:flex;align-items:center;justify-content:center;
+  color:#475569;font-weight:900;font-size:.82rem;letter-spacing:.04em;
+}
+.mh-avatar.icon-av{font-size:0;}
+.mh-name{margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;}
+.mh-sub{margin:.15rem 0 0;font-size:.8rem;color:#64748b;}
+.mh-close{
+  width:34px;height:34px;border-radius:50%;
+  background:white;border:1px solid #e2e8f0;
+  color:#475569;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .2s;
+}
+.mh-close:hover{background:#fee2e2;color:#dc2626;border-color:#fca5a5;}
+.modal-body{padding:1.375rem 1.625rem;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:1.25rem;}
+.form-body{gap:0;}
+.modal-footer{padding:1.1rem 1.625rem;border-top:1px solid #f1f5f9;background:#f8fafc;display:flex;justify-content:flex-end;gap:.75rem;flex-shrink:0;}
+
+/* Company strip */
+.company-strip{text-align:center;border-bottom:1px solid #e2e8f0;padding-bottom:1rem;}
+.co-name{font-size:1.1rem;font-weight:800;color:#0f172a;}
+.co-addr{font-size:.8rem;color:#64748b;margin-top:.2rem;}
+.period-pill{display:inline-block;margin-top:.5rem;background:#f1f5f9;padding:.2rem .875rem;border-radius:9999px;font-size:.8rem;font-weight:600;color:#334155;}
+
+/* Modal stats */
+.modal-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;}
+.mstat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:.875rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.25rem;}
+.mstat small{font-size:.62rem;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;}
+.mstat strong{font-size:.875rem;font-weight:700;color:#1e293b;}
+
+/* Detail split */
+.detail-split{display:grid;grid-template-columns:1fr 1fr;gap:1.125rem;}
+.detail-col{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:1rem;}
+.detail-heading{display:flex;align-items:center;gap:.45rem;font-size:.72rem;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.05em;margin:0 0 .75rem;padding-bottom:.5rem;border-bottom:1px solid #e2e8f0;}
+.col-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.col-dot.green{background:#10b981;}
+.col-dot.red{background:#ef4444;}
+.line-items{display:flex;flex-direction:column;}
+.line-item{display:flex;justify-content:space-between;align-items:center;padding:.35rem .35rem;border-radius:5px;font-size:.8rem;}
+.line-item:hover{background:white;}
+.line-item span:first-child{color:#64748b;}
+.line-item span:last-child{font-family:'SFMono-Regular',Consolas,monospace;font-weight:600;font-size:.77rem;color:#1e293b;}
+.line-total{display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #e2e8f0;padding-top:.55rem;margin-top:.35rem;font-size:.875rem;}
+
+/* Net Pay Card */
+.net-pay-card{
+  background:#1e293b;
+  color:white;padding:1.5rem 1.75rem;border-radius:12px;
+  display:flex;justify-content:space-between;align-items:center;
+  position:relative;overflow:hidden;
+}
+.np-label{font-size:.62rem;opacity:.75;letter-spacing:.14em;font-weight:700;margin-bottom:.35rem;}
+.np-amount{font-size:2.25rem;font-weight:800;line-height:1.1;}
+.np-words{font-size:.78rem;opacity:.65;margin-top:.25rem;font-style:italic;}
+.np-bg{position:absolute;right:-10px;bottom:-22px;font-size:4.5rem;font-weight:900;opacity:.06;letter-spacing:-.05em;}
+
+/* Form */
+.form-group{margin-bottom:1.125rem;display:flex;flex-direction:column;gap:.3rem;}
+.form-group label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:.875rem;}
+.hint{font-size:.72rem;color:#94a3b8;margin-top:.15rem;}
+.info-notice{
+  display:flex;align-items:center;gap:.5rem;
+  padding:.7rem .875rem;
+  background:#f8fafc;border:1px solid #e2e8f0;
+  border-radius:8px;font-size:.8rem;color:#475569;margin-bottom:.5rem;
+}
+.info-notice svg{stroke:#475569 !important;}
+.info-notice strong{color:#334155;font-weight:700;}
+
+/* Transitions */
+.modal-fade-enter-active,.modal-fade-leave-active{transition:opacity .22s ease;}
+.modal-fade-enter-from,.modal-fade-leave-to{opacity:0;}
+
 /* Responsive */
-@media (max-width: 768px) {
-  .earnings-deductions-grid { grid-template-columns: 1fr; }
-  .header-actions { flex-direction: column; width: 100%; }
-  .header-actions > * { width: 100%; }
-  .filter-group-container { flex-direction: column; }
-  .payslip-table-container { overflow-x: auto; }
-  .payslip-table { min-width: 800px; }
-  .form-row-grid { grid-template-columns: 1fr; }
-  .info-grid-box { grid-template-columns: 1fr; }
+@media(max-width:900px){
+  .ps-grid{grid-template-columns:2fr 1fr 1fr 1fr .85fr .7fr;}
+  .ps-grid.with-biz{grid-template-columns:1.8fr 1fr 1fr 1fr .9fr .7fr;}
+  .ps-grid>:nth-child(3){display:none;}
+  .modal-stats{grid-template-columns:1fr 1fr;}
+  .detail-split{grid-template-columns:1fr;}
+}
+@media(max-width:768px){
+  .payslip-view{padding:1rem 1rem 2rem;}
+  .header-inner{flex-direction:column;align-items:flex-start;}
+  .header-actions{width:100%;flex-wrap:wrap;}
+  .payslip-grid{grid-template-columns:1fr;}
+  .table-wrap .list-header{display:none;}
+  .ps-grid{grid-template-columns:1fr auto;gap:.5rem;}
+  .form-row{grid-template-columns:1fr;}
+  .sticky-inner{padding:.65rem 1rem;}
+  .sticky-title{display:none;}
+}
+@media(max-width:480px){
+  .amount-strip{flex-direction:column;}
+  .amount-cell{border-right:none;border-bottom:1px solid #e2e8f0;}
+  .amount-cell:last-child{border-bottom:none;}
+  .modal-stats{grid-template-columns:1fr 1fr;}
 }
 </style>

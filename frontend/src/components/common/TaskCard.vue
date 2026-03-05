@@ -87,330 +87,9 @@
         <div v-if="task.deadline" class="deadline" :class="{ 'overdue': isOverdue }">
           📅 {{ formatDate(task.deadline) }}
         </div>
-        <button @click.stop="toggleExpanded" class="expand-btn" :disabled="loading">
-          {{ expanded ? '▲ Hide Details' : '▼ Show Details' }}
+        <button @click.stop="openTeleportModal" class="expand-btn" :disabled="loading">
+          ▼ Show Details
         </button>
-      </div>
-    </div>
-
-    <!-- Expanded Details Section -->
-    <div v-if="expanded" class="expanded-section">
-      <div class="tabs">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          @click="activeTab = tab.id"
-          :class="['tab-btn', { active: activeTab === tab.id }]"
-        >
-          {{ tab.label }}
-          <span v-if="tab.count !== undefined" class="tab-count">{{ tab.count }}</span>
-        </button>
-      </div>
-
-      <!-- Description Tab -->
-      <div v-if="activeTab === 'description'" class="tab-content">
-        <div class="description-full">
-          <h5>Description</h5>
-          <p v-if="task.description">{{ task.description }}</p>
-          <p v-else class="no-content">No description provided.</p>
-        </div>
-      </div>
-
-      <!-- Subtasks Tab -->
-      <div v-if="activeTab === 'subtasks'" class="tab-content">
-        <div class="subtasks-section">
-          <div class="section-header">
-            <h5>Subtasks ({{ completedSubtasks }}/{{ task.subtasks?.length || 0 }})</h5>
-            <button
-              v-if="canEdit"
-              @click="showAddSubtask = true"
-              class="add-btn"
-            >
-              + Add Subtask
-            </button>
-          </div>
-
-          <!-- Add Subtask Form -->
-          <div v-if="showAddSubtask" class="add-form">
-            <input
-              v-model="newSubtask.title"
-              type="text"
-              placeholder="Subtask title"
-              class="form-input"
-              @keydown.enter="addSubtask"
-            />
-            <select v-model="newSubtask.priority" class="form-select">
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-            <div class="form-actions">
-              <button @click="addSubtask" class="btn-primary-sm">Add</button>
-              <button @click="showAddSubtask = false" class="btn-secondary-sm">Cancel</button>
-            </div>
-          </div>
-
-          <!-- Subtasks List -->
-          <div v-if="task.subtasks && task.subtasks.length > 0" class="subtasks-list">
-            <div
-              v-for="subtask in task.subtasks"
-              :key="subtask.id"
-              class="subtask-item"
-            >
-              <input
-                type="checkbox"
-                :checked="subtask.status === 'completed'"
-                @change="toggleSubtask(subtask)"
-                class="subtask-checkbox"
-              />
-              <div class="subtask-content">
-                <span :class="{ 'completed': subtask.status === 'completed' }">
-                  {{ subtask.title }}
-                </span>
-                <span class="subtask-meta">
-                  <span :class="`priority-text priority-${subtask.priority}`">
-                    {{ subtask.priority }}
-                  </span>
-                  <span v-if="subtask.assignee" class="assignee-name">
-                    {{ subtask.assignee.name }}
-                  </span>
-                </span>
-              </div>
-              <button
-                v-if="canEdit"
-                @click="deleteSubtask(subtask)"
-                class="delete-subtask-btn"
-              >
-                🗑️
-              </button>
-            </div>
-          </div>
-          <div v-else class="no-content">
-            No subtasks yet. Click "Add Subtask" to create one.
-          </div>
-        </div>
-      </div>
-
-      <!-- Comments Tab -->
-      <div v-if="activeTab === 'comments'" class="tab-content">
-        <div class="comments-section">
-          <h5>Comments ({{ task.comments?.length || 0 }})</h5>
-          
-          <!-- Add Comment Form -->
-          <div class="add-comment-form">
-            <textarea
-              v-model="newComment"
-              rows="3"
-              placeholder="Add a comment..."
-              class="comment-textarea"
-              :disabled="addingComment"
-            ></textarea>
-            <button
-              @click="addComment"
-              :disabled="addingComment || !newComment.trim()"
-              class="btn-primary-sm"
-            >
-              <span v-if="addingComment">Adding...</span>
-              <span v-else>Add Comment</span>
-            </button>
-          </div>
-
-          <!-- Comments List -->
-          <div v-if="task.comments && task.comments.length > 0" class="comments-list">
-            <div
-              v-for="comment in task.comments"
-              :key="comment.id"
-              class="comment-item"
-            >
-              <div class="comment-header">
-                <div class="user-info">
-                  <span class="avatar-sm">{{ getInitials(comment.user?.name) }}</span>
-                  <span class="user-name">{{ comment.user?.name }}</span>
-                  <span class="comment-date">{{ formatRelativeTime(comment.created_at) }}</span>
-                </div>
-                <button
-                  v-if="comment.user_id === authStore.user?.id"
-                  @click="deleteComment(comment)"
-                  class="delete-btn-sm"
-                  :disabled="deletingCommentId === comment.id"
-                >
-                  <span v-if="deletingCommentId === comment.id">Deleting...</span>
-                  <span v-else>Delete</span>
-                </button>
-              </div>
-              <p class="comment-text">{{ comment.comment }}</p>
-            </div>
-          </div>
-          <div v-else class="no-content">
-            No comments yet. Be the first to comment!
-          </div>
-        </div>
-      </div>
-
-      <!-- History/Activity Tab -->
-      <div v-if="activeTab === 'history'" class="tab-content">
-        <div class="history-section">
-          <h5>Activity History</h5>
-          
-          <div v-if="task.history && task.history.length > 0" class="history-list">
-            <div
-              v-for="entry in task.history"
-              :key="entry.id"
-              class="history-item"
-            >
-              <div class="history-icon" :class="`icon-${entry.type}`">
-                {{ getHistoryIcon(entry.type) }}
-              </div>
-              <div class="history-content">
-                <p class="history-text">
-                  <strong>{{ entry.user?.name }}</strong> {{ entry.action }}
-                  <span v-if="entry.field_changed" class="field-changed">
-                    changed <strong>{{ entry.field_changed }}</strong>
-                    <span v-if="entry.old_value">
-                      from <span class="old-value">{{ entry.old_value }}</span>
-                    </span>
-                    <span v-if="entry.new_value">
-                      to <span class="new-value">{{ entry.new_value }}</span>
-                    </span>
-                  </span>
-                </p>
-                <span class="history-date">{{ formatRelativeTime(entry.created_at) }}</span>
-              </div>
-            </div>
-          </div>
-          <div v-else class="no-content">
-            No activity history available.
-          </div>
-        </div>
-      </div>
-
-      <!-- Work Logs Tab -->
-      <div v-if="activeTab === 'worklogs'" class="tab-content">
-        <div class="worklogs-section">
-          <div class="section-header">
-            <h5>Work Logs ({{ totalTimeLogged }})</h5>
-            <button
-              @click="showAddWorklog = true"
-              class="add-btn"
-            >
-              + Log Time
-            </button>
-          </div>
-
-          <!-- Add Worklog Form -->
-          <div v-if="showAddWorklog" class="add-form">
-            <input
-              v-model="newWorklog.hours"
-              type="number"
-              min="0"
-              step="0.5"
-              placeholder="Hours"
-              class="form-input"
-            />
-            <textarea
-              v-model="newWorklog.description"
-              rows="2"
-              placeholder="What did you work on?"
-              class="form-textarea"
-            ></textarea>
-            <div class="form-actions">
-              <button @click="addWorklog" class="btn-primary-sm">Log Time</button>
-              <button @click="showAddWorklog = false" class="btn-secondary-sm">Cancel</button>
-            </div>
-          </div>
-
-          <!-- Worklogs List -->
-          <div v-if="task.worklogs && task.worklogs.length > 0" class="worklogs-list">
-            <div
-              v-for="worklog in task.worklogs"
-              :key="worklog.id"
-              class="worklog-item"
-            >
-              <div class="worklog-header">
-                <div class="user-info">
-                  <span class="avatar-sm">{{ getInitials(worklog.user?.name) }}</span>
-                  <span class="user-name">{{ worklog.user?.name }}</span>
-                  <span class="worklog-time">{{ worklog.hours }}h</span>
-                </div>
-                <span class="worklog-date">{{ formatRelativeTime(worklog.created_at) }}</span>
-              </div>
-              <p class="worklog-description">{{ worklog.description }}</p>
-            </div>
-          </div>
-          <div v-else class="no-content">
-            No work logged yet. Click "Log Time" to add an entry.
-          </div>
-        </div>
-      </div>
-
-      <!-- Linked Work Tab -->
-      <div v-if="activeTab === 'linked'" class="tab-content">
-        <div class="linked-section">
-          <div class="section-header">
-            <h5>Linked Work Items ({{ task.linked_items?.length || 0 }})</h5>
-            <button
-              v-if="canEdit"
-              @click="showLinkWork = true"
-              class="add-btn"
-            >
-              + Link Work
-            </button>
-          </div>
-
-          <!-- Link Work Form -->
-          <div v-if="showLinkWork" class="add-form">
-            <select v-model="newLink.type" class="form-select">
-              <option value="blocks">Blocks</option>
-              <option value="blocked_by">Blocked By</option>
-              <option value="relates_to">Relates To</option>
-              <option value="duplicates">Duplicates</option>
-            </select>
-            <input
-              v-model="newLink.task_id"
-              type="text"
-              placeholder="Task ID or search..."
-              class="form-input"
-            />
-            <div class="form-actions">
-              <button @click="addLinkedWork" class="btn-primary-sm">Link</button>
-              <button @click="showLinkWork = false" class="btn-secondary-sm">Cancel</button>
-            </div>
-          </div>
-
-          <!-- Linked Items List -->
-          <div v-if="task.linked_items && task.linked_items.length > 0" class="linked-list">
-            <div
-              v-for="item in task.linked_items"
-              :key="item.id"
-              class="linked-item"
-            >
-              <div class="link-type" :class="`type-${item.link_type}`">
-                {{ formatLinkType(item.link_type) }}
-              </div>
-              <div class="linked-content">
-                <span class="linked-title">{{ item.linked_task?.title || 'Unknown Task' }}</span>
-                <span class="linked-meta">
-                  <span :class="`status-badge status-${item.linked_task?.status}`">
-                    {{ item.linked_task?.status }}
-                  </span>
-                  <span :class="`priority-text priority-${item.linked_task?.priority}`">
-                    {{ item.linked_task?.priority }}
-                  </span>
-                </span>
-              </div>
-              <button
-                v-if="canEdit"
-                @click="removeLinkedWork(item)"
-                class="delete-btn-sm"
-              >
-                🗑️
-              </button>
-            </div>
-          </div>
-          <div v-else class="no-content">
-            No linked work items. Click "Link Work" to connect related tasks.
-          </div>
-        </div>
       </div>
     </div>
 
@@ -426,11 +105,385 @@
         🔗 {{ task.linked_items.length }}
       </span>
     </div>
+
+    <!-- Teleport Modal for Expanded Details -->
+    <Teleport to="body">
+      <div v-if="showTeleportModal" class="teleport-overlay" @click.self="closeTeleportModal">
+        <div class="teleport-modal" :class="{ 'closing': isClosing }">
+          <div class="teleport-header">
+            <div class="header-left">
+              <div class="task-title-row">
+                <h3 class="modal-task-title">{{ task.title }}</h3>
+                <span class="modal-priority-badge" :class="`priority-${task.priority}`">
+                  {{ task.priority }}
+                </span>
+                <span v-if="isOverdue" class="modal-overdue-badge">OVERDUE</span>
+              </div>
+              <div class="task-meta">
+                <div class="assigned-to-modal">
+                  <span class="avatar-modal">{{ getInitials(task.assigned_to.name) }}</span>
+                  <div class="assigned-info-modal">
+                    <span class="name-modal">Assigned to: {{ task.assigned_to.name }}</span>
+                    <span v-if="task.created_by" class="created-by-modal">
+                      Created by: {{ getCreatedByName() }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="task.deadline" class="deadline-modal" :class="{ 'overdue': isOverdue }">
+                  📅 Due: {{ formatDate(task.deadline) }}
+                </div>
+              </div>
+            </div>
+            <div class="header-actions">
+              <button
+                v-if="canEdit"
+                @click="handleEdit"
+                class="modal-action-btn"
+                title="Edit task"
+              >
+                ✏️ Edit
+              </button>
+              <button
+                v-if="canDelete"
+                @click="handleDelete"
+                class="modal-action-btn delete"
+                title="Delete task"
+              >
+                🗑️ Delete
+              </button>
+              <button @click="closeTeleportModal" class="modal-close-btn" title="Close">
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div class="teleport-content">
+            <div class="tabs">
+              <button
+                v-for="tab in tabs"
+                :key="tab.id"
+                @click="activeTab = tab.id"
+                :class="['tab-btn', { active: activeTab === tab.id }]"
+              >
+                {{ tab.label }}
+                <span v-if="tab.count !== undefined" class="tab-count">{{ tab.count }}</span>
+              </button>
+            </div>
+
+            <!-- Description Tab -->
+            <div v-if="activeTab === 'description'" class="tab-content">
+              <div class="description-full">
+                <h5>Description</h5>
+                <p v-if="task.description">{{ task.description }}</p>
+                <p v-else class="no-content">No description provided.</p>
+              </div>
+            </div>
+
+            <!-- Subtasks Tab -->
+            <div v-if="activeTab === 'subtasks'" class="tab-content">
+              <div class="subtasks-section">
+                <div class="section-header">
+                  <h5>Subtasks ({{ completedSubtasks }}/{{ task.subtasks?.length || 0 }})</h5>
+                  <button
+                    v-if="canEdit"
+                    @click="showAddSubtask = true"
+                    class="add-btn"
+                  >
+                    + Add Subtask
+                  </button>
+                </div>
+
+                <!-- Add Subtask Form -->
+                <div v-if="showAddSubtask" class="add-form">
+                  <input
+                    v-model="newSubtask.title"
+                    type="text"
+                    placeholder="Subtask title"
+                    class="form-input"
+                    @keydown.enter="addSubtask"
+                  />
+                  <select v-model="newSubtask.priority" class="form-select">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                  <div class="form-actions">
+                    <button @click="addSubtask" class="btn-primary-sm">Add</button>
+                    <button @click="showAddSubtask = false" class="btn-secondary-sm">Cancel</button>
+                  </div>
+                </div>
+
+                <!-- Subtasks List -->
+                <div v-if="task.subtasks && task.subtasks.length > 0" class="subtasks-list">
+                  <div
+                    v-for="subtask in task.subtasks"
+                    :key="subtask.id"
+                    class="subtask-item"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="subtask.status === 'completed'"
+                      @change="toggleSubtask(subtask)"
+                      class="subtask-checkbox"
+                    />
+                    <div class="subtask-content">
+                      <span :class="{ 'completed': subtask.status === 'completed' }">
+                        {{ subtask.title }}
+                      </span>
+                      <span class="subtask-meta">
+                        <span :class="`priority-text priority-${subtask.priority}`">
+                          {{ subtask.priority }}
+                        </span>
+                        <span v-if="subtask.assignee" class="assignee-name">
+                          {{ subtask.assignee.name }}
+                        </span>
+                      </span>
+                    </div>
+                    <button
+                      v-if="canEdit"
+                      @click="deleteSubtask(subtask)"
+                      class="delete-subtask-btn"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="no-content">
+                  No subtasks yet. Click "Add Subtask" to create one.
+                </div>
+              </div>
+            </div>
+
+            <!-- Comments Tab -->
+            <div v-if="activeTab === 'comments'" class="tab-content">
+              <div class="comments-section">
+                <h5>Comments ({{ task.comments?.length || 0 }})</h5>
+                
+                <!-- Add Comment Form -->
+                <div class="add-comment-form">
+                  <textarea
+                    v-model="newComment"
+                    rows="3"
+                    placeholder="Add a comment..."
+                    class="comment-textarea"
+                    :disabled="addingComment"
+                  ></textarea>
+                  <button
+                    @click="addComment"
+                    :disabled="addingComment || !newComment.trim()"
+                    class="btn-primary-sm"
+                  >
+                    <span v-if="addingComment">Adding...</span>
+                    <span v-else>Add Comment</span>
+                  </button>
+                </div>
+
+                <!-- Comments List -->
+                <div v-if="task.comments && task.comments.length > 0" class="comments-list">
+                  <div
+                    v-for="comment in task.comments"
+                    :key="comment.id"
+                    class="comment-item"
+                  >
+                    <div class="comment-header">
+                      <div class="user-info">
+                        <span class="avatar-sm">{{ getInitials(comment.user?.name) }}</span>
+                        <span class="user-name">{{ comment.user?.name }}</span>
+                        <span class="comment-date">{{ formatRelativeTime(comment.created_at) }}</span>
+                      </div>
+                      <button
+                        v-if="comment.user_id === authStore.user?.id"
+                        @click="deleteComment(comment)"
+                        class="delete-btn-sm"
+                        :disabled="deletingCommentId === comment.id"
+                      >
+                        <span v-if="deletingCommentId === comment.id">Deleting...</span>
+                        <span v-else>Delete</span>
+                      </button>
+                    </div>
+                    <p class="comment-text">{{ comment.comment }}</p>
+                  </div>
+                </div>
+                <div v-else class="no-content">
+                  No comments yet. Be the first to comment!
+                </div>
+              </div>
+            </div>
+
+            <!-- History/Activity Tab -->
+            <div v-if="activeTab === 'history'" class="tab-content">
+              <div class="history-section">
+                <h5>Activity History</h5>
+                
+                <div v-if="task.history && task.history.length > 0" class="history-list">
+                  <div
+                    v-for="entry in task.history"
+                    :key="entry.id"
+                    class="history-item"
+                  >
+                    <div class="history-icon" :class="`icon-${entry.type}`">
+                      {{ getHistoryIcon(entry.type) }}
+                    </div>
+                    <div class="history-content">
+                      <p class="history-text">
+                        <strong>{{ entry.user?.name }}</strong> {{ entry.action }}
+                        <span v-if="entry.field_changed" class="field-changed">
+                          changed <strong>{{ entry.field_changed }}</strong>
+                          <span v-if="entry.old_value">
+                            from <span class="old-value">{{ entry.old_value }}</span>
+                          </span>
+                          <span v-if="entry.new_value">
+                            to <span class="new-value">{{ entry.new_value }}</span>
+                          </span>
+                        </span>
+                      </p>
+                      <span class="history-date">{{ formatRelativeTime(entry.created_at) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="no-content">
+                  No activity history available.
+                </div>
+              </div>
+            </div>
+
+            <!-- Work Logs Tab -->
+            <div v-if="activeTab === 'worklogs'" class="tab-content">
+              <div class="worklogs-section">
+                <div class="section-header">
+                  <h5>Work Logs ({{ totalTimeLogged }})</h5>
+                  <button
+                    @click="showAddWorklog = true"
+                    class="add-btn"
+                  >
+                    + Log Time
+                  </button>
+                </div>
+
+                <!-- Add Worklog Form -->
+                <div v-if="showAddWorklog" class="add-form">
+                  <input
+                    v-model="newWorklog.hours"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="Hours"
+                    class="form-input"
+                  />
+                  <textarea
+                    v-model="newWorklog.description"
+                    rows="2"
+                    placeholder="What did you work on?"
+                    class="form-textarea"
+                  ></textarea>
+                  <div class="form-actions">
+                    <button @click="addWorklog" class="btn-primary-sm">Log Time</button>
+                    <button @click="showAddWorklog = false" class="btn-secondary-sm">Cancel</button>
+                  </div>
+                </div>
+
+                <!-- Worklogs List -->
+                <div v-if="task.worklogs && task.worklogs.length > 0" class="worklogs-list">
+                  <div
+                    v-for="worklog in task.worklogs"
+                    :key="worklog.id"
+                    class="worklog-item"
+                  >
+                    <div class="worklog-header">
+                      <div class="user-info">
+                        <span class="avatar-sm">{{ getInitials(worklog.user?.name) }}</span>
+                        <span class="user-name">{{ worklog.user?.name }}</span>
+                        <span class="worklog-time">{{ worklog.hours }}h</span>
+                      </div>
+                      <span class="worklog-date">{{ formatRelativeTime(worklog.created_at) }}</span>
+                    </div>
+                    <p class="worklog-description">{{ worklog.description }}</p>
+                  </div>
+                </div>
+                <div v-else class="no-content">
+                  No work logged yet. Click "Log Time" to add an entry.
+                </div>
+              </div>
+            </div>
+
+            <!-- Linked Work Tab -->
+            <div v-if="activeTab === 'linked'" class="tab-content">
+              <div class="linked-section">
+                <div class="section-header">
+                  <h5>Linked Work Items ({{ task.linked_items?.length || 0 }})</h5>
+                  <button
+                    v-if="canEdit"
+                    @click="showLinkWork = true"
+                    class="add-btn"
+                  >
+                    + Link Work
+                  </button>
+                </div>
+
+                <!-- Link Work Form -->
+                <div v-if="showLinkWork" class="add-form">
+                  <select v-model="newLink.type" class="form-select">
+                    <option value="blocks">Blocks</option>
+                    <option value="blocked_by">Blocked By</option>
+                    <option value="relates_to">Relates To</option>
+                    <option value="duplicates">Duplicates</option>
+                  </select>
+                  <input
+                    v-model="newLink.task_id"
+                    type="text"
+                    placeholder="Task ID or search..."
+                    class="form-input"
+                  />
+                  <div class="form-actions">
+                    <button @click="addLinkedWork" class="btn-primary-sm">Link</button>
+                    <button @click="showLinkWork = false" class="btn-secondary-sm">Cancel</button>
+                  </div>
+                </div>
+
+                <!-- Linked Items List -->
+                <div v-if="task.linked_items && task.linked_items.length > 0" class="linked-list">
+                  <div
+                    v-for="item in task.linked_items"
+                    :key="item.id"
+                    class="linked-item"
+                  >
+                    <div class="link-type" :class="`type-${item.link_type}`">
+                      {{ formatLinkType(item.link_type) }}
+                    </div>
+                    <div class="linked-content">
+                      <span class="linked-title">{{ item.linked_task?.title || 'Unknown Task' }}</span>
+                      <span class="linked-meta">
+                        <span :class="`status-badge status-${item.linked_task?.status}`">
+                          {{ item.linked_task?.status }}
+                        </span>
+                        <span :class="`priority-text priority-${item.linked_task?.priority}`">
+                          {{ item.linked_task?.priority }}
+                        </span>
+                      </span>
+                    </div>
+                    <button
+                      v-if="canEdit"
+                      @click="removeLinkedWork(item)"
+                      class="delete-btn-sm"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="no-content">
+                  No linked work items. Click "Link Work" to connect related tasks.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
 
@@ -456,7 +509,8 @@ const props = defineProps({
 const emit = defineEmits(['update-status', 'edit', 'delete', 'view', 'refresh']);
 
 const authStore = useAuthStore();
-const expanded = ref(false);
+const showTeleportModal = ref(false);
+const isClosing = ref(false);
 const activeTab = ref('description');
 const newComment = ref('');
 const addingComment = ref(false);
@@ -549,20 +603,55 @@ const getCreatedByName = () => {
   return 'Unknown';
 };
 
+const openTeleportModal = () => {
+  showTeleportModal.value = true;
+  activeTab.value = 'description';
+  document.body.style.overflow = 'hidden'; // Prevent scrolling
+};
+
+const closeTeleportModal = () => {
+  isClosing.value = true;
+  setTimeout(() => {
+    showTeleportModal.value = false;
+    isClosing.value = false;
+    document.body.style.overflow = ''; // Re-enable scrolling
+  }, 300);
+};
+
+const handleEdit = () => {
+  closeTeleportModal();
+  emit('edit');
+};
+
+const handleDelete = () => {
+  if (confirm('Are you sure you want to delete this task?')) {
+    closeTeleportModal();
+    emit('delete');
+  }
+};
+
+const handleKeydown = (event) => {
+  if (event.key === 'Escape' && showTeleportModal.value) {
+    closeTeleportModal();
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+  document.body.style.overflow = ''; // Cleanup
+});
+
 const handleDragStart = (event) => {
-  if (props.loading || expanded.value) {
+  if (props.loading || showTeleportModal.value) {
     event.preventDefault();
     return;
   }
   event.dataTransfer.effectAllowed = 'move';
   event.dataTransfer.setData('taskId', props.task.id.toString());
-};
-
-const toggleExpanded = () => {
-  expanded.value = !expanded.value;
-  if (expanded.value) {
-    activeTab.value = 'description';
-  }
 };
 
 const addComment = async () => {
@@ -575,6 +664,7 @@ const addComment = async () => {
     if (!props.task.comments) props.task.comments = [];
     props.task.comments.unshift(response.data.comment);
     newComment.value = '';
+    emit('refresh');
   } catch (err) {
     console.error('Failed to add comment:', err);
     alert('Failed to add comment. Please try again.');
@@ -589,6 +679,7 @@ const deleteComment = async (comment) => {
   try {
     await axios.delete(`/api/comments/${comment.id}`);
     props.task.comments = props.task.comments.filter(c => c.id !== comment.id);
+    emit('refresh');
   } catch (err) {
     console.error('Failed to delete comment:', err);
     alert('Failed to delete comment. Please try again.');
@@ -605,6 +696,7 @@ const addSubtask = async () => {
     props.task.subtasks.push(response.data.subtask);
     newSubtask.value = { title: '', priority: 'medium' };
     showAddSubtask.value = false;
+    emit('refresh');
   } catch (err) {
     console.error('Failed to add subtask:', err);
     alert('Failed to add subtask. Please try again.');
@@ -616,6 +708,7 @@ const toggleSubtask = async (subtask) => {
     const newStatus = subtask.status === 'completed' ? 'todo' : 'completed';
     await axios.patch(`/api/subtasks/${subtask.id}`, { status: newStatus });
     subtask.status = newStatus;
+    emit('refresh');
   } catch (err) {
     console.error('Failed to update subtask:', err);
     alert('Failed to update subtask. Please try again.');
@@ -627,6 +720,7 @@ const deleteSubtask = async (subtask) => {
   try {
     await axios.delete(`/api/subtasks/${subtask.id}`);
     props.task.subtasks = props.task.subtasks.filter(st => st.id !== subtask.id);
+    emit('refresh');
   } catch (err) {
     console.error('Failed to delete subtask:', err);
     alert('Failed to delete subtask. Please try again.');
@@ -641,6 +735,7 @@ const addWorklog = async () => {
     props.task.worklogs.unshift(response.data.worklog);
     newWorklog.value = { hours: '', description: '' };
     showAddWorklog.value = false;
+    emit('refresh');
   } catch (err) {
     console.error('Failed to add worklog:', err);
     alert('Failed to log time. Please try again.');
@@ -655,6 +750,7 @@ const addLinkedWork = async () => {
     props.task.linked_items.push(response.data.link);
     newLink.value = { link_type: 'relates_to', linked_task_id: '' };
     showLinkWork.value = false;
+    emit('refresh');
   } catch (err) {
     console.error('Failed to link work:', err);
     alert('Failed to link work item. Please try again.');
@@ -666,6 +762,7 @@ const removeLinkedWork = async (item) => {
   try {
     await axios.delete(`/api/task-links/${item.id}`);
     props.task.linked_items = props.task.linked_items.filter(li => li.id !== item.id);
+    emit('refresh');
   } catch (err) {
     console.error('Failed to remove link:', err);
     alert('Failed to remove link. Please try again.');
@@ -702,6 +799,7 @@ const formatDate = (date) => {
     return taskDate.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
+      year: 'numeric'
     });
   }
 };
@@ -753,11 +851,6 @@ const formatLinkType = (type) => {
   position: relative;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   min-height: 120px;
-}
-
-.task-card.expanded {
-  min-height: auto;
-  cursor: default;
 }
 
 .task-card:hover:not(.expanded) {
@@ -970,20 +1063,6 @@ const formatLinkType = (type) => {
   text-overflow: ellipsis;
 }
 
-.avatar-sm {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background-color: #4299e1;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-
 .footer-right {
   display: flex;
   flex-direction: column;
@@ -1037,17 +1116,225 @@ const formatLinkType = (type) => {
   color: #718096;
 }
 
-/* Expanded Section */
-.expanded-section {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 2px solid #e2e8f0;
+/* Teleport Modal Styles */
+.teleport-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+  animation: fadeIn 0.3s ease-out;
 }
 
+.teleport-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideIn 0.3s ease-out;
+}
+
+.teleport-modal.closing {
+  animation: slideOut 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes slideOut {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-20px); opacity: 0; }
+}
+
+.teleport-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+  background: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.modal-task-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #2d3748;
+  margin: 0;
+  flex: 1;
+  min-width: 200px;
+}
+
+.modal-priority-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.modal-overdue-badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background-color: #fed7d7;
+  color: #c53030;
+  white-space: nowrap;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.assigned-to-modal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar-modal {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #4299e1;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.assigned-info-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.name-modal {
+  font-size: 13px;
+  color: #4a5568;
+  font-weight: 500;
+}
+
+.created-by-modal {
+  font-size: 12px;
+  color: #718096;
+}
+
+.deadline-modal {
+  font-size: 13px;
+  color: #718096;
+  font-weight: 500;
+}
+
+.deadline-modal.overdue {
+  color: #e53e3e;
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+.modal-action-btn {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e0;
+  background: white;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.modal-action-btn:hover {
+  background-color: #f7fafc;
+  border-color: #a0aec0;
+}
+
+.modal-action-btn.delete {
+  color: #e53e3e;
+  border-color: #fed7d7;
+}
+
+.modal-action-btn.delete:hover {
+  background-color: #fed7d7;
+}
+
+.modal-close-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #718096;
+  transition: all 0.2s;
+}
+
+.modal-close-btn:hover {
+  background-color: #f7fafc;
+  color: #2d3748;
+}
+
+.teleport-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* Tabs inside modal */
 .tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   border-bottom: 2px solid #e2e8f0;
   overflow-x: auto;
 }
@@ -1055,9 +1342,9 @@ const formatLinkType = (type) => {
 .tab-btn {
   background: none;
   border: none;
-  padding: 8px 12px;
+  padding: 12px 16px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #718096;
   border-bottom: 2px solid transparent;
@@ -1066,7 +1353,7 @@ const formatLinkType = (type) => {
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .tab-btn:hover {
@@ -1081,9 +1368,9 @@ const formatLinkType = (type) => {
 .tab-count {
   background-color: #e2e8f0;
   color: #4a5568;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 10px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -1092,36 +1379,32 @@ const formatLinkType = (type) => {
   color: white;
 }
 
+/* Tab content styles */
 .tab-content {
   animation: fadeIn 0.3s ease-in;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 .tab-content h5 {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: #2d3748;
-  margin: 0 0 12px 0;
+  margin: 0 0 16px 0;
 }
 
 .section-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .add-btn {
   background-color: #4299e1;
   color: white;
   border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -1133,56 +1416,48 @@ const formatLinkType = (type) => {
 
 .no-content {
   text-align: center;
-  padding: 24px;
+  padding: 32px;
   color: #a0aec0;
-  font-size: 13px;
+  font-size: 14px;
   font-style: italic;
 }
 
-/* Description */
-.description-full p {
-  font-size: 13px;
-  color: #4a5568;
-  line-height: 1.6;
-  margin: 0;
-}
-
-/* Forms */
+/* Form styles for modal */
 .add-form {
   background-color: #f7fafc;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
   border: 1px solid #e2e8f0;
 }
 
 .form-input, .form-select, .form-textarea {
   width: 100%;
-  padding: 8px;
+  padding: 10px;
   border: 1px solid #cbd5e0;
-  border-radius: 4px;
+  border-radius: 6px;
   font-size: 13px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   font-family: inherit;
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
   outline: none;
   border-color: #4299e1;
-  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.1);
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
 }
 
 .form-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   justify-content: flex-end;
 }
 
 .btn-primary-sm, .btn-secondary-sm {
-  padding: 6px 12px;
+  padding: 8px 16px;
   border: none;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -1211,26 +1486,29 @@ const formatLinkType = (type) => {
   background-color: #cbd5e0;
 }
 
-/* Subtasks */
-.subtasks-list {
+/* List styles for modal */
+.subtasks-list, .comments-list, .history-list, .worklogs-list, .linked-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+}
+
+.subtask-item, .comment-item, .history-item, .worklog-item, .linked-item {
+  padding: 16px;
+  background-color: #f7fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
 }
 
 .subtask-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background-color: #f7fafc;
-  border-radius: 4px;
-  border: 1px solid #e2e8f0;
+  gap: 12px;
 }
 
 .subtask-checkbox {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -1239,7 +1517,7 @@ const formatLinkType = (type) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .subtask-content span.completed {
@@ -1249,8 +1527,8 @@ const formatLinkType = (type) => {
 
 .subtask-meta {
   display: flex;
-  gap: 8px;
-  font-size: 11px;
+  gap: 12px;
+  font-size: 12px;
 }
 
 .priority-text {
@@ -1266,60 +1544,30 @@ const formatLinkType = (type) => {
   color: #718096;
 }
 
-.delete-subtask-btn {
+.delete-subtask-btn, .delete-btn-sm {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 14px;
   opacity: 0.6;
   transition: opacity 0.2s;
   flex-shrink: 0;
 }
 
-.delete-subtask-btn:hover {
+.delete-subtask-btn:hover, .delete-btn-sm:hover:not(:disabled) {
   opacity: 1;
 }
 
-/* Comments */
-.add-comment-form {
-  margin-bottom: 16px;
+.delete-btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.comment-textarea {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid #cbd5e0;
-  border-radius: 4px;
-  font-size: 13px;
-  resize: vertical;
-  margin-bottom: 8px;
-  font-family: inherit;
-}
-
-.comment-textarea:focus {
-  outline: none;
-  border-color: #4299e1;
-  box-shadow: 0 0 0 2px rgba(66, 153, 225, 0.1);
-}
-
-.comments-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.comment-item {
-  padding: 12px;
-  background-color: #f7fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-}
-
+/* Comment styles */
 .comment-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .user-info {
@@ -1328,70 +1576,53 @@ const formatLinkType = (type) => {
   gap: 8px;
 }
 
+.avatar-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: #4299e1;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
 .user-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #2d3748;
 }
 
-.comment-date {
-  font-size: 11px;
+.comment-date, .history-date, .worklog-date {
+  font-size: 12px;
   color: #a0aec0;
 }
 
-.delete-btn-sm {
-  background: none;
-  border: none;
-  color: #e53e3e;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.delete-btn-sm:hover:not(:disabled) {
-  background-color: #fed7d7;
-}
-
-.delete-btn-sm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .comment-text {
-  font-size: 13px;
+  font-size: 14px;
   color: #4a5568;
-  line-height: 1.5;
+  line-height: 1.6;
   margin: 0;
 }
 
-/* History */
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
+/* History styles */
 .history-item {
   display: flex;
-  gap: 12px;
-  padding: 12px;
-  background-color: #f7fafc;
-  border-radius: 6px;
-  border-left: 3px solid #cbd5e0;
+  gap: 16px;
 }
 
 .history-icon {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background-color: #e2e8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 18px;
   flex-shrink: 0;
 }
 
@@ -1405,9 +1636,9 @@ const formatLinkType = (type) => {
 }
 
 .history-text {
-  font-size: 13px;
+  font-size: 14px;
   color: #4a5568;
-  margin: 0 0 4px 0;
+  margin: 0 0 6px 0;
   line-height: 1.5;
 }
 
@@ -1425,75 +1656,42 @@ const formatLinkType = (type) => {
   font-weight: 500;
 }
 
-.history-date {
-  font-size: 11px;
-  color: #a0aec0;
-}
-
-/* Work Logs */
-.worklogs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.worklog-item {
-  padding: 12px;
-  background-color: #f7fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-}
-
+/* Worklog styles */
 .worklog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .worklog-time {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: #4299e1;
   background-color: #e6f7ff;
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-
-.worklog-date {
-  font-size: 11px;
-  color: #a0aec0;
+  padding: 4px 10px;
+  border-radius: 6px;
 }
 
 .worklog-description {
-  font-size: 13px;
+  font-size: 14px;
   color: #4a5568;
-  line-height: 1.5;
+  line-height: 1.6;
   margin: 0;
 }
 
-/* Linked Work */
-.linked-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
+/* Linked work styles */
 .linked-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background-color: #f7fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  gap: 16px;
 }
 
 .link-type {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
   text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
@@ -1508,24 +1706,24 @@ const formatLinkType = (type) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .linked-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #2d3748;
 }
 
 .linked-meta {
   display: flex;
-  gap: 8px;
-  font-size: 11px;
+  gap: 12px;
+  font-size: 12px;
 }
 
 .status-badge {
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
   font-weight: 600;
   text-transform: capitalize;
 }
@@ -1535,7 +1733,67 @@ const formatLinkType = (type) => {
 .status-under_review { background-color: #feebc8; color: #7c2d12; }
 .status-completed { background-color: #c6f6d5; color: #22543d; }
 
+/* Comment textarea */
+.add-comment-form {
+  margin-bottom: 24px;
+}
+
+.comment-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  margin-bottom: 12px;
+  font-family: inherit;
+  min-height: 80px;
+}
+
+.comment-textarea:focus {
+  outline: none;
+  border-color: #4299e1;
+  box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+}
+
 /* Responsive */
+@media (max-width: 768px) {
+  .teleport-modal {
+    width: 95%;
+    max-height: 95vh;
+  }
+  
+  .teleport-header {
+    padding: 16px;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .task-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .tabs {
+    font-size: 12px;
+  }
+  
+  .tab-btn {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  
+  .teleport-content {
+    padding: 16px;
+  }
+}
+
 @media (max-width: 480px) {
   .task-card {
     padding: 12px;
@@ -1551,6 +1809,17 @@ const formatLinkType = (type) => {
   
   .assigned-info {
     min-width: 120px;
+  }
+  
+  .task-title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .modal-task-title {
+    min-width: 0;
+    font-size: 18px;
   }
 }
 </style>

@@ -1,3235 +1,1154 @@
 <template>
-  <div class="reports-management">
-  
-    <!-- Business Filter Section (Admin Only) -->
-    <div v-if="authStore.isAdmin" class="business-filter-section">
-      <div class="business-filter-header">
-        <h2>Business Filter</h2>
-        <p class="filter-subtitle">Filter reports by business and country</p>
-      </div>
-     
-      <div class="business-filter-controls">
-        <div class="filter-group">
-          <label class="filter-label">Business:</label>
-          <select v-model="selectedBusinessId" @change="onBusinessFilterChange" class="business-select">
-            <option value="">All Businesses</option>
-            <option v-for="business in businesses" :key="business.id" :value="business.id">
-              {{ business.name }}
-            </option>
-          </select>
-          <span v-if="selectedBusinessId" class="active-filter-badge">
-            {{ getBusinessName(selectedBusinessId) }}
-          </span>
-        </div>
-       
-        <div class="filter-group">
-          <label class="filter-label">Country:</label>
-          <select v-model="selectedCountry" @change="onCountryFilterChange" class="country-select">
-            <option value="">All Countries</option>
-            <option v-for="country in countries" :key="country.code" :value="country.code">
-              {{ country.flag_emoji }} {{ country.name }}
-            </option>
-          </select>
-          <span v-if="selectedCountry" class="active-filter-badge">
-            {{ getCountryName(selectedCountry) }}
-          </span>
-        </div>
-       
-        <button @click="clearBusinessFilters" class="btn-clear-filters">Clear Filters</button>
-      </div>
-     
-      <div v-if="selectedBusinessId || selectedCountry" class="applied-filters-info">
-        <p><strong>Filters Applied:</strong></p>
-        <div class="applied-filters-tags">
-          <span v-if="selectedBusinessId" class="filter-tag">
-            Business: {{ getBusinessName(selectedBusinessId) }}
-            <span @click="removeBusinessFilter" class="tag-remove">×</span>
-          </span>
-          <span v-if="selectedCountry" class="filter-tag">
-            Country: {{ getCountryName(selectedCountry) }}
-            <span @click="removeCountryFilter" class="tag-remove">×</span>
-          </span>
-        </div>
-      </div>
+  <div class="reports-view">
+
+    <!-- ── Auth / Error Gates ──────────────────────── -->
+    <div v-if="!authStore.isAuthenticated || !authStore.isAdmin" class="empty-state">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      <p>{{ !authStore.isAuthenticated ? 'Please log in to access admin reports.' : 'You don\'t have permission to access this page.' }}</p>
     </div>
-    <!-- Loading/Error States -->
-    <div v-if="!authStore.isAuthenticated" class="error-message">
-      Please log in to access admin reports.
-    </div>
-    <div v-else-if="!authStore.isAdmin" class="error-message">
-      You don't have permission to access this page.
-    </div>
-    <div v-else-if="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Loading organization reports...</p>
-    </div>
-    <div v-else-if="error" class="error-message">
-      {{ error }}
-      <button @click="retryFetch" class="btn-primary" style="margin-top: 1rem;">Retry</button>
-    </div>
-    <!-- Reports Dashboard -->
-    <div v-else class="reports-dashboard">
-      <!-- Admin Overview -->
-      <div class="admin-info">
-        <h2>🏢 Organization Overview</h2>
-        <div class="admin-subtitle-row">
-          <p class="admin-subtitle">Company-wide performance metrics and reports</p>
-          <div v-if="selectedBusinessId || selectedCountry" class="active-filters-display">
-            <span v-if="selectedBusinessId" class="filter-display-item">
-              <span class="filter-label">Business:</span>
-              <span class="filter-value">{{ getBusinessName(selectedBusinessId) }}</span>
-            </span>
-            <span v-if="selectedCountry" class="filter-display-item">
-              <span class="filter-label">Country:</span>
-              <span class="filter-value">{{ getCountryName(selectedCountry) }}</span>
-            </span>
+
+    <template v-else>
+
+      <!-- ── Header Card ──────────────────────────── -->
+      <div class="dashboard-header-card">
+        <div class="header-card-accent"></div>
+        <div class="user-greeting">
+          <div class="avatar-section">
+            <div class="avatar">
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            </div>
+            <div class="user-info">
+              <h1 class="greeting">Organization Reports</h1>
+              <p class="subtitle">Company-wide performance metrics and report generation</p>
+              <div class="role-meta">
+                <span class="role-badge">Admin View</span>
+                <span v-if="selectedBusinessId || selectedCountry" class="filter-active-badge">
+                  Filters Active
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-     
-      <!-- Quick Stats -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-icon">👥</div>
-          <div class="stat-content">
-            <h3>Total Employees</h3>
-            <p class="stat-value">{{ orgStats.total_employees || 0 }}</p>
-            <p class="stat-label">
-              <span v-if="selectedBusinessId || selectedCountry">Filtered Staff</span>
-              <span v-else>All Staff</span>
-            </p>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">✅</div>
-          <div class="stat-content">
-            <h3>Present Today</h3>
-            <p class="stat-value">{{ orgStats.present_today || 0 }}</p>
-            <p class="stat-label">Active Employees</p>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">📅</div>
-          <div class="stat-content">
-            <h3>Pending Leaves</h3>
-            <p class="stat-value">{{ orgStats.pending_leaves || 0 }}</p>
-            <p class="stat-label">
-              <span v-if="selectedBusinessId || selectedCountry">Filtered</span>
-              <span v-else>Company-Wide</span>
-            </p>
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-icon">📊</div>
-          <div class="stat-content">
-            <h3>Avg. Attendance</h3>
-            <p class="stat-value">{{ orgStats.avg_attendance || 0 }}%</p>
-            <p class="stat-label">Selected Period</p>
-          </div>
-        </div>
-      </div>
-      <!-- Report Generation Section -->
-      <div class="report-generation-section">
-        <div class="generation-header">
-          <h2>Generate Reports</h2>
-          <p class="section-description">
-            Generate detailed reports with business and country filters applied.
-            <span v-if="selectedBusinessId || selectedCountry" class="filters-applied-note">
-              (Business and country filters will be applied to all generated reports)
-            </span>
-          </p>
-        </div>
-       
-        <!-- Report Type Selection -->
-        <div class="report-type-selector">
-          <div class="type-selector-header">
-            <h3>Select Report Type</h3>
-          </div>
-          <div class="type-selector-grid">
-            <button
-              v-for="reportType in reportTypes"
-              :key="reportType.value"
-              @click="selectReportType(reportType.value)"
-              :class="['type-selector-btn', { 'active': selectedReportType === reportType.value }]"
-            >
-              <span class="type-icon">{{ reportType.icon }}</span>
-              <span class="type-name">{{ reportType.name }}</span>
+          <div class="header-actions">
+            <button @click="fetchAdminData" class="btn-outline" :disabled="loading">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              {{ loading ? 'Loading…' : 'Refresh' }}
             </button>
           </div>
         </div>
-        <!-- Dynamic Report Form -->
-        <div v-if="selectedReportType" class="dynamic-report-form">
-          <div class="report-form-header">
-            <h3>{{ getReportTypeName(selectedReportType) }}</h3>
-            <p class="form-description">{{ getReportTypeDescription(selectedReportType) }}</p>
-          </div>
-         
-          <div class="report-form-content">
-            <!-- Attendance Report Form -->
-            <div v-if="selectedReportType === 'attendance'" class="report-form">
-              <div class="date-inputs">
-                <div class="input-group">
-                  <label>Start Date:</label>
-                  <input type="date" v-model="attendanceReportParams.start_date" class="date-input">
-                </div>
-                <div class="input-group">
-                  <label>End Date:</label>
-                  <input type="date" v-model="attendanceReportParams.end_date" class="date-input">
-                </div>
-              </div>
-             
-              <div class="filter-group">
-                <label>Department:</label>
-                <select v-model="attendanceReportParams.department" class="filter-select">
-                  <option value="">All Departments</option>
-                  <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
-                </select>
-              </div>
-             
-              <div class="filter-group">
-                <label>Report Type:</label>
-                <select v-model="attendanceReportParams.report_type" class="filter-select">
-                  <option value="summary">Summary</option>
-                  <option value="detailed">Detailed</option>
-                  <option value="daily">Daily</option>
-                </select>
-              </div>
-             
-              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
-                <div class="info-label">Filters will be applied:</div>
-                <div class="info-tags">
-                  <span v-if="selectedBusinessId" class="info-tag business">
-                    Business: {{ getBusinessName(selectedBusinessId) }}
-                  </span>
-                  <span v-if="selectedCountry" class="info-tag country">
-                    Country: {{ getCountryName(selectedCountry) }}
-                  </span>
-                </div>
-              </div>
-             
-              <button @click="generateAttendanceReport" class="btn-primary generate-btn" :disabled="generatingReport">
-                {{ generatingReport ? 'Generating...' : 'Generate Attendance Report' }}
-              </button>
-            </div>
-            <!-- Leave Report Form -->
-            <div v-if="selectedReportType === 'leave'" class="report-form">
-              <div class="date-inputs">
-                <div class="input-group">
-                  <label>Start Date:</label>
-                  <input type="date" v-model="leaveReportParams.start_date" class="date-input">
-                </div>
-                <div class="input-group">
-                  <label>End Date:</label>
-                  <input type="date" v-model="leaveReportParams.end_date" class="date-input">
-                </div>
-              </div>
-             
-              <div class="filter-group">
-                <label>Leave Type:</label>
-                <select v-model="leaveReportParams.leave_type" class="filter-select">
-                  <option value="">All Types</option>
-                  <option value="vacation">Vacation</option>
-                  <option value="sick">Sick Leave</option>
-                  <option value="personal">Personal</option>
-                  <option value="maternity">Maternity</option>
-                  <option value="paternity">Paternity</option>
-                </select>
-              </div>
-             
-              <div class="filter-group">
-                <label>Status:</label>
-                <select v-model="leaveReportParams.status" class="filter-select">
-                  <option value="all">All Status</option>
-                  <option value="pending">Pending</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
-             
-              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
-                <div class="info-label">Filters will be applied:</div>
-                <div class="info-tags">
-                  <span v-if="selectedBusinessId" class="info-tag business">
-                    Business: {{ getBusinessName(selectedBusinessId) }}
-                  </span>
-                  <span v-if="selectedCountry" class="info-tag country">
-                    Country: {{ getCountryName(selectedCountry) }}
-                  </span>
-                </div>
-              </div>
-             
-              <button @click="generateLeaveReport" class="btn-secondary generate-btn" :disabled="generatingReport">
-                {{ generatingReport ? 'Generating...' : 'Generate Leave Report' }}
-              </button>
-            </div>
-            <!-- Payroll Report Form -->
-            <div v-if="selectedReportType === 'payroll'" class="report-form">
-              <div class="date-inputs">
-                <div class="input-group">
-                  <label>Start Date:</label>
-                  <input type="date" v-model="payrollReportParams.start_date" class="date-input">
-                </div>
-                <div class="input-group">
-                  <label>End Date:</label>
-                  <input type="date" v-model="payrollReportParams.end_date" class="date-input">
-                </div>
-              </div>
-             
-              <div class="filter-group">
-                <label>Department:</label>
-                <select v-model="payrollReportParams.department" class="filter-select">
-                  <option value="">All Departments</option>
-                  <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
-                </select>
-              </div>
-             
-              <div class="filter-group">
-                <label>Status:</label>
-                <select v-model="payrollReportParams.status" class="filter-select">
-                  <option value="all">All Status</option>
-                  <option value="paid">Paid</option>
-                  <option value="pending">Pending</option>
-                </select>
-              </div>
-             
-              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
-                <div class="info-label">Filters will be applied:</div>
-                <div class="info-tags">
-                  <span v-if="selectedBusinessId" class="info-tag business">
-                    Business: {{ getBusinessName(selectedBusinessId) }}
-                  </span>
-                  <span v-if="selectedCountry" class="info-tag country">
-                    Country: {{ getCountryName(selectedCountry) }}
-                  </span>
-                </div>
-              </div>
-             
-              <button @click="generatePayrollReport" class="btn-tertiary generate-btn" :disabled="generatingReport">
-                {{ generatingReport ? 'Generating...' : 'Generate Payroll Report' }}
-              </button>
-            </div>
-            <!-- Earnings Report Form -->
-            <div v-if="selectedReportType === 'earnings'" class="report-form">
-              <div class="date-inputs">
-                <div class="input-group">
-                  <label>Start Date:</label>
-                  <input type="date" v-model="earningsReportParams.start_date" class="date-input">
-                </div>
-                <div class="input-group">
-                  <label>End Date:</label>
-                  <input type="date" v-model="earningsReportParams.end_date" class="date-input">
-                </div>
-              </div>
-             
-              <div class="filter-group">
-                <label>Department:</label>
-                <select v-model="earningsReportParams.department" class="filter-select">
-                  <option value="">All Departments</option>
-                  <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
-                </select>
-              </div>
-             
-              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
-                <div class="info-label">Filters will be applied:</div>
-                <div class="info-tags">
-                  <span v-if="selectedBusinessId" class="info-tag business">
-                    Business: {{ getBusinessName(selectedBusinessId) }}
-                  </span>
-                  <span v-if="selectedCountry" class="info-tag country">
-                    Country: {{ getCountryName(selectedCountry) }}
-                  </span>
-                </div>
-              </div>
-             
-              <button @click="generateEarningsReport" class="btn-earnings generate-btn" :disabled="generatingReport">
-                {{ generatingReport ? 'Generating...' : 'Generate Earnings Report' }}
-              </button>
-            </div>
-            <!-- Deductions Report Form -->
-            <div v-if="selectedReportType === 'deductions'" class="report-form">
-              <div class="date-inputs">
-                <div class="input-group">
-                  <label>Start Date:</label>
-                  <input type="date" v-model="deductionsReportParams.start_date" class="date-input">
-                </div>
-                <div class="input-group">
-                  <label>End Date:</label>
-                  <input type="date" v-model="deductionsReportParams.end_date" class="date-input">
-                </div>
-              </div>
-             
-              <div class="filter-group">
-                <label>Department:</label>
-                <select v-model="deductionsReportParams.department" class="filter-select">
-                  <option value="">All Departments</option>
-                  <option v-for="dept in departments" :key="dept" :value="dept">{{ dept }}</option>
-                </select>
-              </div>
-             
-              <div class="filter-group">
-                <label>Deduction Type:</label>
-                <select v-model="deductionsReportParams.deduction_type" class="filter-select">
-                  <option value="all">All Deductions</option>
-                  <option value="tax">Tax Only</option>
-                  <option value="statutory">Statutory Only</option>
-                  <option value="pension">Pension Only</option>
-                  <option value="health">Health Only</option>
-                  <option value="voluntary">Voluntary Only</option>
-                  <option value="other">Other Only</option>
-                </select>
-              </div>
-             
-              <div class="business-country-info" v-if="selectedBusinessId || selectedCountry">
-                <div class="info-label">Filters will be applied:</div>
-                <div class="info-tags">
-                  <span v-if="selectedBusinessId" class="info-tag business">
-                    Business: {{ getBusinessName(selectedBusinessId) }}
-                  </span>
-                  <span v-if="selectedCountry" class="info-tag country">
-                    Country: {{ getCountryName(selectedCountry) }}
-                  </span>
-                </div>
-              </div>
-             
-              <button @click="generateDeductionsReport" class="btn-deductions generate-btn" :disabled="generatingReport">
-                {{ generatingReport ? 'Generating...' : 'Generate Deductions Report' }}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
-      <!-- Generated Reports Section -->
-      <div class="generated-reports" v-if="generatedReports.length > 0">
-        <h2>Recently Generated Reports</h2>
-        <div class="reports-list">
-          <div v-for="report in paginatedReports" :key="report.id" class="report-item">
-            <div class="report-icon">{{ getReportIcon(report.type) }}</div>
-            <div class="report-info">
-              <h4>{{ report.title }}</h4>
-              <p class="report-period">{{ report.period }}</p>
-              <p class="report-date">Generated: {{ formatDate(report.generated_at) }}</p>
-              <div v-if="report.filters" class="report-filters">
-                <span v-if="report.filters.business" class="filter-badge">
-                  Business: {{ report.filters.business }}
-                </span>
-                <span v-if="report.filters.country" class="filter-badge">
-                  Country: {{ report.filters.country }}
-                </span>
-                <span v-if="report.filters.department" class="filter-badge">
-                  Department: {{ report.filters.department }}
-                </span>
-                <span v-if="report.filters.leave_type" class="filter-badge">
-                  Type: {{ report.filters.leave_type }}
-                </span>
-                <span v-if="report.filters.deduction_type" class="filter-badge">
-                  Deduction: {{ report.filters.deduction_type }}
-                </span>
-              </div>
-            </div>
-            <div class="report-actions">
-              <button @click="downloadReport(report)" class="btn-download">📥 Download</button>
-              <button @click="viewReport(report)" class="btn-view">👁️ View</button>
-            </div>
+
+      <div class="dashboard-content">
+
+        <!-- ── Loading / Error ──────────────────────── -->
+        <div v-if="loading" class="table-section">
+          <div class="empty-state">
+            <div class="spinner"></div>
+            <p>Loading organization reports…</p>
           </div>
         </div>
-        <div class="pagination" v-if="totalPages > 1">
-          <button @click="prevPage" :disabled="currentPage === 1">Previous</button>
-          <span>Page {{ currentPage }} of {{ totalPages }}</span>
-          <button @click="nextPage" :disabled="currentPage === totalPages">Next</button>
+
+        <div v-else-if="error" class="table-section">
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <p>{{ error }}</p>
+            <button @click="retryFetch" class="btn-primary">Try Again</button>
+          </div>
         </div>
+
+        <template v-else>
+
+          <!-- ── Metrics ──────────────────────────── -->
+          <div class="metrics-section">
+            <h2>Overview</h2>
+            <div class="metrics-grid">
+              <div class="metric-card" style="--accent:#6366f1;">
+                <div class="metric-icon-wrap" style="background:rgba(99,102,241,0.1);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <div class="metric-value">{{ orgStats.total_employees || 0 }}</div>
+                <div class="metric-label">Total Employees</div>
+              </div>
+              <div class="metric-card" style="--accent:#10b981;">
+                <div class="metric-icon-wrap" style="background:rgba(16,185,129,0.1);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <div class="metric-value">{{ orgStats.present_today || 0 }}</div>
+                <div class="metric-label">Present Today</div>
+              </div>
+              <div class="metric-card" style="--accent:#f59e0b;">
+                <div class="metric-icon-wrap" style="background:rgba(245,158,11,0.1);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </div>
+                <div class="metric-value">{{ orgStats.pending_leaves || 0 }}</div>
+                <div class="metric-label">Pending Leaves</div>
+              </div>
+              <div class="metric-card" style="--accent:#3b82f6;">
+                <div class="metric-icon-wrap" style="background:rgba(59,130,246,0.1);">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                </div>
+                <div class="metric-value">{{ orgStats.avg_attendance || 0 }}%</div>
+                <div class="metric-label">Avg. Attendance</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Filters + Report Generator ──────── -->
+          <div class="table-section">
+
+            <!-- Controls Bar -->
+            <div class="controls-bar">
+              <div class="filters-row">
+                <!-- Business -->
+                <div class="filter-group" v-if="authStore.isAdmin">
+                  <label>Business</label>
+                  <select v-model="selectedBusinessId" @change="onBusinessFilterChange" class="filter-select">
+                    <option value="">All Businesses</option>
+                    <option v-for="b in businesses" :key="b.id" :value="b.id">{{ b.name }}</option>
+                  </select>
+                </div>
+                <!-- Country -->
+                <div class="filter-group" v-if="authStore.isAdmin">
+                  <label>Country</label>
+                  <select v-model="selectedCountry" @change="onCountryFilterChange" class="filter-select">
+                    <option value="">All Countries</option>
+                    <option v-for="c in countries" :key="c.code" :value="c.code">{{ c.flag_emoji }} {{ c.name }}</option>
+                  </select>
+                </div>
+              </div>
+              <div class="controls-right">
+                <button v-if="selectedBusinessId || selectedCountry" @click="clearBusinessFilters" class="btn-clear">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+
+            <!-- Active Filter Tags -->
+            <div class="active-tags" v-if="selectedBusinessId || selectedCountry">
+              <span v-if="selectedBusinessId" class="filter-tag-pill">
+                Business: {{ getBusinessName(selectedBusinessId) }}
+                <button @click="removeBusinessFilter" class="tag-x">×</button>
+              </span>
+              <span v-if="selectedCountry" class="filter-tag-pill">
+                Country: {{ getCountryName(selectedCountry) }}
+                <button @click="removeCountryFilter" class="tag-x">×</button>
+              </span>
+            </div>
+
+            <!-- ── Report Type Selector ────────────── -->
+            <div class="report-type-wrap">
+              <h3 class="sub-heading">Select Report Type</h3>
+              <div class="report-type-grid">
+                <button
+                  v-for="rt in reportTypes"
+                  :key="rt.value"
+                  @click="selectReportType(rt.value)"
+                  :class="['type-btn', { active: selectedReportType === rt.value }]"
+                >
+                  <span class="type-icon">{{ rt.icon }}</span>
+                  <span class="type-label">{{ rt.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- ── Dynamic Report Form ─────────────── -->
+            <div v-if="selectedReportType" class="report-form-wrap">
+              <div class="report-form-head">
+                <div>
+                  <h3>{{ getReportTypeName(selectedReportType) }}</h3>
+                  <p class="form-desc">{{ getReportTypeDescription(selectedReportType) }}</p>
+                </div>
+              </div>
+
+              <!-- Attendance -->
+              <div v-if="selectedReportType === 'attendance'" class="report-form-grid">
+                <div class="filter-group">
+                  <label>Start Date</label>
+                  <input type="date" v-model="attendanceReportParams.start_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>End Date</label>
+                  <input type="date" v-model="attendanceReportParams.end_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>Department</label>
+                  <select v-model="attendanceReportParams.department" class="filter-select">
+                    <option value="">All Departments</option>
+                    <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <label>Report Type</label>
+                  <select v-model="attendanceReportParams.report_type" class="filter-select">
+                    <option value="summary">Summary</option>
+                    <option value="detailed">Detailed</option>
+                    <option value="daily">Daily</option>
+                  </select>
+                </div>
+                <div class="form-generate-col">
+                  <button @click="generateAttendanceReport" class="btn-primary btn-generate" :disabled="generatingReport">
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    {{ generatingReport ? 'Generating…' : 'Generate Report' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Leave -->
+              <div v-if="selectedReportType === 'leave'" class="report-form-grid">
+                <div class="filter-group">
+                  <label>Start Date</label>
+                  <input type="date" v-model="leaveReportParams.start_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>End Date</label>
+                  <input type="date" v-model="leaveReportParams.end_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>Leave Type</label>
+                  <select v-model="leaveReportParams.leave_type" class="filter-select">
+                    <option value="">All Types</option>
+                    <option value="vacation">Vacation</option>
+                    <option value="sick">Sick Leave</option>
+                    <option value="personal">Personal</option>
+                    <option value="maternity">Maternity</option>
+                    <option value="paternity">Paternity</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <label>Status</label>
+                  <select v-model="leaveReportParams.status" class="filter-select">
+                    <option value="all">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                <div class="form-generate-col">
+                  <button @click="generateLeaveReport" class="btn-primary btn-generate" :disabled="generatingReport">
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    {{ generatingReport ? 'Generating…' : 'Generate Report' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Payroll -->
+              <div v-if="selectedReportType === 'payroll'" class="report-form-grid">
+                <div class="filter-group">
+                  <label>Start Date</label>
+                  <input type="date" v-model="payrollReportParams.start_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>End Date</label>
+                  <input type="date" v-model="payrollReportParams.end_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>Department</label>
+                  <select v-model="payrollReportParams.department" class="filter-select">
+                    <option value="">All Departments</option>
+                    <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <label>Status</label>
+                  <select v-model="payrollReportParams.status" class="filter-select">
+                    <option value="all">All Status</option>
+                    <option value="paid">Paid</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+                <div class="form-generate-col">
+                  <button @click="generatePayrollReport" class="btn-primary btn-generate" :disabled="generatingReport">
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    {{ generatingReport ? 'Generating…' : 'Generate Report' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Earnings -->
+              <div v-if="selectedReportType === 'earnings'" class="report-form-grid">
+                <div class="filter-group">
+                  <label>Start Date</label>
+                  <input type="date" v-model="earningsReportParams.start_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>End Date</label>
+                  <input type="date" v-model="earningsReportParams.end_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>Department</label>
+                  <select v-model="earningsReportParams.department" class="filter-select">
+                    <option value="">All Departments</option>
+                    <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
+                  </select>
+                </div>
+                <div class="form-generate-col">
+                  <button @click="generateEarningsReport" class="btn-primary btn-generate" :disabled="generatingReport">
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    {{ generatingReport ? 'Generating…' : 'Generate Report' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Deductions -->
+              <div v-if="selectedReportType === 'deductions'" class="report-form-grid">
+                <div class="filter-group">
+                  <label>Start Date</label>
+                  <input type="date" v-model="deductionsReportParams.start_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>End Date</label>
+                  <input type="date" v-model="deductionsReportParams.end_date" class="filter-select" />
+                </div>
+                <div class="filter-group">
+                  <label>Department</label>
+                  <select v-model="deductionsReportParams.department" class="filter-select">
+                    <option value="">All Departments</option>
+                    <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <label>Deduction Type</label>
+                  <select v-model="deductionsReportParams.deduction_type" class="filter-select">
+                    <option value="all">All Deductions</option>
+                    <option value="tax">Tax Only</option>
+                    <option value="statutory">Statutory Only</option>
+                    <option value="pension">Pension Only</option>
+                    <option value="health">Health Only</option>
+                    <option value="voluntary">Voluntary Only</option>
+                    <option value="other">Other Only</option>
+                  </select>
+                </div>
+                <div class="form-generate-col">
+                  <button @click="generateDeductionsReport" class="btn-primary btn-generate" :disabled="generatingReport">
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    {{ generatingReport ? 'Generating…' : 'Generate Report' }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Applied Filters Notice -->
+              <div v-if="selectedBusinessId || selectedCountry" class="applied-notice">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Filters applied:
+                <span v-if="selectedBusinessId" class="notice-tag">{{ getBusinessName(selectedBusinessId) }}</span>
+                <span v-if="selectedCountry" class="notice-tag">{{ getCountryName(selectedCountry) }}</span>
+              </div>
+            </div>
+
+          </div><!-- /table-section (generator) -->
+
+          <!-- ── Generated Reports List ──────────── -->
+          <div class="table-section" v-if="generatedReports.length > 0">
+            <h2>Recently Generated Reports</h2>
+
+            <div class="reports-list">
+              <div v-for="report in paginatedReports" :key="report.id" class="report-row">
+                <div class="report-row-icon">{{ getReportIcon(report.type) }}</div>
+                <div class="report-row-info">
+                  <div class="report-row-title">{{ report.title }}</div>
+                  <div class="report-row-period">{{ report.period }}</div>
+                  <div class="report-row-date">Generated {{ formatDate(report.generated_at) }}</div>
+                  <div class="report-row-tags" v-if="report.filters">
+                    <span v-if="report.filters.business"    class="mini-tag">{{ report.filters.business }}</span>
+                    <span v-if="report.filters.country"     class="mini-tag">{{ report.filters.country }}</span>
+                    <span v-if="report.filters.department"  class="mini-tag">{{ report.filters.department }}</span>
+                    <span v-if="report.filters.leave_type"  class="mini-tag">{{ report.filters.leave_type }}</span>
+                    <span v-if="report.filters.deduction_type" class="mini-tag">{{ report.filters.deduction_type }}</span>
+                  </div>
+                </div>
+                <div class="report-row-actions">
+                  <button @click="downloadReport(report)" class="action-btn" title="Download PDF">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    PDF
+                  </button>
+                  <button @click="exportToExcel(report)" class="action-btn export" title="Export CSV">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    CSV
+                  </button>
+                  <button @click="viewReport(report)" class="action-btn view" title="View Report">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    View
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="pagination-bar">
+              <span class="pagination-info">Page <strong>{{ currentPage }}</strong> of <strong>{{ totalPages }}</strong></span>
+              <div class="pagination-controls">
+                <button @click="prevPage" :disabled="currentPage === 1" class="page-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  Prev
+                </button>
+                <button @click="nextPage" :disabled="currentPage === totalPages" class="page-btn">
+                  Next
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Report Preview ────────────────────── -->
+          <div class="table-section" v-if="currentReport && currentReport.data">
+
+            <div class="preview-header-row">
+              <div>
+                <h2>Preview: {{ currentReport.title }}</h2>
+                <div class="preview-tags">
+                  <span v-if="currentReport.originalParams?.business_id" class="mini-tag">{{ getBusinessName(currentReport.originalParams.business_id) }}</span>
+                  <span v-if="currentReport.originalParams?.country" class="mini-tag">{{ getCountryName(currentReport.originalParams.country) }}</span>
+                  <span v-if="currentReport.data?.currency" class="mini-tag">{{ currentReport.data.currency }}</span>
+                </div>
+              </div>
+              <div class="preview-actions">
+                <button @click="downloadReport(currentReport)" class="btn-outline export">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download PDF
+                </button>
+                <button @click="exportToExcel(currentReport)" class="btn-outline">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                  Export CSV
+                </button>
+                <button @click="currentReport = null" class="btn-outline danger">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  Close
+                </button>
+              </div>
+            </div>
+
+            <!-- ── Summary Stats Strip ─────────────── -->
+            <!-- Payroll -->
+            <div v-if="currentReport.type === 'payroll'" class="preview-content">
+              <div class="preview-stats">
+                <div class="preview-stat"><small>Gross Salary</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_gross_salary) }}</strong></div>
+                <div class="preview-stat"><small>Net Salary</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_net_salary) }}</strong></div>
+                <div class="preview-stat"><small>Total Earnings</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_earnings) }}</strong></div>
+                <div class="preview-stat"><small>Total Deductions</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_all_deductions) }}</strong></div>
+                <div class="preview-stat"><small>PAYE Tax</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_paye_tax) }}</strong></div>
+                <div class="preview-stat"><small>Employees</small><strong>{{ currentReport.data.processed_employees || 0 }}</strong></div>
+              </div>
+
+              <!-- Earnings breakdown cards -->
+              <div v-if="currentReport.data.earning_breakdown?.length" class="breakdown-section">
+                <h4>Earnings Breakdown</h4>
+                <div class="breakdown-grid">
+                  <div v-for="e in currentReport.data.earning_breakdown" :key="e.name" class="breakdown-card green">
+                    <div class="bc-head">
+                      <span class="bc-name">{{ e.name }}</span>
+                      <span :class="['bc-badge', `type-${e.type}`]">{{ e.type }}</span>
+                    </div>
+                    <div class="bc-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(e.total_amount) }}</div>
+                    <div class="bc-sub">{{ e.employee_count }} employees</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Deductions breakdown cards -->
+              <div v-if="currentReport.data.deduction_breakdown?.length" class="breakdown-section">
+                <h4>Deductions Breakdown</h4>
+                <div class="breakdown-grid">
+                  <div v-for="d in currentReport.data.deduction_breakdown" :key="d.name" class="breakdown-card red">
+                    <div class="bc-head">
+                      <span class="bc-name">{{ d.name }}</span>
+                      <span :class="['bc-badge', `type-${d.type}`]">{{ d.type }}</span>
+                    </div>
+                    <div class="bc-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.total_amount) }}</div>
+                    <div class="bc-sub">{{ d.employee_count }} employees</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Payslip details table -->
+              <h4>Employee Payslip Details</h4>
+              <div class="table-container">
+                <div class="preview-grid payroll-grid list-header">
+                  <div>Employee</div><div>Business</div><div>Department</div>
+                  <div class="text-right">Gross</div><div class="text-right">Earnings</div>
+                  <div class="text-right">Deductions</div><div class="text-right">Net</div>
+                </div>
+                <div v-for="d in (currentReport.data.payslip_details || []).slice(0,10)" :key="d.employee_id" class="preview-grid payroll-grid list-row">
+                  <div class="fw-600">{{ d.employee_name || 'N/A' }}</div>
+                  <div class="text-muted">{{ d.business || '—' }}</div>
+                  <div class="text-muted">{{ d.department || '—' }}</div>
+                  <div class="text-right font-mono">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.gross_salary) }}</div>
+                  <div class="text-right font-mono text-success">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.total_earnings || d.gross_salary) }}</div>
+                  <div class="text-right font-mono text-danger">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.total_deductions) }}</div>
+                  <div class="text-right font-mono fw-700">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.net_salary) }}</div>
+                </div>
+              </div>
+              <div v-if="(currentReport.data.payslip_details||[]).length > 10" class="more-records">…and {{ (currentReport.data.payslip_details||[]).length - 10 }} more records</div>
+            </div>
+
+            <!-- Earnings -->
+            <div v-if="currentReport.type === 'earnings'" class="preview-content">
+              <div class="preview-stats">
+                <div class="preview-stat"><small>Total Earnings</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_earnings) }}</strong></div>
+                <div class="preview-stat"><small>Gross Salary</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_gross_salary) }}</strong></div>
+                <div class="preview-stat"><small>Average Earnings</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.average_earnings) }}</strong></div>
+                <div class="preview-stat"><small>Employees</small><strong>{{ currentReport.data.processed_employees || 0 }}</strong></div>
+              </div>
+              <div v-if="currentReport.data.earning_breakdown?.length" class="breakdown-section">
+                <h4>Earnings Breakdown</h4>
+                <div class="breakdown-grid">
+                  <div v-for="e in currentReport.data.earning_breakdown" :key="e.name" class="breakdown-card green">
+                    <div class="bc-head"><span class="bc-name">{{ e.name }}</span><span :class="['bc-badge', `type-${e.type}`]">{{ e.type }}</span></div>
+                    <div class="bc-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(e.total_amount) }}</div>
+                    <div class="bc-sub">{{ e.employee_count }} employees</div>
+                  </div>
+                </div>
+              </div>
+              <h4>Employee Earnings Details</h4>
+              <div class="table-container">
+                <div class="list-header" style="display:grid;grid-template-columns:2fr 1fr 1fr repeat(3,1fr);padding:.75rem 1rem;gap:.75rem;font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">
+                  <div>Employee</div><div>Business</div><div>Department</div>
+                  <div v-for="h in (currentReport.data.earning_headers||[])" :key="h" class="text-right">{{ h }}</div>
+                  <div class="text-right">Total</div><div class="text-right">Gross</div>
+                </div>
+                <div v-for="d in (currentReport.data.employee_earnings||[]).slice(0,10)" :key="d.employee_id"
+                  style="display:grid;grid-template-columns:2fr 1fr 1fr repeat(3,1fr);padding:.75rem 1rem;gap:.75rem;border-bottom:1px solid #f1f5f9;background:white;font-size:.82rem;">
+                  <div class="fw-600">{{ d.employee_name || 'N/A' }}</div>
+                  <div class="text-muted">{{ d.business || '—' }}</div>
+                  <div class="text-muted">{{ d.department || '—' }}</div>
+                  <div v-for="h in (currentReport.data.earning_headers||[])" :key="h" class="text-right font-mono">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.earnings_breakdown?.[h]||0) }}</div>
+                  <div class="text-right font-mono text-success">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.total_earnings) }}</div>
+                  <div class="text-right font-mono">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.gross_salary) }}</div>
+                </div>
+              </div>
+              <div v-if="(currentReport.data.employee_earnings||[]).length > 10" class="more-records">…and {{ (currentReport.data.employee_earnings||[]).length - 10 }} more records</div>
+            </div>
+
+            <!-- Deductions -->
+            <div v-if="currentReport.type === 'deductions'" class="preview-content">
+              <div class="preview-stats">
+                <div class="preview-stat"><small>Total Deductions</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_deductions) }}</strong></div>
+                <div class="preview-stat"><small>PAYE Tax</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_paye_tax) }}</strong></div>
+                <div class="preview-stat"><small>Avg Deductions</small><strong>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.average_deductions) }}</strong></div>
+                <div class="preview-stat"><small>Employees</small><strong>{{ currentReport.data.processed_employees || 0 }}</strong></div>
+              </div>
+              <div v-if="currentReport.data.deduction_breakdown?.length" class="breakdown-section">
+                <h4>Deductions Breakdown</h4>
+                <div class="breakdown-grid">
+                  <div v-for="d in currentReport.data.deduction_breakdown" :key="d.name" class="breakdown-card red">
+                    <div class="bc-head"><span class="bc-name">{{ d.name }}</span><span :class="['bc-badge', `type-${d.type}`]">{{ d.type }}</span></div>
+                    <div class="bc-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.total_amount) }}</div>
+                    <div class="bc-sub">{{ d.employee_count }} employees</div>
+                  </div>
+                </div>
+              </div>
+              <h4>Employee Deductions Details</h4>
+              <div class="table-container">
+                <div class="list-header" style="display:grid;grid-template-columns:2fr 1fr 1fr repeat(3,1fr) 1fr 1fr;padding:.75rem 1rem;gap:.5rem;font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;">
+                  <div>Employee</div><div>Business</div><div>Department</div>
+                  <div v-for="h in (currentReport.data.deduction_headers||[])" :key="h" class="text-right">{{ h }}</div>
+                  <div class="text-right">Total</div><div class="text-right">PAYE</div><div class="text-right">Net</div>
+                </div>
+                <div v-for="d in (currentReport.data.employee_deductions||[]).slice(0,10)" :key="d.employee_id"
+                  style="display:grid;grid-template-columns:2fr 1fr 1fr repeat(3,1fr) 1fr 1fr;padding:.75rem 1rem;gap:.5rem;border-bottom:1px solid #f1f5f9;background:white;font-size:.82rem;">
+                  <div class="fw-600">{{ d.employee_name || 'N/A' }}</div>
+                  <div class="text-muted">{{ d.business || '—' }}</div>
+                  <div class="text-muted">{{ d.department || '—' }}</div>
+                  <div v-for="h in (currentReport.data.deduction_headers||[])" :key="h" class="text-right font-mono">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.deductions_breakdown?.[h]||0) }}</div>
+                  <div class="text-right font-mono text-danger">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.total_deductions) }}</div>
+                  <div class="text-right font-mono">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.paye_tax||0) }}</div>
+                  <div class="text-right font-mono fw-700">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(d.net_salary) }}</div>
+                </div>
+              </div>
+              <div v-if="(currentReport.data.employee_deductions||[]).length > 10" class="more-records">…and {{ (currentReport.data.employee_deductions||[]).length - 10 }} more records</div>
+            </div>
+
+            <!-- Attendance -->
+            <div v-if="currentReport.type === 'attendance'" class="preview-content">
+              <div class="preview-stats">
+                <div class="preview-stat"><small>Total Days</small><strong>{{ currentReport.data.total_days || 0 }}</strong></div>
+                <div class="preview-stat"><small>Present</small><strong class="text-success">{{ currentReport.data.present_days || 0 }}</strong></div>
+                <div class="preview-stat"><small>Absent</small><strong class="text-danger">{{ currentReport.data.absent_days || 0 }}</strong></div>
+                <div class="preview-stat"><small>Late</small><strong class="text-amber">{{ currentReport.data.late_days || 0 }}</strong></div>
+                <div class="preview-stat"><small>Total Hours</small><strong>{{ currentReport.data.total_hours || 0 }}</strong></div>
+                <div class="preview-stat"><small>Attendance Rate</small><strong>{{ currentReport.data.attendance_rate || 0 }}%</strong></div>
+              </div>
+            </div>
+
+            <!-- Leave -->
+            <div v-if="currentReport.type === 'leave'" class="preview-content">
+              <div class="preview-stats">
+                <div class="preview-stat"><small>Total Leaves</small><strong>{{ currentReport.data.total_leaves || 0 }}</strong></div>
+                <div class="preview-stat"><small>Approved</small><strong class="text-success">{{ currentReport.data.approved_leaves || 0 }}</strong></div>
+                <div class="preview-stat"><small>Pending</small><strong class="text-amber">{{ currentReport.data.pending_leaves || 0 }}</strong></div>
+                <div class="preview-stat"><small>Rejected</small><strong class="text-danger">{{ currentReport.data.rejected_leaves || 0 }}</strong></div>
+                <div class="preview-stat"><small>Total Days</small><strong>{{ currentReport.data.total_days || 0 }}</strong></div>
+                <div class="preview-stat"><small>Approval Rate</small><strong>{{ currentReport.data.approval_rate || 0 }}%</strong></div>
+              </div>
+            </div>
+
+            <!-- Net Pay card — mirrors payslip design -->
+            <div class="net-pay-card">
+              <div>
+                <div class="net-label">REPORT PERIOD</div>
+                <div class="net-value">{{ currentReport.period }}</div>
+              </div>
+              <div class="net-bg">RP</div>
+            </div>
+
+          </div><!-- /preview -->
+
+        </template>
+      </div><!-- /dashboard-content -->
+    </template>
+
+    <!-- ── Toast ─────────────────────────────────── -->
+    <transition name="toast-slide">
+      <div v-if="toast.show" :class="['toast', toast.type]">
+        <svg v-if="toast.type==='success'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>{{ toast.message }}</span>
       </div>
-      <!-- Report Preview Section -->
-      <div class="report-preview-section" v-if="currentReport && currentReport.data">
-        <div class="preview-header">
-          <div>
-            <h2>Report Preview: {{ currentReport.title }}</h2>
-            <div class="preview-filters">
-              <span v-if="currentReport.originalParams?.business_id" class="filter-tag">
-                Business: {{ getBusinessName(currentReport.originalParams.business_id) }}
-              </span>
-              <span v-if="currentReport.originalParams?.country" class="filter-tag">
-                Country: {{ getCountryName(currentReport.originalParams.country) }}
-              </span>
-              <span v-if="currentReport.data.currency" class="filter-tag">
-                Currency: {{ currentReport.data.currency }}
-              </span>
-              <span v-if="currentReport.originalParams?.department" class="filter-tag">
-                Department: {{ currentReport.originalParams.department }}
-              </span>
-            </div>
-          </div>
-          <button @click="currentReport = null" class="btn-close-preview">Close</button>
-        </div>
-       
-        <div class="preview-actions">
-          <button @click="downloadReport(currentReport)" class="btn-primary">
-            <span>📥</span> Download PDF
-          </button>
-          <button @click="exportToExcel(currentReport)" class="btn-secondary">
-            <span>📊</span> Export to Excel
-          </button>
-          <button @click="currentReport = null" class="btn-tertiary">
-            <span>✕</span> Close Preview
-          </button>
-        </div>
-       
-        <div class="preview-content">
-          <!-- Payroll Report Preview -->
-          <div v-if="currentReport.type === 'payroll' && currentReport.data">
-            <h3>Payroll Summary</h3>
-            <div class="report-stats">
-              <div class="report-stat">
-                <span class="stat-label">Total Gross Salary:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_gross_salary || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total Net Salary:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_net_salary || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total Earnings:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_earnings || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total Deductions:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_all_deductions || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total PAYE Tax:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_paye_tax || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Employees Processed:</span>
-                <span class="stat-value">{{ currentReport.data.processed_employees || 0 }}</span>
-              </div>
-            </div>
-           
-            <!-- Earnings Breakdown -->
-            <div v-if="currentReport.data.earning_breakdown && currentReport.data.earning_breakdown.length > 0" class="earnings-breakdown-section">
-              <h4>Earnings Breakdown</h4>
-              <div class="earning-cards">
-                <div v-for="earning in currentReport.data.earning_breakdown" :key="earning.name" class="earning-card">
-                  <div class="earning-card-header">
-                    <span class="earning-name">{{ earning.name }}</span>
-                    <span :class="['earning-type-badge', `type-${earning.type}`]">{{ earning.type }}</span>
-                  </div>
-                  <div class="earning-card-body">
-                    <div class="earning-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(earning.total_amount) }}</div>
-                    <div class="earning-employees">{{ earning.employee_count }} employees</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-           
-            <!-- Deductions Breakdown -->
-            <div v-if="currentReport.data.deduction_breakdown && currentReport.data.deduction_breakdown.length > 0" class="deduction-breakdown-section">
-              <h4>Deductions Breakdown</h4>
-              <div class="deduction-cards">
-                <div v-for="deduction in currentReport.data.deduction_breakdown" :key="deduction.name" class="deduction-card">
-                  <div class="deduction-card-header">
-                    <span class="deduction-name">{{ deduction.name }}</span>
-                    <span :class="['deduction-type-badge', `type-${deduction.type}`]">{{ deduction.type }}</span>
-                  </div>
-                  <div class="deduction-card-body">
-                    <div class="deduction-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(deduction.total_amount) }}</div>
-                    <div class="deduction-employees">{{ deduction.employee_count }} employees</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-           
-            <!-- Payroll Details Table -->
-            <h4>Employee Payslip Details</h4>
-            <div class="payroll-details-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Business</th>
-                    <th>Country</th>
-                    <th>Department</th>
-                    <th>Gross Salary</th>
-                    <th>Total Earnings</th>
-                    <th>Total Deductions</th>
-                    <th>Net Salary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="detail in (currentReport.data.payslip_details || []).slice(0, 10)" :key="detail.employee_id">
-                    <td>{{ detail.employee_name || 'N/A' }}</td>
-                    <td>{{ detail.business || 'No Business' }}</td>
-                    <td>{{ detail.country || 'N/A' }}</td>
-                    <td>{{ detail.department || 'N/A' }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.gross_salary) }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.total_earnings || detail.gross_salary) }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.total_deductions) }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.net_salary) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div v-if="(currentReport.data.payslip_details || []).length > 10" class="more-records">
-                <p>... and {{ (currentReport.data.payslip_details || []).length - 10 }} more records</p>
-              </div>
-            </div>
-          </div>
-         
-          <!-- Earnings Report Preview -->
-          <div v-if="currentReport.type === 'earnings' && currentReport.data">
-            <h3>Earnings Summary</h3>
-            <div class="report-stats">
-              <div class="report-stat">
-                <span class="stat-label">Total Earnings:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_earnings || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total Gross Salary:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_gross_salary || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Employees Processed:</span>
-                <span class="stat-value">{{ currentReport.data.processed_employees || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Average Earnings:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.average_earnings || '0.00') }}
-                </span>
-              </div>
-            </div>
-           
-            <!-- Earnings Breakdown -->
-            <div v-if="currentReport.data.earning_breakdown && currentReport.data.earning_breakdown.length > 0" class="earnings-breakdown-section">
-              <h4>Earnings Breakdown</h4>
-              <div class="earning-cards">
-                <div v-for="earning in currentReport.data.earning_breakdown" :key="earning.name" class="earning-card">
-                  <div class="earning-card-header">
-                    <span class="earning-name">{{ earning.name }}</span>
-                    <span :class="['earning-type-badge', `type-${earning.type}`]">{{ earning.type }}</span>
-                  </div>
-                  <div class="earning-card-body">
-                    <div class="earning-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(earning.total_amount) }}</div>
-                    <div class="earning-employees">{{ earning.employee_count }} employees</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-           
-            <!-- Employee Earnings Table -->
-            <h4>Employee Earnings Details</h4>
-            <div class="payroll-details-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Business</th>
-                    <th>Country</th>
-                    <th>Department</th>
-                    <th v-for="header in (currentReport.data.earning_headers || [])" :key="header">{{ header }}</th>
-                    <th>Total Earnings</th>
-                    <th>Gross Salary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="detail in (currentReport.data.employee_earnings || []).slice(0, 10)" :key="detail.employee_id">
-                    <td>{{ detail.employee_name || 'N/A' }}</td>
-                    <td>{{ detail.business || 'No Business' }}</td>
-                    <td>{{ detail.country || 'N/A' }}</td>
-                    <td>{{ detail.department || 'N/A' }}</td>
-                    <td v-for="header in (currentReport.data.earning_headers || [])" :key="header">
-                      {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.earnings_breakdown?.[header] || 0) }}
-                    </td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.total_earnings) }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.gross_salary) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div v-if="(currentReport.data.employee_earnings || []).length > 10" class="more-records">
-                <p>... and {{ (currentReport.data.employee_earnings || []).length - 10 }} more records</p>
-              </div>
-            </div>
-          </div>
-         
-          <!-- Deductions Report Preview -->
-          <div v-if="currentReport.type === 'deductions' && currentReport.data">
-            <h3>Deductions Summary</h3>
-            <div class="report-stats">
-              <div class="report-stat">
-                <span class="stat-label">Total Deductions:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_deductions || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total PAYE Tax:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.total_paye_tax || '0.00') }}
-                </span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Employees Processed:</span>
-                <span class="stat-value">{{ currentReport.data.processed_employees || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Average Deductions:</span>
-                <span class="stat-value">
-                  {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(currentReport.data.average_deductions || '0.00') }}
-                </span>
-              </div>
-            </div>
-           
-            <!-- Deductions Breakdown -->
-            <div v-if="currentReport.data.deduction_breakdown && currentReport.data.deduction_breakdown.length > 0" class="deduction-breakdown-section">
-              <h4>Deductions Breakdown</h4>
-              <div class="deduction-cards">
-                <div v-for="deduction in currentReport.data.deduction_breakdown" :key="deduction.name" class="deduction-card">
-                  <div class="deduction-card-header">
-                    <span class="deduction-name">{{ deduction.name }}</span>
-                    <span :class="['deduction-type-badge', `type-${deduction.type}`]">{{ deduction.type }}</span>
-                  </div>
-                  <div class="deduction-card-body">
-                    <div class="deduction-amount">{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(deduction.total_amount) }}</div>
-                    <div class="deduction-employees">{{ deduction.employee_count }} employees</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-           
-            <!-- Employee Deductions Table -->
-            <h4>Employee Deductions Details</h4>
-            <div class="payroll-details-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Business</th>
-                    <th>Country</th>
-                    <th>Department</th>
-                    <th v-for="header in (currentReport.data.deduction_headers || [])" :key="header">{{ header }}</th>
-                    <th>Total Deductions</th>
-                    <th>PAYE Tax</th>
-                    <th>Net Salary</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="detail in (currentReport.data.employee_deductions || []).slice(0, 10)" :key="detail.employee_id">
-                    <td>{{ detail.employee_name || 'N/A' }}</td>
-                    <td>{{ detail.business || 'No Business' }}</td>
-                    <td>{{ detail.country || 'N/A' }}</td>
-                    <td>{{ detail.department || 'N/A' }}</td>
-                    <td v-for="header in (currentReport.data.deduction_headers || [])" :key="header">
-                      {{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.deductions_breakdown?.[header] || 0) }}
-                    </td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.total_deductions) }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.paye_tax || 0) }}</td>
-                    <td>{{ getCurrencySymbol(currentReport.data) }}{{ formatNumber(detail.net_salary) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div v-if="(currentReport.data.employee_deductions || []).length > 10" class="more-records">
-                <p>... and {{ (currentReport.data.employee_deductions || []).length - 10 }} more records</p>
-              </div>
-            </div>
-          </div>
-         
-          <!-- Attendance Report Preview -->
-          <div v-if="currentReport.type === 'attendance' && currentReport.data">
-            <h3>Attendance Summary</h3>
-            <div class="report-stats">
-              <div class="report-stat">
-                <span class="stat-label">Total Days:</span>
-                <span class="stat-value">{{ currentReport.data.total_days || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Present Days:</span>
-                <span class="stat-value">{{ currentReport.data.present_days || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Absent Days:</span>
-                <span class="stat-value">{{ currentReport.data.absent_days || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Late Days:</span>
-                <span class="stat-value">{{ currentReport.data.late_days || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total Hours:</span>
-                <span class="stat-value">{{ currentReport.data.total_hours || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Attendance Rate:</span>
-                <span class="stat-value">{{ currentReport.data.attendance_rate || 0 }}%</span>
-              </div>
-            </div>
-          </div>
-         
-          <!-- Leave Report Preview -->
-          <div v-if="currentReport.type === 'leave' && currentReport.data">
-            <h3>Leave Summary</h3>
-            <div class="report-stats">
-              <div class="report-stat">
-                <span class="stat-label">Total Leaves:</span>
-                <span class="stat-value">{{ currentReport.data.total_leaves || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Approved:</span>
-                <span class="stat-value">{{ currentReport.data.approved_leaves || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Pending:</span>
-                <span class="stat-value">{{ currentReport.data.pending_leaves || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Rejected:</span>
-                <span class="stat-value">{{ currentReport.data.rejected_leaves || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Total Days:</span>
-                <span class="stat-value">{{ currentReport.data.total_days || 0 }}</span>
-              </div>
-              <div class="report-stat">
-                <span class="stat-label">Approval Rate:</span>
-                <span class="stat-value">{{ currentReport.data.approval_rate || 0 }}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </transition>
+
   </div>
 </template>
+
 <script>
 import { useAuthStore } from '@/stores/auth'
 import axios from 'axios'
+
 export default {
   name: 'AdminReports',
- 
   setup() {
     const authStore = useAuthStore()
     return { authStore }
   },
- 
   data() {
     return {
       loading: false,
       generatingReport: false,
       error: null,
-      successMessage: null,
       allEmployees: [],
       orgStats: {},
       generatedReports: [],
       currentReport: null,
       departments: [],
-     
-      // Business filter data
       selectedBusinessId: '',
       selectedCountry: '',
       businesses: [],
       countries: [],
-     
-      // Dashboard date filter
       dashboardStartDate: '',
       dashboardEndDate: '',
-      currentPeriod: 'This Month',
-     
-      // Report type selection
+      toast: { show: false, message: '', type: 'success' },
       selectedReportType: '',
       reportTypes: [
-        { value: 'attendance', name: 'Attendance Report', icon: '📊', description: 'Generate comprehensive attendance report for selected period' },
-        { value: 'leave', name: 'Leave Report', icon: '📋', description: 'Generate leave utilization and approval reports' },
-        { value: 'payroll', name: 'Payroll Report', icon: '💰', description: 'Complete payroll summary with earnings and deductions breakdown' },
-        { value: 'earnings', name: 'Earnings Report', icon: '📈', description: 'Earnings-only report with breakdown by type' },
-        { value: 'deductions', name: 'Deductions Report', icon: '📉', description: 'Deductions-only report with detailed breakdown' }
+        { value: 'attendance', name: 'Attendance',  icon: '📊', description: 'Comprehensive attendance report for selected period' },
+        { value: 'leave',      name: 'Leave',       icon: '📋', description: 'Leave utilization and approval report' },
+        { value: 'payroll',    name: 'Payroll',     icon: '💰', description: 'Full payroll summary with earnings and deductions' },
+        { value: 'earnings',   name: 'Earnings',    icon: '📈', description: 'Earnings-only report with type breakdown' },
+        { value: 'deductions', name: 'Deductions',  icon: '📉', description: 'Deductions-only report with detailed breakdown' }
       ],
-     
-      // Report parameters
-      attendanceReportParams: {
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0],
-        department: '',
-        business_id: '',
-        country: '',
-        report_type: 'summary'
-      },
-     
-      leaveReportParams: {
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0],
-        leave_type: '',
-        status: 'all',
-        business_id: '',
-        country: ''
-      },
-     
-      payrollReportParams: {
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0],
-        department: '',
-        status: 'all',
-        business_id: '',
-        country: ''
-      },
-     
-      earningsReportParams: {
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0],
-        department: '',
-        business_id: '',
-        country: ''
-      },
-     
-      deductionsReportParams: {
-        start_date: new Date().toISOString().split('T')[0],
-        end_date: new Date().toISOString().split('T')[0],
-        department: '',
-        business_id: '',
-        country: '',
-        deduction_type: 'all'
-      },
-     
+      attendanceReportParams:  { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], department: '', report_type: 'summary' },
+      leaveReportParams:       { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], leave_type: '', status: 'all' },
+      payrollReportParams:     { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], department: '', status: 'all' },
+      earningsReportParams:    { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], department: '' },
+      deductionsReportParams:  { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], department: '', deduction_type: 'all' },
       retryCount: 0,
       currentPage: 1,
       reportsPerPage: 5
     }
   },
- 
-  async mounted() {
-    await this.initializeComponent()
-  },
- 
   computed: {
-    hasActiveFilters() {
-      return this.selectedBusinessId || this.selectedCountry
-    },
-   
-    activeFilters() {
-      const filters = {}
-      if (this.selectedBusinessId) {
-        filters.business_id = this.selectedBusinessId
-        filters.business_name = this.getBusinessName(this.selectedBusinessId)
-      }
-      if (this.selectedCountry) {
-        filters.country = this.selectedCountry
-        filters.country_name = this.getCountryName(this.selectedCountry)
-      }
-      return filters
-    },
-    paginatedReports() {
-      const start = (this.currentPage - 1) * this.reportsPerPage
-      const end = start + this.reportsPerPage
-      return this.generatedReports.slice(start, end)
-    },
-    totalPages() {
-      return Math.ceil(this.generatedReports.length / this.reportsPerPage)
-    }
+    paginatedReports() { const s = (this.currentPage-1)*this.reportsPerPage; return this.generatedReports.slice(s, s+this.reportsPerPage); },
+    totalPages()        { return Math.ceil(this.generatedReports.length / this.reportsPerPage); }
   },
- 
+  async mounted() { await this.initializeComponent(); },
   methods: {
     async initializeComponent() {
-      if (!this.authStore.isAuthenticated) {
-        this.error = 'Please log in to access admin reports.'
-        return
-      }
-     
-      if (!this.authStore.isAdmin) {
-        this.error = 'You do not have permission to access this page.'
-        return
-      }
-     
-      if (this.authStore.isAdmin) {
-        await this.fetchBusinesses()
-      }
-     
-      await this.fetchCountries()
-      await this.fetchAdminData()
-      this.loadGeneratedReports()
+      if (!this.authStore.isAuthenticated || !this.authStore.isAdmin) return;
+      await Promise.all([this.fetchBusinesses(), this.fetchCountries()]);
+      await this.fetchAdminData();
+      this.loadGeneratedReports();
     },
-   
     async fetchCountries() {
-      try {
-        const response = await axios.get('/api/admin/countries')
-       
-        if (Array.isArray(response.data)) {
-          this.countries = response.data
-        } else if (response.data.data && Array.isArray(response.data.data)) {
-          this.countries = response.data.data
-        } else {
-          this.countries = []
-        }
-      } catch (error) {
-        console.error('Failed to fetch countries:', error)
-        this.countries = []
-      }
+      try { const r = await axios.get('/api/admin/countries'); this.countries = Array.isArray(r.data) ? r.data : r.data.data || []; } catch { this.countries = []; }
     },
-   
     async fetchBusinesses() {
-      try {
-        const response = await axios.get('/api/admin/businesses')
-        this.businesses = response.data.data || []
-      } catch (error) {
-        console.error('Failed to fetch businesses:', error)
-      }
+      try { const r = await axios.get('/api/admin/businesses'); this.businesses = r.data.data || []; } catch {}
     },
-   
-    getBusinessName(businessId) {
-      const business = this.businesses.find(b => b.id === businessId)
-      return business ? business.name : 'Unknown Business'
-    },
-   
-    getCountryName(countryCode) {
-      const country = this.countries.find(c => c.code === countryCode)
-      return country ? `${country.flag_emoji || ''} ${country.name}`.trim() : countryCode
-    },
-   
-    getCurrencySymbol(reportData) {
-      if (reportData?.currency_symbol) {
-        return reportData.currency_symbol
-      }
-      return reportData?.currency || 'KES'
-    },
-   
-    // Report type methods
-    selectReportType(type) {
-      this.selectedReportType = type
-    },
-   
-    getReportTypeName(type) {
-      const reportType = this.reportTypes.find(rt => rt.value === type)
-      return reportType ? reportType.name : 'Report'
-    },
-   
-    getReportTypeDescription(type) {
-      const reportType = this.reportTypes.find(rt => rt.value === type)
-      return reportType ? reportType.description : 'Generate report'
-    },
-   
-    onBusinessFilterChange() {
-      this.attendanceReportParams.business_id = this.selectedBusinessId
-      this.leaveReportParams.business_id = this.selectedBusinessId
-      this.payrollReportParams.business_id = this.selectedBusinessId
-      this.earningsReportParams.business_id = this.selectedBusinessId
-      this.deductionsReportParams.business_id = this.selectedBusinessId
-      this.fetchAdminData()
-    },
-   
-    onCountryFilterChange() {
-      this.attendanceReportParams.country = this.selectedCountry
-      this.leaveReportParams.country = this.selectedCountry
-      this.payrollReportParams.country = this.selectedCountry
-      this.earningsReportParams.country = this.selectedCountry
-      this.deductionsReportParams.country = this.selectedCountry
-     
-      this.fetchAdminData()
-    },
-   
-    removeBusinessFilter() {
-      this.selectedBusinessId = ''
-      this.onBusinessFilterChange()
-    },
-   
-    removeCountryFilter() {
-      this.selectedCountry = ''
-      this.onCountryFilterChange()
-    },
-   
-    clearBusinessFilters() {
-      this.selectedBusinessId = ''
-      this.selectedCountry = ''
-     
-      this.attendanceReportParams.business_id = ''
-      this.attendanceReportParams.country = ''
-      this.leaveReportParams.business_id = ''
-      this.leaveReportParams.country = ''
-      this.payrollReportParams.business_id = ''
-      this.payrollReportParams.country = ''
-      this.earningsReportParams.business_id = ''
-      this.earningsReportParams.country = ''
-      this.deductionsReportParams.business_id = ''
-      this.deductionsReportParams.country = ''
-     
-      this.fetchAdminData()
-      this.showSuccess('All filters cleared!')
-    },
-   
+    getBusinessName(id)  { return this.businesses.find(b => b.id === id)?.name || 'Unknown'; },
+    getCountryName(code) { const c = this.countries.find(c => c.code === code); return c ? `${c.flag_emoji||''} ${c.name}`.trim() : code; },
+    getCurrencySymbol(d) { return d?.currency_symbol || d?.currency || 'K'; },
+    selectReportType(type) { this.selectedReportType = type; },
+    getReportTypeName(type) { return this.reportTypes.find(r => r.value === type)?.name || 'Report'; },
+    getReportTypeDescription(type) { return this.reportTypes.find(r => r.value === type)?.description || ''; },
+    onBusinessFilterChange() { this.fetchAdminData(); },
+    onCountryFilterChange()  { this.fetchAdminData(); },
+    removeBusinessFilter()   { this.selectedBusinessId = ''; this.fetchAdminData(); },
+    removeCountryFilter()    { this.selectedCountry = '';    this.fetchAdminData(); },
+    clearBusinessFilters()   { this.selectedBusinessId = ''; this.selectedCountry = ''; this.fetchAdminData(); this.showToast('Filters cleared.', 'success'); },
     async fetchAdminData() {
-      this.loading = true
-      this.error = null
-     
+      this.loading = true; this.error = null;
       try {
-        const today = new Date()
-        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0]
-        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0]
-       
-        this.dashboardStartDate = firstDay
-        this.dashboardEndDate = lastDay
-        this.currentPeriod = 'This Month'
-        const params = {
-          start_date: this.dashboardStartDate,
-          end_date: this.dashboardEndDate
-        }
-       
-        if (this.selectedBusinessId) {
-          params.business_id = this.selectedBusinessId
-        }
-       
-        if (this.selectedCountry) {
-          params.country = this.selectedCountry
-        }
-        const employeesRes = await axios.get('/api/admin/employees', { params })
-        this.allEmployees = employeesRes.data.data || employeesRes.data || []
-       
-        this.departments = [...new Set(this.allEmployees
-          .map(emp => emp.department)
-          .filter(dept => dept && dept.trim() !== '')
-        )].sort()
-        await this.fetchFilteredStats(params)
-       
-      } catch (err) {
-        console.error('Fetch error:', err)
-        this.handleApiError(err)
-      } finally {
-        this.loading = false
-      }
+        const today = new Date();
+        this.dashboardStartDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+        this.dashboardEndDate   = new Date(today.getFullYear(), today.getMonth()+1, 0).toISOString().split('T')[0];
+        const params = { start_date: this.dashboardStartDate, end_date: this.dashboardEndDate };
+        if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
+        if (this.selectedCountry)    params.country = this.selectedCountry;
+        const empR = await axios.get('/api/admin/employees', { params });
+        this.allEmployees = empR.data.data || empR.data || [];
+        this.departments  = [...new Set(this.allEmployees.map(e => e.department).filter(Boolean))].sort();
+        const statR = await axios.get('/api/admin/reports/stats', { params });
+        this.orgStats = statR.data || {};
+      } catch (err) { this.handleApiError(err); }
+      finally { this.loading = false; }
     },
-   
-    async fetchFilteredStats(params = {}) {
-      try {
-        const statsParams = {
-          start_date: this.dashboardStartDate,
-          end_date: this.dashboardEndDate,
-          ...params
-        }
-       
-        const statsRes = await axios.get('/api/admin/reports/stats', { params: statsParams })
-        this.orgStats = statsRes.data || {}
-       
-        // Set default dates for all reports
-        this.attendanceReportParams.start_date = this.dashboardStartDate
-        this.attendanceReportParams.end_date = this.dashboardEndDate
-        this.attendanceReportParams.business_id = this.selectedBusinessId
-        this.attendanceReportParams.country = this.selectedCountry
-       
-        this.leaveReportParams.start_date = this.dashboardStartDate
-        this.leaveReportParams.end_date = this.dashboardEndDate
-        this.leaveReportParams.business_id = this.selectedBusinessId
-        this.leaveReportParams.country = this.selectedCountry
-       
-        this.payrollReportParams.start_date = this.dashboardStartDate
-        this.payrollReportParams.end_date = this.dashboardEndDate
-        this.payrollReportParams.business_id = this.selectedBusinessId
-        this.payrollReportParams.country = this.selectedCountry
-       
-        this.earningsReportParams.start_date = this.dashboardStartDate
-        this.earningsReportParams.end_date = this.dashboardEndDate
-        this.earningsReportParams.business_id = this.selectedBusinessId
-        this.earningsReportParams.country = this.selectedCountry
-       
-        this.deductionsReportParams.start_date = this.dashboardStartDate
-        this.deductionsReportParams.end_date = this.dashboardEndDate
-        this.deductionsReportParams.business_id = this.selectedBusinessId
-        this.deductionsReportParams.country = this.selectedCountry
-       
-      } catch (err) {
-        console.error('Fetch error:', err)
-        this.handleApiError(err)
-      }
-    },
-   
-    async generatePayrollReport() {
-      this.generatingReport = true
-      try {
-        const params = {
-          start_date: this.ensureDateFormat(this.payrollReportParams.start_date),
-          end_date: this.ensureDateFormat(this.payrollReportParams.end_date),
-          status: this.payrollReportParams.status || 'all'
-        }
-       
-        if (this.payrollReportParams.department && String(this.payrollReportParams.department).trim() !== '') {
-          params.department = this.payrollReportParams.department
-        }
-       
-        if (this.selectedBusinessId && String(this.selectedBusinessId).trim() !== '') {
-          params.business_id = this.selectedBusinessId
-        }
-       
-        if (this.selectedCountry && String(this.selectedCountry).trim() !== '') {
-          params.country = this.selectedCountry
-        }
-        const response = await axios.post('/api/admin/reports/generate/payroll', params)
-       
-        if (response.data.success) {
-          const reportData = response.data.data || {}
-         
-          this.currentReport = {
-            type: 'payroll',
-            title: 'Payroll Report',
-            data: reportData,
-            period: reportData.period || `${params.start_date} to ${params.end_date}`,
-            originalParams: { ...params }
-          }
-         
-          this.addToGeneratedReports('payroll', 'Payroll Report', this.currentReport.period, params, reportData)
-          this.showSuccess('Payroll report generated successfully!')
-        } else {
-          throw new Error(response.data.message || 'Failed to generate report')
-        }
-       
-      } catch (err) {
-        console.error('Error generating payroll report:', err)
-        this.handleApiError(err)
-      } finally {
-        this.generatingReport = false
-      }
-    },
-   
-    async generateEarningsReport() {
-      this.generatingReport = true
-      try {
-        const params = {
-          start_date: this.ensureDateFormat(this.earningsReportParams.start_date),
-          end_date: this.ensureDateFormat(this.earningsReportParams.end_date),
-          status: this.payrollReportParams.status || 'all'
-        }
-       
-        if (this.earningsReportParams.department && String(this.earningsReportParams.department).trim() !== '') {
-          params.department = this.earningsReportParams.department
-        }
-       
-        if (this.selectedBusinessId && String(this.selectedBusinessId).trim() !== '') {
-          params.business_id = this.selectedBusinessId
-        }
-       
-        if (this.selectedCountry && String(this.selectedCountry).trim() !== '') {
-          params.country = this.selectedCountry
-        }
-        const response = await axios.post('/api/admin/reports/generate/earnings', params)
-       
-        if (response.data.success) {
-          const reportData = response.data.data || {}
-         
-          this.currentReport = {
-            type: 'earnings',
-            title: 'Earnings Report',
-            data: reportData,
-            period: reportData.period || `${params.start_date} to ${params.end_date}`,
-            originalParams: { ...params }
-          }
-         
-          this.addToGeneratedReports('earnings', 'Earnings Report', this.currentReport.period, params, reportData)
-          this.showSuccess('Earnings report generated successfully!')
-        } else {
-          throw new Error(response.data.message || 'Failed to generate report')
-        }
-       
-      } catch (err) {
-        console.error('Error generating earnings report:', err)
-        this.handleApiError(err)
-      } finally {
-        this.generatingReport = false
-      }
-    },
-   
-    async generateDeductionsReport() {
-      this.generatingReport = true
-      try {
-        const params = {
-          start_date: this.ensureDateFormat(this.deductionsReportParams.start_date),
-          end_date: this.ensureDateFormat(this.deductionsReportParams.end_date),
-          status: this.payrollReportParams.status || 'all'
-        }
-       
-        if (this.deductionsReportParams.department && String(this.deductionsReportParams.department).trim() !== '') {
-          params.department = this.deductionsReportParams.department
-        }
-       
-        if (this.selectedBusinessId && String(this.selectedBusinessId).trim() !== '') {
-          params.business_id = this.selectedBusinessId
-        }
-       
-        if (this.selectedCountry && String(this.selectedCountry).trim() !== '') {
-          params.country = this.selectedCountry
-        }
-       
-        if (this.deductionsReportParams.deduction_type && this.deductionsReportParams.deduction_type !== 'all') {
-          params.deduction_type = this.deductionsReportParams.deduction_type
-        }
-        const response = await axios.post('/api/admin/reports/generate/deductions', params)
-       
-        if (response.data.success) {
-          const reportData = response.data.data || {}
-         
-          this.currentReport = {
-            type: 'deductions',
-            title: 'Deductions Report',
-            data: reportData,
-            period: reportData.period || `${params.start_date} to ${params.end_date}`,
-            originalParams: { ...params }
-          }
-         
-          this.addToGeneratedReports('deductions', 'Deductions Report', this.currentReport.period, params, reportData)
-          this.showSuccess('Deductions report generated successfully!')
-        } else {
-          throw new Error(response.data.message || 'Failed to generate report')
-        }
-       
-      } catch (err) {
-        console.error('Error generating deductions report:', err)
-        this.handleApiError(err)
-      } finally {
-        this.generatingReport = false
-      }
-    },
-   
+    // ── Report Generators ──
     async generateAttendanceReport() {
-      this.generatingReport = true
+      this.generatingReport = true;
       try {
-        const params = {
-          start_date: this.ensureDateFormat(this.attendanceReportParams.start_date),
-          end_date: this.ensureDateFormat(this.attendanceReportParams.end_date),
-          report_type: this.attendanceReportParams.report_type || 'summary'
-        }
-       
-        if (this.attendanceReportParams.department && String(this.attendanceReportParams.department).trim() !== '') {
-          params.department = this.attendanceReportParams.department
-        }
-       
-        if (this.selectedBusinessId && String(this.selectedBusinessId).trim() !== '') {
-          params.business_id = this.selectedBusinessId
-        }
-       
-        if (this.selectedCountry && String(this.selectedCountry).trim() !== '') {
-          params.country = this.selectedCountry
-        }
-        const response = await axios.post('/api/admin/reports/generate/attendance', params)
-       
-        if (response.data.success) {
-          const reportData = response.data.data || {}
-         
-          this.currentReport = {
-            type: 'attendance',
-            title: 'Attendance Report',
-            data: reportData,
-            period: reportData.period || `${params.start_date} to ${params.end_date}`,
-            originalParams: { ...params }
-          }
-         
-          this.addToGeneratedReports('attendance', 'Attendance Report', this.currentReport.period, params, reportData)
-          this.showSuccess('Attendance report generated successfully!')
-        } else {
-          throw new Error(response.data.message || 'Failed to generate report')
-        }
-       
-      } catch (err) {
-        console.error('Error generating attendance report:', err)
-        this.handleApiError(err)
-      } finally {
-        this.generatingReport = false
-      }
+        const params = { start_date: this.ensureDate(this.attendanceReportParams.start_date), end_date: this.ensureDate(this.attendanceReportParams.end_date), report_type: this.attendanceReportParams.report_type || 'summary' };
+        if (this.attendanceReportParams.department) params.department = this.attendanceReportParams.department;
+        if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
+        if (this.selectedCountry)    params.country = this.selectedCountry;
+        const r = await axios.post('/api/admin/reports/generate/attendance', params);
+        if (!r.data.success) throw new Error(r.data.message);
+        this.currentReport = { type: 'attendance', title: 'Attendance Report', data: r.data.data || {}, period: r.data.data?.period || `${params.start_date} to ${params.end_date}`, originalParams: params };
+        this.addToGenerated('attendance', 'Attendance Report', this.currentReport.period, params, r.data.data);
+        this.showToast('Attendance report generated!', 'success');
+      } catch (err) { this.handleApiError(err); }
+      finally { this.generatingReport = false; }
     },
-   
     async generateLeaveReport() {
-      this.generatingReport = true
+      this.generatingReport = true;
       try {
-        const params = {
-          start_date: this.ensureDateFormat(this.leaveReportParams.start_date),
-          end_date: this.ensureDateFormat(this.leaveReportParams.end_date),
-          leave_type: this.leaveReportParams.leave_type || '',
-          status: this.leaveReportParams.status || 'all'
-        }
-       
-        if (this.selectedBusinessId && String(this.selectedBusinessId).trim() !== '') {
-          params.business_id = this.selectedBusinessId
-        }
-       
-        if (this.selectedCountry && String(this.selectedCountry).trim() !== '') {
-          params.country = this.selectedCountry
-        }
-       
-        const response = await axios.post('/api/admin/reports/generate/leave', params)
-       
-        if (response.data.success) {
-          const reportData = response.data.data || {}
-         
-          this.currentReport = {
-            type: 'leave',
-            title: 'Leave Report',
-            data: reportData,
-            period: reportData.period || `${params.start_date} to ${params.end_date}`,
-            originalParams: { ...params }
-          }
-         
-          this.addToGeneratedReports('leave', 'Leave Report', this.currentReport.period, params, reportData)
-          this.showSuccess('Leave report generated successfully!')
-        } else {
-          throw new Error(response.data.message || 'Failed to generate report')
-        }
-       
-      } catch (err) {
-        console.error('Error generating leave report:', err)
-        this.handleApiError(err)
-      } finally {
-        this.generatingReport = false
-      }
+        const params = { start_date: this.ensureDate(this.leaveReportParams.start_date), end_date: this.ensureDate(this.leaveReportParams.end_date), leave_type: this.leaveReportParams.leave_type || '', status: this.leaveReportParams.status || 'all' };
+        if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
+        if (this.selectedCountry)    params.country = this.selectedCountry;
+        const r = await axios.post('/api/admin/reports/generate/leave', params);
+        if (!r.data.success) throw new Error(r.data.message);
+        this.currentReport = { type: 'leave', title: 'Leave Report', data: r.data.data || {}, period: r.data.data?.period || `${params.start_date} to ${params.end_date}`, originalParams: params };
+        this.addToGenerated('leave', 'Leave Report', this.currentReport.period, params, r.data.data);
+        this.showToast('Leave report generated!', 'success');
+      } catch (err) { this.handleApiError(err); }
+      finally { this.generatingReport = false; }
     },
-   
-    formatNumber(value) {
-      const num = parseFloat(value)
-      if (isNaN(num)) return '0.00'
-      return num.toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      })
-    },
-   
-    addToGeneratedReports(type, title, period, params, data) {
-      const report = {
-        id: Date.now(),
-        type,
-        title,
-        period,
-        filters: {
-          business: params.business_id ? this.getBusinessName(params.business_id) : null,
-          country: params.country ? this.getCountryName(params.country) : null,
-          department: params.department || null,
-          leave_type: params.leave_type || null,
-          status: params.status || null,
-          deduction_type: params.deduction_type || null
-        },
-        generated_at: new Date().toISOString(),
-        data,
-        originalParams: { ...params }
-      }
-     
-      this.generatedReports.unshift(report)
-     
-      if (this.generatedReports.length > 10) {
-        this.generatedReports = this.generatedReports.slice(0, 10)
-      }
-     
-      this.currentPage = 1
-      this.saveGeneratedReports()
-    },
-   
-    saveGeneratedReports() {
+    async generatePayrollReport() {
+      this.generatingReport = true;
       try {
-        localStorage.setItem('admin_generated_reports', JSON.stringify(this.generatedReports))
-      } catch (error) {
-        console.error('Error saving generated reports:', error)
-      }
+        const params = { start_date: this.ensureDate(this.payrollReportParams.start_date), end_date: this.ensureDate(this.payrollReportParams.end_date), status: this.payrollReportParams.status || 'all' };
+        if (this.payrollReportParams.department) params.department = this.payrollReportParams.department;
+        if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
+        if (this.selectedCountry)    params.country = this.selectedCountry;
+        const r = await axios.post('/api/admin/reports/generate/payroll', params);
+        if (!r.data.success) throw new Error(r.data.message);
+        this.currentReport = { type: 'payroll', title: 'Payroll Report', data: r.data.data || {}, period: r.data.data?.period || `${params.start_date} to ${params.end_date}`, originalParams: params };
+        this.addToGenerated('payroll', 'Payroll Report', this.currentReport.period, params, r.data.data);
+        this.showToast('Payroll report generated!', 'success');
+      } catch (err) { this.handleApiError(err); }
+      finally { this.generatingReport = false; }
     },
-   
+    async generateEarningsReport() {
+      this.generatingReport = true;
+      try {
+        const params = { start_date: this.ensureDate(this.earningsReportParams.start_date), end_date: this.ensureDate(this.earningsReportParams.end_date) };
+        if (this.earningsReportParams.department) params.department = this.earningsReportParams.department;
+        if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
+        if (this.selectedCountry)    params.country = this.selectedCountry;
+        const r = await axios.post('/api/admin/reports/generate/earnings', params);
+        if (!r.data.success) throw new Error(r.data.message);
+        this.currentReport = { type: 'earnings', title: 'Earnings Report', data: r.data.data || {}, period: r.data.data?.period || `${params.start_date} to ${params.end_date}`, originalParams: params };
+        this.addToGenerated('earnings', 'Earnings Report', this.currentReport.period, params, r.data.data);
+        this.showToast('Earnings report generated!', 'success');
+      } catch (err) { this.handleApiError(err); }
+      finally { this.generatingReport = false; }
+    },
+    async generateDeductionsReport() {
+      this.generatingReport = true;
+      try {
+        const params = { start_date: this.ensureDate(this.deductionsReportParams.start_date), end_date: this.ensureDate(this.deductionsReportParams.end_date) };
+        if (this.deductionsReportParams.department)    params.department = this.deductionsReportParams.department;
+        if (this.deductionsReportParams.deduction_type !== 'all') params.deduction_type = this.deductionsReportParams.deduction_type;
+        if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
+        if (this.selectedCountry)    params.country = this.selectedCountry;
+        const r = await axios.post('/api/admin/reports/generate/deductions', params);
+        if (!r.data.success) throw new Error(r.data.message);
+        this.currentReport = { type: 'deductions', title: 'Deductions Report', data: r.data.data || {}, period: r.data.data?.period || `${params.start_date} to ${params.end_date}`, originalParams: params };
+        this.addToGenerated('deductions', 'Deductions Report', this.currentReport.period, params, r.data.data);
+        this.showToast('Deductions report generated!', 'success');
+      } catch (err) { this.handleApiError(err); }
+      finally { this.generatingReport = false; }
+    },
+    addToGenerated(type, title, period, params, data) {
+      const r = { id: Date.now(), type, title, period, filters: { business: params.business_id ? this.getBusinessName(params.business_id) : null, country: params.country ? this.getCountryName(params.country) : null, department: params.department || null, leave_type: params.leave_type || null, deduction_type: params.deduction_type || null }, generated_at: new Date().toISOString(), data, originalParams: { ...params } };
+      this.generatedReports.unshift(r);
+      if (this.generatedReports.length > 10) this.generatedReports = this.generatedReports.slice(0,10);
+      this.currentPage = 1;
+      try { localStorage.setItem('admin_generated_reports', JSON.stringify(this.generatedReports)); } catch {}
+    },
+    loadGeneratedReports() {
+      try { const s = localStorage.getItem('admin_generated_reports'); if (s) this.generatedReports = JSON.parse(s); } catch {}
+    },
     async downloadReport(report) {
       try {
-        let startDate, endDate
-       
-        if (report.period && report.period.includes(' to ')) {
-          const [startStr, endStr] = report.period.split(' to ')
-          startDate = this.formatDateForBackend(startStr)
-          endDate = this.formatDateForBackend(endStr)
-        } else {
-          const today = new Date().toISOString().split('T')[0]
-          startDate = today
-          endDate = today
-        }
-        const params = {
-          format: 'pdf',
-          start_date: startDate,
-          end_date: endDate,
-          ...this.getAdditionalDownloadParams(report)
-        }
-        const response = await axios.post(`/api/admin/reports/download/${report.type}`, params, {
-          responseType: 'blob',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-        if (response.data.size === 0) {
-          throw new Error('Downloaded file is empty')
-        }
-        const blob = new Blob([response.data], { type: 'application/pdf' })
-        const url = window.URL.createObjectURL(blob)
-        const link = document.createElement('a')
-        link.href = url
-        link.setAttribute('download', `${report.type}_report_${new Date().getTime()}.pdf`)
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        window.URL.revokeObjectURL(url)
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Report download started!'
-        })
-      } catch (err) {
-        console.error('Download error:', err)
-        this.handleApiError(err)
-      }
+        const [sd, ed] = report.period?.includes(' to ') ? report.period.split(' to ').map(this.ensureDate) : [new Date().toISOString().split('T')[0], new Date().toISOString().split('T')[0]];
+        const r = await axios.post(`/api/admin/reports/download/${report.type}`, { format:'pdf', start_date:sd, end_date:ed, ...this.getDownloadParams(report) }, { responseType:'blob' });
+        const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([r.data],{type:'application/pdf'}));
+        link.download = `${report.type}_report_${Date.now()}.pdf`; link.click();
+        this.showToast('Download started!', 'success');
+      } catch (err) { this.handleApiError(err); }
     },
-   
     async exportToExcel(report) {
       try {
-        let startDate, endDate
-       
-        if (report.period && report.period.includes(' to ')) {
-          const [startStr, endStr] = report.period.split(' to ')
-          startDate = this.formatDateForBackend(startStr)
-          endDate = this.formatDateForBackend(endStr)
-        } else {
-          const today = new Date().toISOString().split('T')[0]
-          startDate = today
-          endDate = today
-        }
-        const params = {
-          format: 'csv',
-          start_date: startDate,
-          end_date: endDate,
-          ...this.getAdditionalDownloadParams(report)
-        }
-        const response = await axios.post(`/api/admin/reports/download/${report.type}`, params, {
-          responseType: 'blob',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-        if (response.data.size === 0) {
-          throw new Error('Exported file is empty')
-        }
-        const url = window.URL.createObjectURL(new Blob([response.data]))
-        const link = document.createElement('a')
-        link.href = url
-        link.setAttribute('download', `${report.type}_report_${new Date().getTime()}.csv`)
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        this.$notify({
-          type: 'success',
-          title: 'Success',
-          text: 'Report exported to CSV!'
-        })
-      } catch (err) {
-        console.error('Export error:', err)
-        this.handleApiError(err)
-      }
+        const [sd, ed] = report.period?.includes(' to ') ? report.period.split(' to ').map(this.ensureDate) : [new Date().toISOString().split('T')[0], new Date().toISOString().split('T')[0]];
+        const r = await axios.post(`/api/admin/reports/download/${report.type}`, { format:'csv', start_date:sd, end_date:ed, ...this.getDownloadParams(report) }, { responseType:'blob' });
+        const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([r.data]));
+        link.download = `${report.type}_report_${Date.now()}.csv`; link.click();
+        this.showToast('CSV exported!', 'success');
+      } catch (err) { this.handleApiError(err); }
     },
-    formatDateForBackend(dateString) {
-      const date = new Date(dateString)
-      if (isNaN(date.getTime())) {
-        return new Date().toISOString().split('T')[0]
-      }
-     
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-     
-      return `${year}-${month}-${day}`
+    getDownloadParams(report) {
+      const p = report.originalParams || {}; const out = {};
+      if (p.department)     out.department = p.department;
+      if (p.business_id)    out.business_id = p.business_id;
+      if (p.country)        out.country = p.country;
+      if (p.report_type)    out.report_type = p.report_type;
+      if (p.leave_type)     out.leave_type = p.leave_type;
+      if (p.status && p.status !== 'all') out.status = p.status;
+      if (p.deduction_type && p.deduction_type !== 'all') out.deduction_type = p.deduction_type;
+      return out;
     },
-    ensureDateFormat(dateString) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-        return dateString
-      }
-      return this.formatDateForBackend(dateString)
-    },
-   
-    getAdditionalDownloadParams(report) {
-      const additionalParams = {}
-      const params = report.originalParams || {}
-     
-      switch (report.type) {
-        case 'attendance':
-          if (params.department && String(params.department).trim() !== '') {
-            additionalParams.department = params.department
-          }
-          if (params.business_id && String(params.business_id).trim() !== '') {
-            additionalParams.business_id = params.business_id
-          }
-          if (params.country && String(params.country).trim() !== '') {
-            additionalParams.country = params.country
-          }
-          additionalParams.report_type = params.report_type || 'summary'
-          break
-         
-        case 'leave':
-          if (params.leave_type && String(params.leave_type).trim() !== '') {
-            additionalParams.leave_type = params.leave_type
-          }
-          if (params.status && params.status !== 'all') {
-            additionalParams.status = params.status
-          }
-          if (params.business_id && String(params.business_id).trim() !== '') {
-            additionalParams.business_id = params.business_id
-          }
-          if (params.country && String(params.country).trim() !== '') {
-            additionalParams.country = params.country
-          }
-          break
-         
-        case 'payroll':
-          if (params.department && String(params.department).trim() !== '') {
-            additionalParams.department = params.department
-          }
-          if (params.status && params.status !== 'all') {
-            additionalParams.status = params.status
-          }
-          if (params.business_id && String(params.business_id).trim() !== '') {
-            additionalParams.business_id = params.business_id
-          }
-          if (params.country && String(params.country).trim() !== '') {
-            additionalParams.country = params.country
-          }
-          break
-         
-        case 'earnings':
-          if (params.department && String(params.department).trim() !== '') {
-            additionalParams.department = params.department
-          }
-          if (params.business_id && String(params.business_id).trim() !== '') {
-            additionalParams.business_id = params.business_id
-          }
-          if (params.country && String(params.country).trim() !== '') {
-            additionalParams.country = params.country
-          }
-          break
-         
-        case 'deductions':
-          if (params.department && String(params.department).trim() !== '') {
-            additionalParams.department = params.department
-          }
-          if (params.business_id && String(params.business_id).trim() !== '') {
-            additionalParams.business_id = params.business_id
-          }
-          if (params.country && String(params.country).trim() !== '') {
-            additionalParams.country = params.country
-          }
-          if (params.deduction_type && params.deduction_type !== 'all') {
-            additionalParams.deduction_type = params.deduction_type
-          }
-          break
-      }
-     
-      return additionalParams
-    },
-   
     viewReport(report) {
-      if (report.data) {
-        this.currentReport = report
-      } else {
-        this.fetchReportData(report)
-      }
-      setTimeout(() => {
-        const previewSection = document.querySelector('.report-preview-section')
-        if (previewSection) {
-          previewSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        }
-      }, 100)
+      this.currentReport = report;
+      setTimeout(() => { document.querySelector('.report-preview-section')?.scrollIntoView({ behavior:'smooth' }); }, 100);
     },
-    async fetchReportData(report) {
-      this.generatingReport = true
-      try {
-        // Fallback: Ensure dates are set if missing in originalParams
-        const params = { ...report.originalParams }
-        if (!params.start_date) {
-          params.start_date = this.dashboardStartDate || new Date().toISOString().split('T')[0]
-        }
-        if (!params.end_date) {
-          params.end_date = this.dashboardEndDate || new Date().toISOString().split('T')[0]
-        }
-        const response = await axios.post(`/api/admin/reports/generate/${report.type}`, params)
-        if (response.data.success) {
-          const reportData = response.data.data || {}
-          this.currentReport = {
-            ...report,
-            data: reportData,
-            period: reportData.period || report.period
-          }
-        } else {
-          throw new Error(response.data.message || 'Failed to fetch report data')
-        }
-      } catch (err) {
-        this.handleApiError(err)
-      } finally {
-        this.generatingReport = false
-      }
-    },
-   
-    async loadGeneratedReports() {
-      try {
-        const savedReports = localStorage.getItem('admin_generated_reports')
-        if (savedReports) {
-          this.generatedReports = JSON.parse(savedReports)
-        }
-      } catch (err) {
-        console.error('Error loading generated reports:', err)
-      }
-    },
-   
-    getReportIcon(type) {
-      const icons = {
-        attendance: '📊',
-        leave: '📋',
-        payroll: '💰',
-        earnings: '📈',
-        deductions: '📉'
-      }
-      return icons[type] || '📄'
-    },
-   
-    formatDate(date) {
-      if (!date) return 'N/A'
-      return new Date(date).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    },
-   
-    showSuccess(message) {
-      this.successMessage = message
-      this.$notify({
-        type: 'success',
-        title: 'Success',
-        text: message,
-        duration: 3000
-      })
-      setTimeout(() => {
-        this.successMessage = null
-      }, 3000)
-    },
-   
-    retryFetch() {
-      this.retryCount++
-      if (this.retryCount <= 3) {
-        this.fetchAdminData()
-      } else {
-        this.error = 'Max retries exceeded. Check your network or server.'
-      }
-    },
-   
+    retryFetch() { this.retryCount++; if (this.retryCount <= 3) this.fetchAdminData(); else { this.error = 'Max retries exceeded.'; this.retryCount = 0; } },
     handleApiError(err) {
-      let errorMsg = 'An unexpected error occurred.'
-     
-      if (err.code === 'ERR_NETWORK' || err.message.includes('Network Error')) {
-        errorMsg = 'Network error: Please check your connection and try again.'
-      } else if (err.response?.status === 401) {
-        errorMsg = 'Your session has expired. Please log in again.'
-        this.authStore.clearAuth()
-        this.$router.push({ name: 'login' })
-      } else if (err.response?.status === 403) {
-        errorMsg = 'You do not have permission to perform this action.'
-      } else if (err.response?.status === 404) {
-        errorMsg = 'Report generation endpoint not found. Please check the API routes.'
-      } else if (err.response?.status === 422) {
-        errorMsg = 'Invalid report parameters. Please check your inputs.'
-        if (err.response.data.errors) {
-          const errors = Object.values(err.response.data.errors).flat()
-          errorMsg += ' Details: ' + errors.join(', ')
-        }
-      } else if (err.response?.status === 500) {
-        errorMsg = 'Server error: Please try again later.'
-      } else {
-        errorMsg = err.response?.data?.message || err.message || errorMsg
-      }
-     
-      this.error = errorMsg
-     
-      this.$notify({
-        type: 'error',
-        title: 'Error',
-        text: errorMsg
-      })
+      const msg = err.response?.status === 401 ? 'Session expired.' : err.response?.status === 403 ? 'Access denied.' : err.response?.status === 422 ? 'Invalid parameters.' : err.response?.data?.message || 'An error occurred.';
+      this.error = msg; this.showToast(msg, 'error');
+      if (err.response?.status === 401) { this.authStore.clearAuth?.(); this.$router?.push?.({name:'login'}); }
     },
-    prevPage() {
-      if (this.currentPage > 1) {
-        this.currentPage--
-      }
-    },
-    nextPage() {
-      if (this.currentPage < this.totalPages) {
-        this.currentPage++
-      }
-    }
+    showToast(message, type = 'success') { this.toast = { show: true, message, type }; setTimeout(() => { this.toast.show = false; }, 3500); },
+    formatNumber(v) { const n = parseFloat(v); return isNaN(n) ? '0.00' : n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); },
+    formatDate(d) { return d ? new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'N/A'; },
+    getReportIcon(type) { return {attendance:'📊',leave:'📋',payroll:'💰',earnings:'📈',deductions:'📉'}[type] || '📄'; },
+    ensureDate(s) { if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; try { const d=new Date(s); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; } catch { return new Date().toISOString().split('T')[0]; } },
+    prevPage() { if (this.currentPage > 1) this.currentPage--; },
+    nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; }
   }
 }
 </script>
-<style>
-/* ============================================
-   ENHANCED VISIBILITY STYLES FOR REPORTS MANAGEMENT
-   All filter buttons, labels, and inputs are now highly visible
-   ============================================ */
 
-/* CSS Variables */
-:root {
-  /* Primary Brand Color - A calm, professional blue */
-  --color-primary: #3b82f6; /* Tailwind blue-500 */
-  /* Secondary Brand Color - A vibrant action color */
-  --color-secondary: #10b981; /* Tailwind emerald-500 */
-  /* Tertiary Color - A neutral for less critical actions */
-  --color-tertiary: #a855f7; /* Tailwind purple-500 */
-  /* Backgrounds */
-  --color-bg: #f3f4f6; /* Light gray background for the page */
-  --color-card-bg: #ffffff;
-  /* Text */
-  --color-heading: #1f2937; /* Darker text for titles */
-  --color-text: #4b5563; /* Standard text */
-  /* Borders & Shadows */
-  --color-border: #e5e7eb;
-  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.1);
-}
+<style scoped>
+/* ── Base ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
-/* --- Page Layout --- */
-.reports-management {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem;
-  background-color: var(--color-bg);
+.reports-view {
   min-height: 100vh;
-}
-
-/* ============================================
-   BUSINESS FILTER SECTION - MAXIMUM VISIBILITY
-   ============================================ */
-.business-filter-section {
-  background: white;
-  padding: 2rem;
-  border-radius: 16px;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  border: 2px solid #e5e7eb;
-}
-
-.business-filter-header {
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid #e5e7eb;
-}
-
-.business-filter-header h2 {
-  color: #1a202c;
-  font-size: 1.75rem;
-  margin-bottom: 0.5rem;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-}
-
-.filter-subtitle {
-  color: #4b5563;
-  font-size: 1rem;
-  margin-bottom: 0;
-  font-weight: 500;
-}
-
-/* ============================================
-   BUSINESS FILTER CONTROLS - ENHANCED VISIBILITY
-   ============================================ */
-.business-filter-controls {
-  display: flex;
-  gap: 1.5rem;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  margin-bottom: 1.5rem;
-  padding: 1.5rem;
-  background: linear-gradient(135deg, #f0f4ff 0%, #e0e7ff 100%);
-  border-radius: 12px;
-  border: 2px solid #c7d2fe;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  min-width: 220px;
-  flex: 1;
-}
-
-/* CRITICAL: Enhanced label visibility */
-.filter-label {
-  font-weight: 700;
-  color: #1a202c;
-  margin-bottom: 0.75rem;
-  font-size: 1rem;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  display: block;
-}
-
-/* CRITICAL: Enhanced select dropdown visibility */
-.business-select, 
-.country-select {
-  padding: 0.875rem 1rem;
-  border: 2px solid #cbd5e0;
-  border-radius: 10px;
-  font-size: 1.05rem;
-  transition: all 0.3s;
-  background: white;
-  width: 100%;
-  cursor: pointer;
-  color: #1a202c;
-  font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.business-select:hover,
-.country-select:hover {
-  border-color: #667eea;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
-}
-
-.business-select:focus, 
-.country-select:focus {
-  outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.2);
-}
-
-/* CRITICAL: Select option visibility */
-.business-select option,
-.country-select option {
-  background: white;
-  color: #1a202c;
-  padding: 0.75rem;
-  font-weight: 600;
-  font-size: 1rem;
-}
-
-.active-filter-badge {
-  margin-top: 0.75rem;
-  padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border-radius: 20px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  display: inline-block;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-  letter-spacing: 0.025em;
-}
-
-/* CRITICAL: Enhanced clear filters button */
-.btn-clear-filters {
-  padding: 0.875rem 1.75rem;
-  background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
-  color: #991b1b;
-  border: 2px solid #fca5a5;
-  border-radius: 10px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s;
-  height: fit-content;
-  white-space: nowrap;
-  font-size: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.15);
-}
-
-.btn-clear-filters:hover {
-  background: linear-gradient(135deg, #fca5a5 0%, #f87171 100%);
-  color: white;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
-}
-
-/* ============================================
-   APPLIED FILTERS INFO - MAXIMUM VISIBILITY
-   ============================================ */
-.applied-filters-info {
-  padding: 1.25rem;
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  border-radius: 12px;
-  border: 2px solid #3b82f6;
-  margin-top: 1rem;
-  display: block !important;
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
-}
-
-.applied-filters-info p {
-  margin: 0 0 0.75rem 0;
-  font-size: 1rem;
-  color: #1e3a8a;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.applied-filters-tags {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-/* CRITICAL: Enhanced filter tags */
-.filter-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1.25rem;
-  background: white;
-  color: #1e3a8a;
-  border-radius: 25px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  border: 2px solid #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-  letter-spacing: 0.025em;
-}
-
-.tag-remove {
-  cursor: pointer;
-  font-size: 1.5rem;
-  line-height: 1;
-  color: #dc2626;
-  opacity: 1;
-  transition: all 0.2s;
-  margin-left: 0.5rem;
-  font-weight: 900;
-  background: #fee2e2;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tag-remove:hover {
-  background: #dc2626;
-  color: white;
-  transform: scale(1.1);
-}
-
-/* ============================================
-   ADMIN INFO SECTION
-   ============================================ */
-.admin-info h2 {
-  color: var(--color-heading);
-  font-size: 1.75rem;
-  margin-bottom: 0.25rem;
-  font-weight: 700;
-}
-
-.admin-subtitle-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.admin-subtitle {
-  color: var(--color-text);
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.active-filters-display {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.filter-display-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1.25rem;
-  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
-  border-radius: 12px;
-  font-size: 0.95rem;
-  border: 2px solid #818cf8;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
-}
-
-.filter-display-item .filter-label {
-  font-weight: 700;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  font-family: 'Inter', system-ui, sans-serif;
   color: #1e293b;
-  margin: 0;
-  font-size: 0.9rem;
-  text-transform: uppercase;
+  padding: 1.5rem 2rem 3rem;
+  max-width: 1300px;
+  margin: 0 auto;
 }
 
-.filter-display-item .filter-value {
-  font-weight: 700;
-  color: #4f46e5;
-  font-size: 1rem;
+/* ── Header Card ─────────────────────────────────── */
+.dashboard-header-card {
+  background: white; border-radius: 16px; padding: 1.5rem 1.75rem;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;
+  margin-bottom: 1.25rem; position: relative; overflow: hidden;
 }
+.header-card-accent { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.user-greeting  { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
+.avatar-section { display: flex; align-items: center; gap: 1rem; }
+.avatar { width: 52px; height: 52px; background: linear-gradient(135deg, #3b82f6, #6366f1); border-radius: 14px; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 4px 12px rgba(59,130,246,0.25); flex-shrink: 0; }
+.user-info { display: flex; flex-direction: column; gap: 0.2rem; }
+.greeting  { margin: 0; font-size: 1.375rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
+.subtitle  { margin: 0; color: #64748b; font-size: 0.875rem; }
+.role-meta { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.125rem; }
+.role-badge { background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.125rem 0.6rem; border-radius: 8px; font-size: 0.7rem; font-weight: 600; color: #166534; }
+.filter-active-badge { background: #eff6ff; border: 1px solid #bfdbfe; padding: 0.125rem 0.6rem; border-radius: 8px; font-size: 0.7rem; font-weight: 600; color: #1e40af; }
+.header-actions { display: flex; gap: 0.5rem; }
 
-/* ============================================
-   BUTTONS - ENHANCED VISIBILITY
-   ============================================ */
-.btn-primary, .btn-secondary, .btn-tertiary, .btn-download, .btn-view, .btn-close-preview {
-  padding: 0.875rem 1.5rem;
-  border: none;
-  border-radius: 10px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
+/* ── Buttons ─────────────────────────────────────── */
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
+  display: flex; align-items: center; gap: 0.4rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white;
+  border: none; padding: 0.5rem 1.25rem; border-radius: 8px;
+  font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.35); }
+.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+
+.btn-outline {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.45rem 0.9rem; background: white; border: 1px solid #e2e8f0;
+  color: #475569; border-radius: 8px; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-outline:hover:not(:disabled) { background: #f8fafc; border-color: #cbd5e1; }
+.btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-outline.export { color: #059669; border-color: #bbf7d0; background: #f0fdf4; }
+.btn-outline.export:hover { background: #dcfce7; }
+.btn-outline.danger { color: #ef4444; border-color: #fecaca; background: #fff5f5; }
+.btn-outline.danger:hover { background: #fee2e2; }
+
+.btn-generate { width: 100%; justify-content: center; padding: 0.6rem 1rem; margin-top: auto; }
+
+.btn-clear {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.35rem 0.875rem; background: #fff5f5; border: 1px solid #fecaca;
+  color: #ef4444; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; font-family: inherit;
+}
+.btn-clear:hover { background: #fee2e2; }
+
+/* ── Dashboard Layout ────────────────────────────── */
+.dashboard-content { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.metrics-section,
+.table-section {
+  background: white; border-radius: 16px; padding: 1.5rem;
+  box-shadow: 0 2px 4px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;
 }
 
-.btn-secondary {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-}
+h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem 0; color: #334155; }
 
-.btn-tertiary {
-  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
-  color: white;
-}
+/* ── Metrics ─────────────────────────────────────── */
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; }
+.metric-card { padding: 1.25rem; background: #f8fafc; border-radius: 12px; display: flex; flex-direction: column; align-items: center; text-align: center; border: 1px solid #e2e8f0; position: relative; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
+.metric-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -4px rgba(0,0,0,0.08); border-color: var(--accent); }
+.metric-card::before { display: none; }
+.metric-icon-wrap { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; }
+.metric-value { font-size: 1.8rem; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 0.25rem; }
+.metric-label { font-size: 0.78rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 
-.btn-primary:hover, .btn-secondary:hover, .btn-tertiary:hover, .btn-download:hover, .btn-view:hover {
-  opacity: 0.9;
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+/* ── Controls Bar ────────────────────────────────── */
+.controls-bar {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 0.875rem; gap: 1rem; flex-wrap: wrap;
 }
+.filters-row { display: flex; gap: 0.875rem; flex-wrap: wrap; align-items: flex-end; }
+.controls-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 
-.btn-primary:disabled, .btn-secondary:disabled, .btn-tertiary:disabled {
-  background: #9ca3af;
-  color: white;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-  opacity: 0.6;
-}
+.filter-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.filter-group label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
 
-.btn-download {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-  color: white;
-  padding: 0.75rem 1.25rem;
-  font-size: 0.95rem;
-}
-
-.btn-view {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  padding: 0.75rem 1.25rem;
-  font-size: 0.95rem;
-}
-
-.btn-close-preview {
-  background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
-  color: white;
-}
-
-.btn-close-preview:hover {
-  background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
-}
-
-/* ============================================
-   STATUS/ERROR MESSAGES
-   ============================================ */
-.error-message, .loading {
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  border-radius: 12px;
-  text-align: center;
-  font-weight: 700;
-  font-size: 1.1rem;
-}
-
-.error-message {
-  background-color: #fee2e2;
-  color: #991b1b;
-  border: 2px solid #f87171;
-}
-
-.loading {
-  background-color: #dbeafe;
-  color: #1e40af;
-  border: 2px solid #60a5fa;
-}
-
-/* ============================================
-   MAIN DASHBOARD SECTIONS
-   ============================================ */
-.reports-dashboard > div:not(.admin-info) {
-  background: var(--color-card-bg);
-  border-radius: 16px;
-  box-shadow: var(--shadow-card);
-  padding: 2rem;
-  margin-bottom: 2.5rem;
-  border: 1px solid var(--color-border);
-}
-
-/* ============================================
-   REPORT GENERATION SECTION
-   ============================================ */
-.report-generation-section h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem;
-  font-weight: 700;
-}
-
-.section-description {
-  color: var(--color-text);
-  font-size: 1rem;
-  margin-bottom: 1.5rem;
-  font-weight: 500;
-}
-
-.filters-applied-note {
-  color: #3b82f6;
-  font-weight: 700;
-  background: #dbeafe;
-  padding: 0.25rem 0.75rem;
-  border-radius: 8px;
-  display: inline-block;
-  margin-left: 0.5rem;
-}
-
-/* ============================================
-   REPORT TYPE SELECTOR - ENHANCED VISIBILITY
-   ============================================ */
-.report-type-selector {
-  background: white;
-  border-radius: 12px;
-  padding: 1.75rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  border: 2px solid var(--color-border);
-}
-
-.type-selector-header {
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--color-border);
-}
-
-.type-selector-header h3 {
-  color: #1a202c;
-  font-size: 1.3rem;
-  margin: 0;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-.type-selector-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 1.25rem;
-}
-
-/* CRITICAL: Enhanced type selector buttons */
-.type-selector-btn {
-  padding: 1.5rem;
-  border: 3px solid #e5e7eb;
-  border-radius: 12px;
-  background: white;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.type-selector-btn:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  border-color: #3b82f6;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-}
-
-.type-selector-btn.active {
-  border-color: #3b82f6;
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.25);
-  transform: translateY(-4px);
-}
-
-.type-icon {
-  font-size: 2.5rem;
-}
-
-.type-name {
-  font-weight: 700;
-  color: #1a202c;
-  text-align: center;
-  font-size: 1rem;
-  letter-spacing: 0.025em;
-}
-
-/* ============================================
-   DYNAMIC REPORT FORM - ENHANCED VISIBILITY
-   ============================================ */
-.dynamic-report-form {
-  background: white;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  border: 2px solid var(--color-border);
-}
-
-.report-form-header {
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--color-border);
-}
-
-.report-form-header h3 {
-  color: #1a202c;
-  font-size: 1.6rem;
-  margin: 0 0 0.75rem 0;
-  font-weight: 800;
-}
-
-.form-description {
-  color: #4b5563;
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.report-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.report-form .generate-btn {
-  margin-top: 1.5rem;
-}
-
-.generation-header {
-  margin-bottom: 2rem;
-}
-
-.generation-header h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem;
-  font-weight: 700;
-}
-
-.option-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-/* CRITICAL: Enhanced date inputs */
-.date-inputs {
-  display: flex;
-  gap: 1.5rem;
-}
-
-.input-group {
-  flex: 1;
-}
-
-/* CRITICAL: Enhanced input labels */
-.input-group label {
-  color: #1a202c;
-  font-size: 1rem;
-  display: block;
-  margin-bottom: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-/* CRITICAL: Enhanced date input fields */
-.date-input {
-  padding: 0.875rem 1rem;
-  border: 2px solid #cbd5e0;
-  border-radius: 10px;
-  font-size: 1.05rem;
-  width: 100%;
-  box-sizing: border-box;
-  background: white;
-  color: #1a202c;
-  font-weight: 600;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.date-input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
-}
-
-/* CRITICAL: Enhanced filter group */
-.filter-group {
-  margin-bottom: 0;
-}
-
-.filter-group label {
-  display: block;
-  color: #1a202c;
-  font-size: 1rem;
-  margin-bottom: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-/* CRITICAL: Enhanced filter select dropdown */
 .filter-select {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid #cbd5e0;
-  border-radius: 10px;
-  font-size: 1.05rem;
-  background-color: white;
-  box-sizing: border-box;
-  color: #1a202c;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  padding: 0.45rem 0.875rem; border: 1px solid #e2e8f0; border-radius: 8px;
+  background: #f8fafc; color: #334155; font-size: 0.875rem; font-weight: 500;
+  cursor: pointer; appearance: none; transition: all 0.2s; font-family: inherit; min-width: 160px;
 }
+input.filter-select { min-width: 145px; appearance: auto; }
+.filter-select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
 
-.filter-select:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+/* Active filter tags */
+.active-tags { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.filter-tag-pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.65rem; background: #eff6ff; border: 1px solid #bfdbfe;
+  color: #1e40af; border-radius: 9999px; font-size: 0.72rem; font-weight: 600;
 }
+.tag-x { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0; margin-left: 0.1rem; }
+.tag-x:hover { color: #ef4444; }
 
-.filter-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+/* ── Report Type Selector ────────────────────────── */
+.report-type-wrap { margin-bottom: 1.5rem; }
+.sub-heading { font-size: 0.85rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.875rem 0; }
+.report-type-grid { display: flex; gap: 0.625rem; flex-wrap: wrap; }
+.type-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+  padding: 0.875rem 1.25rem; border: 1.5px solid #e2e8f0;
+  border-radius: 10px; background: #f8fafc; cursor: pointer; transition: all 0.18s;
+  min-width: 110px; font-family: inherit;
 }
+.type-btn:hover { border-color: #a5b4fc; background: #eff6ff; }
+.type-btn.active { border-color: #6366f1; background: linear-gradient(135deg, #eff6ff, #e0e7ff); box-shadow: 0 2px 8px rgba(99,102,241,0.2); }
+.type-icon  { font-size: 1.5rem; }
+.type-label { font-size: 0.75rem; font-weight: 700; color: #334155; text-align: center; }
 
-/* CRITICAL: Select option visibility */
-.filter-select option {
-  background: white;
-  color: #1a202c;
-  padding: 0.75rem;
-  font-weight: 600;
-  font-size: 1rem;
+/* ── Report Form ─────────────────────────────────── */
+.report-form-wrap {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem;
 }
+.report-form-head { margin-bottom: 1rem; padding-bottom: 0.875rem; border-bottom: 1px solid #e2e8f0; }
+.report-form-head h3 { margin: 0 0 0.25rem 0; font-size: 1rem; font-weight: 700; color: #1e293b; }
+.form-desc { margin: 0; font-size: 0.8rem; color: #64748b; }
 
-.business-country-info {
-  padding: 1.25rem;
-  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-  border-radius: 12px;
-  border: 2px solid #3b82f6;
-  margin-top: 1rem;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-}
-
-.info-label {
-  font-size: 0.95rem;
-  color: #1e3a8a;
-  font-weight: 800;
-  margin-bottom: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.info-tags {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.info-tag {
-  display: inline-block;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  font-size: 0.9rem;
-  font-weight: 700;
-  letter-spacing: 0.025em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.info-tag.business {
-  background: white;
-  color: #4f46e5;
-  border: 2px solid #4f46e5;
-}
-
-.info-tag.country {
-  background: white;
-  color: #059669;
-  border: 2px solid #059669;
-}
-
-.generate-btn {
-  margin-top: auto;
-  width: 100%;
-  justify-content: center;
-  padding: 1rem 1.5rem;
-  font-size: 1.05rem;
-}
-
-/* Earnings-specific styles */
-.btn-earnings {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.btn-earnings:hover {
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-}
-
-/* Deductions-specific styles */
-.btn-deductions {
-  background: linear-gradient(135deg, #f56565 0%, #ed64a6 100%);
-  color: white;
-}
-
-.btn-deductions:hover {
-  background: linear-gradient(135deg, #e53e3e 0%, #d53f8c 100%);
-}
-
-/* ============================================
-   QUICK STATS GRID
-   ============================================ */
-.stats-grid {
+.report-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.stat-card {
-  background: var(--color-card-bg);
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  padding: 1.5rem;
-  display: flex;
-  align-items: center;
-  transition: transform 0.2s;
-  border-left: 5px solid var(--color-primary);
-  border: 2px solid #e5e7eb;
-}
-
-.stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-}
-
-.stat-icon {
-  font-size: 2.5rem;
-  margin-right: 1rem;
-  background-color: #eff6ff;
-  padding: 0.75rem;
-  border-radius: 12px;
-  border: 2px solid #bfdbfe;
-}
-
-.stat-content h3 {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: #1a202c;
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.stat-value {
-  font-size: 2rem;
-  font-weight: 900;
-  color: #3b82f6;
-  margin: 0.5rem 0 0.25rem;
-  line-height: 1;
-}
-
-.stat-label {
-  font-size: 0.85rem;
-  color: #6b7280;
-  margin: 0;
-  font-weight: 600;
-}
-
-/* ============================================
-   GENERATED REPORTS SECTION
-   ============================================ */
-.generated-reports h2 {
-  color: var(--color-heading);
-  font-size: 1.5rem;
-  margin-bottom: 1.5rem;
-  font-weight: 700;
-}
-
-.reports-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.report-item {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 1.25rem 1.75rem;
-  border: 2px solid var(--color-border);
-  border-radius: 12px;
-  transition: all 0.3s;
-  background-color: var(--color-card-bg);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.report-item:hover {
-  border-color: #3b82f6;
-  box-shadow: 0 4px 16px rgba(59, 130, 246, 0.15);
-  transform: translateY(-2px);
-}
-
-.report-icon {
-  font-size: 2.5rem;
-  line-height: 1;
-}
-
-.report-info {
-  flex: 1;
-}
-
-.report-info h4 {
-  margin: 0 0 0.5rem 0;
-  color: #1a202c;
-  font-size: 1.2rem;
-  font-weight: 700;
-}
-
-.report-period {
-  margin: 0 0 0.5rem 0;
-  color: #3b82f6;
-  font-weight: 700;
-  font-size: 1rem;
-}
-
-.report-date {
-  margin: 0 0 0.75rem 0;
-  color: #6b7280;
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.report-filters {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.filter-badge {
-  padding: 0.375rem 0.875rem;
-  background: #f5f3ff;
-  color: #7c3aed;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  border: 2px solid #a78bfa;
-  letter-spacing: 0.025em;
-}
-
-.report-actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-/* ============================================
-   REPORT PREVIEW SECTION
-   ============================================ */
-.report-preview-section {
-  background: var(--color-card-bg);
-  border-radius: 16px;
-  box-shadow: var(--shadow-card);
-  padding: 2rem;
-  margin-bottom: 2.5rem;
-  border: 2px solid var(--color-border);
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--color-border);
-}
-
-.preview-header h2 {
-  color: #1a202c;
-  font-size: 1.6rem;
-  margin: 0 0 0.75rem 0;
-  font-weight: 800;
-}
-
-.preview-filters {
-  display: flex;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.preview-actions {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  flex-wrap: wrap;
-}
-
-.preview-content h3 {
-  color: #3b82f6;
-  font-size: 1.3rem;
-  margin-bottom: 1rem;
-  border-bottom: 2px solid var(--color-border);
-  padding-bottom: 0.75rem;
-  font-weight: 700;
-}
-
-.preview-content h4 {
-  color: #1a202c;
-  font-size: 1.1rem;
-  margin: 2rem 0 1rem;
-  font-weight: 700;
-}
-
-/* ============================================
-   EARNINGS & DEDUCTIONS BREAKDOWN
-   ============================================ */
-.earnings-breakdown-section,
-.deduction-breakdown-section {
-  margin-top: 2rem;
-  margin-bottom: 2rem;
-}
-
-.earning-cards,
-.deduction-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1.25rem;
-  margin-top: 1rem;
-}
-
-.earning-card,
-.deduction-card {
-  background: white;
-  border: 2px solid #dbeafe;
-  border-radius: 12px;
-  padding: 1.5rem;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.earning-card:hover,
-.deduction-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-  border-color: #3b82f6;
-}
-
-.earning-card-header,
-.deduction-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.earning-name,
-.deduction-name {
-  font-weight: 700;
-  color: #1a202c;
-  font-size: 1rem;
-  letter-spacing: 0.025em;
-}
-
-.earning-type-badge,
-.deduction-type-badge {
-  padding: 0.375rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* Type badge colors */
-.earning-type-badge.type-basic {
-  background: #dbeafe;
-  color: #1e40af;
-  border: 2px solid #3b82f6;
-}
-
-.earning-type-badge.type-allowance {
-  background: #d1fae5;
-  color: #065f46;
-  border: 2px solid #10b981;
-}
-
-.earning-type-badge.type-bonus {
-  background: #fef3c7;
-  color: #92400e;
-  border: 2px solid #f59e0b;
-}
-
-.earning-type-badge.type-overtime {
-  background: #e0e7ff;
-  color: #4f46e5;
-  border: 2px solid #818cf8;
-}
-
-.earning-type-badge.type-commission {
-  background: #fce7f3;
-  color: #9f1239;
-  border: 2px solid #ec4899;
-}
-
-.earning-type-badge.type-other {
-  background: #f3f4f6;
-  color: #1f2937;
-  border: 2px solid #9ca3af;
-}
-
-.deduction-type-badge.type-tax {
-  background: #fee2e2;
-  color: #991b1b;
-  border: 2px solid #ef4444;
-}
-
-.deduction-type-badge.type-statutory {
-  background: #fef3c7;
-  color: #92400e;
-  border: 2px solid #f59e0b;
-}
-
-.deduction-type-badge.type-pension {
-  background: #dbeafe;
-  color: #1e40af;
-  border: 2px solid #3b82f6;
-}
-
-.deduction-type-badge.type-health {
-  background: #d1fae5;
-  color: #065f46;
-  border: 2px solid #10b981;
-}
-
-.deduction-type-badge.type-voluntary {
-  background: #fce7f3;
-  color: #9f1239;
-  border: 2px solid #ec4899;
-}
-
-.deduction-type-badge.type-loan {
-  background: #e0e7ff;
-  color: #4f46e5;
-  border: 2px solid #818cf8;
-}
-
-.deduction-type-badge.type-other {
-  background: #f3f4f6;
-  color: #1f2937;
-  border: 2px solid #9ca3af;
-}
-
-.earning-card-body,
-.deduction-card-body {
-  border-top: 2px solid #dbeafe;
-  padding-top: 1rem;
-}
-
-.earning-amount,
-.deduction-amount {
-  font-size: 1.75rem;
-  font-weight: 900;
-  color: #3b82f6;
-  margin-bottom: 0.5rem;
-}
-
-.earning-employees,
-.deduction-employees {
-  font-size: 0.9rem;
-  color: #6b7280;
-  font-weight: 600;
-}
-
-/* ============================================
-   REPORT STATS
-   ============================================ */
-.report-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-
-.report-stat {
-  padding: 1.5rem;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-radius: 12px;
-  border-left: 5px solid #3b82f6;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border: 2px solid #bfdbfe;
-}
-
-.report-stat .stat-label {
-  color: #1e3a8a;
-  font-weight: 700;
-  font-size: 0.95rem;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
-}
-
-.report-stat .stat-value {
-  color: #1a202c;
-  font-size: 1.5rem;
-  font-weight: 900;
-}
-
-/* ============================================
-   TABLE STYLES
-   ============================================ */
-.attendance-details-table,
-.leave-details-table,
-.payroll-details-table {
-  overflow-x: auto;
-  margin-top: 1rem;
-  margin-bottom: 2rem;
-  border-radius: 12px;
-  border: 2px solid var(--color-border);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.attendance-details-table table,
-.leave-details-table table,
-.payroll-details-table table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--color-card-bg);
-}
-
-.attendance-details-table th,
-.attendance-details-table td,
-.leave-details-table th,
-.leave-details-table td,
-.payroll-details-table th,
-.payroll-details-table td {
-  padding: 1rem 1.25rem;
-  text-align: left;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.attendance-details-table th,
-.leave-details-table th,
-.payroll-details-table th {
-  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-  font-weight: 700;
-  color: #1a202c;
-  font-size: 0.95rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-  border-bottom: 2px solid var(--color-border);
-}
-
-.attendance-details-table tbody tr,
-.leave-details-table tbody tr,
-.payroll-details-table tbody tr {
-  transition: all 0.2s;
-}
-
-.attendance-details-table tr:hover,
-.leave-details-table tr:hover,
-.payroll-details-table tr:hover {
-  background: #f0f4ff;
-}
-
-.attendance-details-table tr:last-child td,
-.leave-details-table tr:last-child td,
-.payroll-details-table tr:last-child td {
-  border-bottom: none;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 0.375rem 0.875rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  white-space: nowrap;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.status-badge.present, 
-.status-badge.approved {
-  background: #d1fae5;
-  color: #065f46;
-  border: 2px solid #10b981;
-}
-
-.status-badge.absent, 
-.status-badge.rejected {
-  background: #fee2e2;
-  color: #991b1b;
-  border: 2px solid #ef4444;
-}
-
-.status-badge.late, 
-.status-badge.pending {
-  background: #fef3c7;
-  color: #92400e;
-  border: 2px solid #f59e0b;
-}
-
-.more-records {
-  text-align: center;
-  padding: 1.25rem;
-  color: #6b7280;
-  font-style: italic;
-  font-size: 0.95rem;
-  background: #f9fafb;
-  border-top: 2px solid var(--color-border);
-  font-weight: 600;
-}
-
-/* ============================================
-   LOADING SPINNER
-   ============================================ */
-.spinner {
-  border: 4px solid #f3f3f3;
-  border-top: 4px solid var(--color-primary);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 1rem;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* ============================================
-   PAGINATION
-   ============================================ */
-.pagination {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1.5rem;
-  margin-top: 2rem;
-  padding: 1rem;
-}
-
-.pagination button {
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.3s;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-}
-
-.pagination button:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.3);
-}
-
-.pagination button:disabled {
-  background: #d1d5db;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.pagination span {
-  font-weight: 800;
-  color: #1a202c;
-  font-size: 1.05rem;
-}
-
-/* ============================================
-   RESPONSIVE DESIGN
-   ============================================ */
-@media (max-width: 1400px) {
-  .earning-cards,
-  .deduction-cards {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  }
- 
-  .type-selector-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  }
-}
-
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 0.875rem;
+  align-items: end;
+}
+.form-generate-col { display: flex; flex-direction: column; justify-content: flex-end; }
+
+.applied-notice {
+  display: flex; align-items: center; gap: 0.5rem; margin-top: 0.875rem;
+  padding: 0.6rem 0.875rem; background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 8px; font-size: 0.78rem; color: #3730a3; font-weight: 500;
+}
+.notice-tag { background: white; border: 1px solid #bfdbfe; color: #3730a3; padding: 0.1rem 0.4rem; border-radius: 4px; font-weight: 700; font-size: 0.7rem; }
+
+/* ── Reports List ────────────────────────────────── */
+.reports-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem; }
+
+.report-row {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem 1.25rem; background: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 10px; transition: all 0.15s;
+}
+.report-row:hover { background: #f0f4ff; border-color: #a5b4fc; }
+
+.report-row-icon { font-size: 1.75rem; flex-shrink: 0; }
+.report-row-info { flex: 1; min-width: 0; }
+.report-row-title  { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
+.report-row-period { font-size: 0.78rem; color: #6366f1; font-weight: 600; margin-top: 0.1rem; }
+.report-row-date   { font-size: 0.72rem; color: #94a3b8; margin-top: 0.1rem; }
+.report-row-tags   { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+
+.mini-tag {
+  display: inline-block; padding: 0.1rem 0.45rem;
+  background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+  border-radius: 9999px; font-size: 0.65rem; font-weight: 600;
+}
+
+.report-row-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+
+.action-btn {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.35rem 0.7rem; border: 1px solid #e2e8f0; background: white;
+  color: #64748b; border-radius: 6px; font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: inherit;
+}
+.action-btn:hover  { background: #eff6ff; color: #4f46e5; border-color: #a5b4fc; }
+.action-btn.export:hover { background: #f0fdf4; color: #059669; border-color: #bbf7d0; }
+.action-btn.view:hover   { background: #fafafa; color: #1e293b; border-color: #94a3b8; }
+
+/* ── Pagination ──────────────────────────────────── */
+.pagination-bar { display: flex; justify-content: space-between; align-items: center; padding-top: 1rem; border-top: 1px solid #f1f5f9; }
+.pagination-info { font-size: 0.82rem; color: #64748b; }
+.pagination-info strong { color: #1e293b; font-weight: 700; }
+.pagination-controls { display: flex; gap: 0.5rem; }
+.page-btn { display: flex; align-items: center; gap: 0.3rem; padding: 0.35rem 0.875rem; background: white; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #475569; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.page-btn:hover:not(:disabled) { border-color: #a5b4fc; color: #4f46e5; background: #eff6ff; }
+.page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Preview Section ─────────────────────────────── */
+.preview-header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+.preview-header-row h2 { margin: 0 0 0.35rem; }
+.preview-tags  { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.preview-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; flex-shrink: 0; }
+
+.preview-content { display: flex; flex-direction: column; gap: 1.5rem; }
+
+/* Preview Stats Strip */
+.preview-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;
+}
+.preview-stat {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 0.875rem 1rem; display: flex; flex-direction: column; gap: 0.3rem;
+}
+.preview-stat small  { font-size: 0.68rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+.preview-stat strong { font-size: 1rem; font-weight: 700; color: #1e293b; }
+
+/* Breakdown Cards */
+.breakdown-section h4 { font-size: 0.85rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.75rem; }
+.breakdown-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.875rem; }
+.breakdown-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem; position: relative; overflow: hidden; }
+.breakdown-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
+.breakdown-card.green::before { background: #10b981; }
+.breakdown-card.red::before   { background: #ef4444; }
+.bc-head   { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 0.5rem; }
+.bc-name   { font-size: 0.82rem; font-weight: 700; color: #1e293b; }
+.bc-badge  { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; padding: 0.1rem 0.4rem; border-radius: 9999px; }
+.bc-amount { font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
+.bc-sub    { font-size: 0.72rem; color: #94a3b8; }
+
+/* Badge type colors */
+.type-basic     { background: #dbeafe; color: #1e40af; }
+.type-allowance { background: #d1fae5; color: #065f46; }
+.type-bonus     { background: #fef3c7; color: #92400e; }
+.type-overtime  { background: #e0e7ff; color: #4f46e5; }
+.type-commission{ background: #fce7f3; color: #9f1239; }
+.type-tax       { background: #fee2e2; color: #991b1b; }
+.type-statutory { background: #fef3c7; color: #92400e; }
+.type-pension   { background: #dbeafe; color: #1e40af; }
+.type-health    { background: #d1fae5; color: #065f46; }
+.type-voluntary { background: #fce7f3; color: #9f1239; }
+.type-loan      { background: #e0e7ff; color: #4f46e5; }
+.type-other     { background: #f1f5f9; color: #475569; }
+
+/* Preview Table */
+h4 { font-size: 0.85rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.75rem; }
+
+.table-container { border-radius: 10px; overflow: hidden; border: 1px solid #e2e8f0; }
+.preview-grid { display: grid; padding: 0.75rem 1rem; align-items: center; gap: 0.75rem; font-size: 0.82rem; }
+.payroll-grid { grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr; }
+.list-header  { background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 0.68rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.list-row     { background: white; border-bottom: 1px solid #f1f5f9; }
+.list-row:last-child { border-bottom: none; }
+
+.text-right   { text-align: right; }
+.text-muted   { color: #94a3b8; }
+.text-success { color: #10b981; }
+.text-danger  { color: #ef4444; }
+.text-amber   { color: #f59e0b; }
+.fw-600 { font-weight: 600; }
+.fw-700 { font-weight: 700; }
+.font-mono { font-family: 'SFMono-Regular', Consolas, monospace; }
+
+.more-records { text-align: center; padding: 0.875rem; color: #94a3b8; font-size: 0.78rem; background: #f8fafc; border-top: 1px solid #e2e8f0; }
+
+/* Net Pay Style Card */
+.net-pay-card {
+  background: linear-gradient(135deg, #001f5b 0%, #0040c1 100%);
+  color: white; padding: 1.5rem; border-radius: 12px;
+  display: flex; justify-content: space-between; align-items: center;
+  position: relative; overflow: hidden; margin-top: 0.5rem;
+}
+.net-label { font-size: 0.68rem; opacity: 0.8; letter-spacing: 0.12em; font-weight: 600; margin-bottom: 0.35rem; }
+.net-value { font-size: 1rem; font-weight: 700; opacity: 0.95; }
+.net-bg    { position: absolute; right: -10px; bottom: -20px; font-size: 4.5rem; font-weight: 900; opacity: 0.07; letter-spacing: -0.05em; }
+
+/* ── Empty & Spinner ─────────────────────────────── */
+.empty-state { text-align: center; padding: 4rem 2rem; display: flex; flex-direction: column; align-items: center; gap: 0.875rem; color: #94a3b8; }
+.empty-state p { margin: 0; font-size: 0.875rem; color: #64748b; }
+.spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toast ───────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 2rem; right: 2rem;
+  background: white; padding: 0.875rem 1.25rem; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  display: flex; align-items: center; gap: 0.65rem;
+  z-index: 200; font-size: 0.875rem; font-weight: 500;
+  border-left: 4px solid #10b981;
+}
+.toast.error   { border-left-color: #ef4444; }
+.toast.success svg { color: #10b981; }
+.toast.error   svg { color: #ef4444; }
+
+/* ── Transitions ─────────────────────────────────── */
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all 0.3s ease; }
+.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translateY(12px); }
+
+/* ── Responsive ──────────────────────────────────── */
 @media (max-width: 768px) {
-  .reports-management {
-    padding: 1rem;
-  }
- 
-  .business-filter-section {
-    padding: 1.5rem;
-  }
- 
-  .business-filter-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 1.25rem;
-  }
- 
-  .filter-group {
-    width: 100%;
-    min-width: auto;
-  }
- 
-  .business-select, 
-  .country-select {
-    width: 100%;
-  }
- 
-  .btn-clear-filters {
-    width: 100%;
-  }
- 
-  .active-filter-badge {
-    margin-left: 0;
-    margin-top: 0.75rem;
-    display: block;
-    text-align: center;
-  }
- 
-  .admin-subtitle-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .active-filters-display {
-    width: 100%;
-  }
-  
-  .earning-cards,
-  .deduction-cards {
-    grid-template-columns: 1fr;
-  }
- 
-  .type-selector-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
- 
-  .report-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1.5rem;
-  }
- 
-  .report-info {
-    width: 100%;
-  }
- 
-  .report-actions {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
- 
-  .preview-header {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .preview-actions {
-    flex-direction: column;
-  }
-  
-  .report-stats {
-    grid-template-columns: 1fr;
-  }
-  
-  .stats-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .date-inputs {
-    flex-direction: column;
-  }
- 
-  .input-group {
-    width: 100%;
-  }
+  .reports-view    { padding: 1rem 1rem 2rem; }
+  .user-greeting   { flex-direction: column; align-items: flex-start; }
+  .header-actions  { width: 100%; }
+  .metrics-grid    { grid-template-columns: repeat(2,1fr); }
+  .report-form-grid{ grid-template-columns: 1fr 1fr; }
+  .preview-header-row { flex-direction: column; }
+  .preview-actions { width: 100%; }
+  .payroll-grid    { grid-template-columns: 2fr 1fr 1fr; }
+  .payroll-grid > :nth-child(n+4) { display: none; }
 }
-
 @media (max-width: 480px) {
-  .type-selector-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .business-filter-header h2 {
-    font-size: 1.5rem;
-  }
-  
-  .admin-info h2 {
-    font-size: 1.5rem;
-  }
-  
-  .preview-header h2 {
-    font-size: 1.3rem;
-  }
-  
-  .attendance-details-table,
-  .leave-details-table,
-  .payroll-details-table {
-    font-size: 0.85rem;
-  }
-  
-  .attendance-details-table th,
-  .attendance-details-table td,
-  .leave-details-table th,
-  .leave-details-table td,
-  .payroll-details-table th,
-  .payroll-details-table td {
-    padding: 0.75rem;
-  }
- 
-  .btn-primary, 
-  .btn-secondary, 
-  .btn-tertiary {
-    padding: 0.75rem 1.25rem;
-    font-size: 0.9rem;
-  }
- 
-  .applied-filters-tags {
-    flex-direction: column;
-  }
- 
-  .filter-tag {
-    width: 100%;
-    justify-content: space-between;
-  }
+  .metrics-grid     { grid-template-columns: 1fr; }
+  .report-form-grid { grid-template-columns: 1fr; }
+  .breakdown-grid   { grid-template-columns: 1fr; }
+  .report-type-grid { flex-direction: column; }
+  .type-btn         { width: 100%; flex-direction: row; justify-content: flex-start; min-width: 0; }
 }
 </style>

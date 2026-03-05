@@ -206,21 +206,25 @@ class TaskController extends Controller
     public function store(Request $request)
     {
         try {
-            $validated = $request->validate([
-                'title' => 'required|string|max:255',
-                'description' => 'nullable|string',
-                'priority' => 'required|in:low,moderate,high,critical',
-                'assigned_to' => 'required|exists:users,id',
-                'deadline' => 'nullable|date',
-            ]);
+             $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'priority' => 'required|in:low,moderate,high,critical',
+            'assigned_to' => 'required|exists:users,id',
+            'deadline' => 'nullable|date',
+            'planned_start_date' => 'nullable|date', // NEW: Allow custom start date
+            'status' => 'nullable|in:todo,in_progress,under_review,completed', // NEW: Allow creating with any status
+        ]);
 
-            $currentUser = Auth::user();
-            
-            Log::info('Task creation attempt', [
-                'user_id' => $currentUser->id,
-                'user_role' => $currentUser->role,
-                'assigned_to' => $validated['assigned_to']
-            ]);
+             $currentUser = Auth::user();
+        
+        Log::info('Task creation attempt', [
+            'user_id' => $currentUser->id,
+            'user_role' => $currentUser->role,
+            'assigned_to' => $validated['assigned_to'],
+            'planned_start_date' => $validated['planned_start_date'] ?? 'not set',
+            'status' => $validated['status'] ?? 'todo'
+        ]);
 
             // Verify the assigned user has an employee record
             $assignedUser = User::with('employee.business')->find($validated['assigned_to']);
@@ -302,15 +306,16 @@ class TaskController extends Controller
             ]);
 
             // Create the task
-            $task = Task::create([
-                'title' => $validated['title'],
-                'description' => $validated['description'],
-                'priority' => $validated['priority'],
-                'assigned_to' => $validated['assigned_to'],
-                'deadline' => $validated['deadline'],
-                'created_by' => $currentUser->id,
-                'status' => 'todo',
-            ]);
+             $task = Task::create([
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+            'priority' => $validated['priority'],
+            'assigned_to' => $validated['assigned_to'],
+            'deadline' => $validated['deadline'],
+            'planned_start_date' => $validated['planned_start_date'] ?? null, // NEW
+            'created_by' => $currentUser->id,
+            'status' => $validated['status'] ?? 'todo', // NEW: Allow custom status
+        ]);
 
             Log::info('Task created successfully', [
                 'task_id' => $task->id,

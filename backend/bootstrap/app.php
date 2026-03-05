@@ -3,7 +3,8 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Request; // Import this
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -27,23 +28,39 @@ return Application::configure(basePath: dirname(__DIR__))
             'ensure.employee' => \App\Http\Middleware\EnsureUserHasEmployee::class,
             'dept' => \App\Http\Middleware\ValidateDepartment::class,
             \App\Http\Middleware\CheckTokenExpiration::class,
-
         ]);
 
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);
-         // ADD THIS LINE TO TRUST PROXIES
+        
         $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //
-         })
-    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule) {
-        // Check for idle sessions every 5 minutes
+    })
+    ->withSchedule(function (Schedule $schedule) {
+        // Check for idle sessions every minute (not 5 minutes)
+        // Idle threshold is 15 minutes + 5 minute warning = 20 minutes total
+        // Running every minute ensures timely warnings and auto-closing
         $schedule->command('sessions:check-idle')
-            ->everyFiveMinutes()
+            ->everyMinute() // Changed from everyFiveMinutes() to everyMinute()
             ->name('check-idle-overtime-sessions')
             ->withoutOverlapping()
-            ->runInBackground();
-    })->create();
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/idle-sessions.log'));
+
+        // Clean up any missed sessions from previous days at 12:05 AM daily
+        $schedule->command('attendance:fix-previous-day-overtime')
+            ->dailyAt('00:05')
+            ->name('fix-previous-day-overtime')
+            ->withoutOverlapping()
+            ->runInBackground()
+            ->appendOutputTo(storage_path('logs/overtime-cleanup.log'));
+
+        // Optional: Add a heartbeat check every 5 minutes to ensure system is working
+        $schedule->call(function () {
+            \Illuminate\Support\Facades\Log::info('Scheduler heartbeat - idle check should be running every minute');
+        })->everyFiveMinutes()->name('scheduler-heartbeat');
+    })
+    ->create();

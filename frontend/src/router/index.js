@@ -1,106 +1,84 @@
+// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import routes from './routes'
+import { useAdminPermissions } from '@/composables/useAdminPermissions'
+import routes from './routes/index'
+
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes
+  history: createWebHistory(),
+  routes,
+  scrollBehavior: () => ({ top: 0 }),
 })
-let authLoadPromise = null
-router.beforeEach(async (to, from, next) => {
+
+// ── Permission map ────────────────────────────────────────────────────────────
+// Maps each restricted admin path prefix → the permission flag that ALLOWS it.
+// If the flag is false (i.e. the restriction is active), the user is redirected.
+const ADMIN_ROUTE_PERMISSIONS = {
+  '/admin/employ':        'canAddEmployee',   // Add Employees (Super Admin)
+  '/admin/payroll':       'canViewPayroll',
+  '/admin/payslips':      'canViewPayslip',
+  '/admin/admin-manager': 'canManageAdmins',
+}
+
+// ── Navigation guard ──────────────────────────────────────────────────────────
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
-  console.log('🛣️ Router navigation:', {
-    from: from.path,
-    to: to.path,
-    toName: to.name
-  })
-  // Allow public routes without auth check
-  if (to.meta.public) {
-    console.log('✅ Public route, allowing access')
-    next()
-    return
+
+  // ── 1. Guest-only routes (login, register, etc.) ──────────────────────────
+  if (to.meta.guestOnly) {
+    return authStore.isAuthenticated ? next({ path: '/admin/dashboard' }) : next()
   }
-  // Wait for auth to be loaded from storage if not already loaded
-  if (!authStore.authLoaded && localStorage.getItem('token')) {
-    if (!authLoadPromise) {
-      console.log('⏳ Loading auth from storage...')
-      authLoadPromise = authStore.loadFromStorage()
-        .then(() => {
-          console.log('✅ Auth loaded successfully')
-          authLoadPromise = null
-        })
-        .catch((error) => {
-          console.error('❌ Auth load failed:', error)
-          authLoadPromise = null
-        })
+
+  // ── 2. Public routes that need no auth check ──────────────────────────────
+  if (!to.meta.requiresAuth) return next()
+
+  // ── 3. Require authentication ─────────────────────────────────────────────
+  if (!authStore.isAuthenticated) {
+    return next({ name: 'Login', query: { redirect: to.fullPath } })
+  }
+
+  // ── 4. Admin permission checks ────────────────────────────────────────────
+  // Only run for /admin/* routes — employee and manager routes need no checks.
+  if (to.path.startsWith('/admin/')) {
+    const {
+      canAddEmployee,
+      canViewPayroll,
+      canViewPayslip,
+      canManageAdmins,
+      isSuspended,
+      waitForFetch,
+    } = useAdminPermissions(authStore.currentBusinessId)
+
+    // Wait for the permissions API call to resolve before evaluating flags.
+    // waitForFetch() resolves immediately if already cached, otherwise awaits
+    // the in-flight request, so there is no redundant network call.
+    await waitForFetch()
+
+    // ── 4a. Suspended admins can only see the dashboard ───────────────────
+    if (isSuspended.value && to.path !== '/admin/dashboard') {
+      return next({ path: '/admin/dashboard' })
     }
-    try {
-      await authLoadPromise
-    } catch (error) {
-      console.error('❌ Error waiting for auth load:', error)
-    }
-  }
-  const isAuthenticated = authStore.isAuthenticated
-  const guestOnly = to.meta.guestOnly
-  const requiresAuth = to.meta.requiresAuth
-  const requiredRoles = to.meta.roles
-  console.log('🔐 Auth status:', {
-    isAuthenticated,
-    userEmail: authStore.user?.email,
-    userRole: authStore.userRole,
-    authLoaded: authStore.authLoaded,
-    hasToken: !!authStore.token,
-    hasUser: !!authStore.user
-  })
-  console.log('🔍 Route requirements:', {
-    guestOnly,
-    requiresAuth,
-    requiredRoles
-  })
-  // Handle guest-only routes (login, register, etc.)
-  if (guestOnly && isAuthenticated) {
-    console.log('✅ Already authenticated, redirecting to dashboard')
-    const dashboardRoute = getDashboardRoute(authStore.userRole)
-    next({ name: dashboardRoute })
-    return
-  }
-  // Handle protected routes
-  if (requiresAuth && !isAuthenticated) {
-    console.log('🚫 Not authenticated, redirecting to login')
-    next({
-      name: 'Login',
-      query: { redirect: to.fullPath }
-    })
-    return
-  }
-  // Check role-based access
-  if (requiresAuth && requiredRoles && requiredRoles.length > 0) {
-    const hasRole = authStore.hasRole(requiredRoles)
-    console.log('🔑 Role check:', {
-      userRole: authStore.userRole,
-      requiredRoles,
-      hasRole
-    })
-    if (!hasRole) {
-      console.log('🚫 Insufficient permissions')
-      next({ name: 'Unauthorized' })
-      return
+
+    // ── 4b. Check route-specific restrictions ─────────────────────────────
+    for (const [pathPrefix, permissionKey] of Object.entries(ADMIN_ROUTE_PERMISSIONS)) {
+      if (to.path.startsWith(pathPrefix)) {
+        const permMap = { canAddEmployee, canViewPayroll, canViewPayslip, canManageAdmins }
+        const allowed = permMap[permissionKey]
+
+        if (!allowed.value) {
+          // Redirect to dashboard with a flash message hint in the query
+          return next({
+            path: '/admin/dashboard',
+            query: { restricted: '1' },
+          })
+        }
+        break // Only one prefix can match per route
+      }
     }
   }
-  // Check specific user restrictions
-  if (to.meta.specificUser && authStore.user?.email !== to.meta.specificUser) {
-    console.log('🚫 Route restricted to specific user:', to.meta.specificUser)
-    next({ name: 'Unauthorized' })
-    return
-  }
-  console.log('✅ Navigation allowed\n')
+
+  // ── 5. All checks passed ──────────────────────────────────────────────────
   next()
 })
-function getDashboardRoute(role) {
-  const dashboards = {
-    'admin': 'AdminDashboard',
-    'manager': 'ManagerDashboard',
-    'employee': 'EmployeeDashboard'
-  }
-  return dashboards[role] || 'EmployeeDashboard'
-}
+
 export default router

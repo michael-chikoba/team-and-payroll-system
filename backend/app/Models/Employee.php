@@ -7,11 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Log;
+use App\Traits\HasEncryptedFields;
 
 class Employee extends Model
 {
     use HasFactory;
+    use HasEncryptedFields;
+
+    protected $table = 'employees';
 
     protected $fillable = [
         'business_id',
@@ -22,8 +25,8 @@ class Employee extends Model
         'position',
         'department',
         'base_salary',
-        'transport_allowance',  // ADDED
-        'lunch_allowance',      // ADDED
+        'transport_allowance',
+        'lunch_allowance',
         'hire_date',
         'employment_type',
         'bank_details',
@@ -37,13 +40,11 @@ class Employee extends Model
     ];
 
     protected $casts = [
-        'base_salary' => 'decimal:2',
-        'transport_allowance' => 'decimal:2',  // ADDED
-        'lunch_allowance' => 'decimal:2',      // ADDED
+        // REMOVED decimal casts for salary fields - they're encrypted now
         'hire_date' => 'date',
         'date_of_birth' => 'date',
-        'bank_details' => 'array',
-        'emergency_contact' => 'array',
+        'bank_details' => 'array',        // Will be auto-encrypted by trait
+        'emergency_contact' => 'array',    // Will be auto-encrypted by trait
         'is_active' => 'boolean',
     ];
 
@@ -51,90 +52,94 @@ class Employee extends Model
         'full_name',
         'email',
         'formatted_salary',
+        'total_salary',
     ];
 
     /**
- * Get tasks assigned to this employee
- */
-public function tasks(): HasMany
-{
-    return $this->hasMany(Task::class, 'assigned_to', 'user_id');
-}
-
-/**
- * Get tasks created by this employee
- */
-public function createdTasks(): HasMany
-{
-    return $this->hasMany(Task::class, 'created_by', 'user_id');
-}
-/**
- * Get tickets submitted by this employee
- */
-public function tickets(): HasMany
-{
-    return $this->hasMany(Ticket::class, 'user_id', 'user_id');
-}
-/**
- * Get tickets assigned to this employee
- */
-public function assignedTickets()
-{
-    return $this->hasManyThrough(
-        Ticket::class,
-        Ticket::class, 
-        'user_id',
-        'id',
-        'user_id',
-        'ticket_id'
-    );
-}
-    /**
-     * Boot method for model events
+     * Define which fields should be encrypted
      */
-    protected static function boot()
+    public function getEncryptedFields(): array
     {
-        parent::boot();
+        return [
+            // Personal Information
+            'phone',                    // Phone
+            'national_id',              // National ID
+            'address',                  // Address
+            'emergency_contact',        // Emergency Contact
+            
+            // Financial Information
+            'base_salary',               // Salary (ENCRYPTED)
+            'transport_allowance',       // Transport allowance (ENCRYPTED)
+            'lunch_allowance',           // Lunch allowance (ENCRYPTED)
+            'bank_details',              // Bank details
+        ];
+        // NOTE: 'email' is not in employees table - it's from user relation
+    }
 
-        static::creating(function ($employee) {
-            if (empty($employee->manager_id) && $employee->department) {
-                $query = Manager::where('department', $employee->department);
-                
-                if ($employee->country_id) {
-                    $query->where('country_id', $employee->country_id);
-                }
-                
-                if ($employee->business_id) {
-                    $query->where('business_id', $employee->business_id);
-                }
-                
-                $manager = $query->first();
-                
-                if ($manager) {
-                    $employee->manager_id = $manager->user_id;
-                }
-            }
-        });
+    /**
+     * ========================================
+     * ACCESSORS FOR ENCRYPTED FIELDS
+     * ========================================
+     */
 
-        static::updating(function ($employee) {
-            if ($employee->isDirty('department') && empty($employee->manager_id) && $employee->department) {
-                $query = Manager::where('department', $employee->department);
-                
-                if ($employee->country_id) {
-                    $query->where('country_id', $employee->country_id);
-                }
-                
-                if ($employee->business_id) {
-                    $query->where('business_id', $employee->business_id);
-                }
-                
-                $manager = $query->first();
-                
-                if ($manager) {
-                    $employee->manager_id = $manager->user_id;
-                }
-            }
-        });
+    /**
+     * Get base salary as float (decrypted automatically by trait)
+     */
+    public function getBaseSalaryValueAttribute(): float
+    {
+        return (float) ($this->base_salary ?? 0);
+    }
+
+    /**
+     * Get transport allowance as float
+     */
+    public function getTransportAllowanceValueAttribute(): float
+    {
+        return (float) ($this->transport_allowance ?? 0);
+    }
+
+    /**
+     * Get lunch allowance as float
+     */
+    public function getLunchAllowanceValueAttribute(): float
+    {
+        return (float) ($this->lunch_allowance ?? 0);
+    }
+
+    /**
+     * Get total salary as float
+     */
+    public function getTotalSalaryAttribute(): float
+    {
+        return $this->base_salary_value + 
+               $this->transport_allowance_value + 
+               $this->lunch_allowance_value;
+    }
+
+    /**
+     * Get formatted total salary
+     */
+    public function getFormattedTotalSalaryAttribute(): string
+    {
+        if (!$this->country) {
+            return number_format($this->total_salary, 2);
+        }
+        return $this->country->formatCurrency($this->total_salary);
+    }
+    /**
+     * Get transport allowance (for backward compatibility)
+     */
+    public function getTransportAllowance(): float
+    {
+        return $this->transport_allowance_value;
+    }
+
+    /**
+     * Get lunch allowance (for backward compatibility)
+     */
+    public function getLunchAllowance(): float
+    {
+        return $this->lunch_allowance_value;
     }
 
     /**
@@ -142,6 +147,38 @@ public function assignedTickets()
      * RELATIONSHIPS
      * ========================================
      */
+
+    /**
+     * Get tasks assigned to this employee
+     */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'assigned_to', 'user_id');
+    }
+
+    /**
+     * Get tasks created by this employee
+     */
+    public function createdTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'created_by', 'user_id');
+    }
+
+    /**
+     * Get tickets submitted by this employee
+     */
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'user_id', 'user_id');
+    }
+
+    /**
+     * Get tickets assigned to this employee
+     */
+    public function assignedTickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'assigned_to', 'user_id');
+    }
 
     public function business(): BelongsTo
     {
@@ -210,6 +247,57 @@ public function assignedTickets()
         return $this->loans()
             ->where('status', 'active')
             ->where('balance', '>', 0);
+    }
+
+    /**
+     * ========================================
+     * BOOT METHOD
+     * ========================================
+     */
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($employee) {
+            if (empty($employee->manager_id) && $employee->department) {
+                $query = Manager::where('department', $employee->department);
+                
+                if ($employee->country_id) {
+                    $query->where('country_id', $employee->country_id);
+                }
+                
+                if ($employee->business_id) {
+                    $query->where('business_id', $employee->business_id);
+                }
+                
+                $manager = $query->first();
+                
+                if ($manager) {
+                    $employee->manager_id = $manager->user_id;
+                }
+            }
+        });
+
+        static::updating(function ($employee) {
+            if ($employee->isDirty('department') && empty($employee->manager_id) && $employee->department) {
+                $query = Manager::where('department', $employee->department);
+                
+                if ($employee->country_id) {
+                    $query->where('country_id', $employee->country_id);
+                }
+                
+                if ($employee->business_id) {
+                    $query->where('business_id', $employee->business_id);
+                }
+                
+                $manager = $query->first();
+                
+                if ($manager) {
+                    $employee->manager_id = $manager->user_id;
+                }
+            }
+        });
     }
 
     /**
@@ -306,15 +394,15 @@ public function assignedTickets()
     public function getFormattedSalaryAttribute(): string
     {
         if (!$this->country) {
-            return number_format($this->base_salary, 2);
+            return number_format($this->base_salary_value, 2);
         }
 
-        return $this->country->formatCurrency($this->base_salary);
+        return $this->country->formatCurrency($this->base_salary_value);
     }
 
     /**
      * ========================================
-     * PAYROLL-SPECIFIC METHODS (ADDED)
+     * PAYROLL-SPECIFIC METHODS
      * ========================================
      */
 
@@ -322,7 +410,7 @@ public function assignedTickets()
      * Get country code for this employee
      * Priority: Employee's country > Business's country
      */
-   public function getCountryCode(): ?string
+    public function getCountryCode(): ?string
     {
         // Try employee's direct country first
         if ($this->country_id && $this->country) {
@@ -337,7 +425,9 @@ public function assignedTickets()
         return null;
     }
     
-    // Helper to get the country model
+    /**
+     * Helper to get the country model
+     */
     public function resolveCountry()
     {
         if ($this->country_id) {
@@ -350,9 +440,7 @@ public function assignedTickets()
         
         return Country::where('code', 'ZM')->first();
     }
-    /**
-     * Get the appropriate tax configuration for this employee
-     */
+
     /**
      * Get the tax configuration for this employee
      */
@@ -365,24 +453,8 @@ public function assignedTickets()
     }
 
     /**
-     * Get transport allowance with proper fallback
-     */
-    public function getTransportAllowance(): float
-    {
-        return (float) ($this->transport_allowance ?? 0.00);
-    }
-
-    /**
-     * Get lunch allowance with proper fallback
-     */
-    public function getLunchAllowance(): float
-    {
-        return (float) ($this->lunch_allowance ?? 0.00);
-    }
-
-    /**
      * ========================================
-     * EXISTING METHODS
+     * LEAVE MANAGEMENT METHODS
      * ========================================
      */
 
@@ -433,6 +505,12 @@ public function assignedTickets()
         }
     }
 
+    /**
+     * ========================================
+     * DEDUCTION METHODS
+     * ========================================
+     */
+
     public function hasActiveDeductions(): bool
     {
         return $this->activeAdvances()->exists() || $this->activeLoans()->exists();
@@ -462,6 +540,12 @@ public function assignedTickets()
             'total_monthly' => $this->getTotalMonthlyDeductions(),
         ];
     }
+
+    /**
+     * ========================================
+     * UTILITY METHODS
+     * ========================================
+     */
 
     public function belongsToBusiness(int $businessId): bool
     {
@@ -498,18 +582,19 @@ public function assignedTickets()
     public function calculateNetSalary(array $additionalDeductions = []): array
     {
         $config = $this->getCountryConfiguration();
+        $baseSalary = $this->base_salary_value;
 
         if (!$config) {
             return [
-                'gross_salary' => $this->base_salary,
-                'net_salary' => $this->base_salary,
+                'gross_salary' => $baseSalary,
+                'net_salary' => $baseSalary,
                 'tax' => 0,
                 'deductions' => [],
             ];
         }
 
-        $tax = $config->calculateTax($this->base_salary);
-        $statutoryDeductions = $config->calculateStatutoryDeductions($this->base_salary);
+        $tax = $config->calculateTax($baseSalary);
+        $statutoryDeductions = $config->calculateStatutoryDeductions($baseSalary);
         
         $monthlyDeductions = $this->getTotalMonthlyDeductions();
         $additionalDeductions['advances_loans'] = $monthlyDeductions;
@@ -518,10 +603,10 @@ public function assignedTickets()
         $totalAdditional = array_sum($additionalDeductions);
         $totalDeductions = $tax + $totalStatutory + $totalAdditional;
 
-        $netSalary = $this->base_salary - $totalDeductions;
+        $netSalary = $baseSalary - $totalDeductions;
 
         return [
-            'gross_salary' => round($this->base_salary, 2),
+            'gross_salary' => round($baseSalary, 2),
             'tax' => round($tax, 2),
             'statutory_deductions' => array_map(fn($v) => round($v, 2), $statutoryDeductions),
             'additional_deductions' => array_map(fn($v) => round($v, 2), $additionalDeductions),
@@ -562,16 +647,17 @@ public function assignedTickets()
 
     public function getFormattedBankDetails(): array
     {
-        if (!is_array($this->bank_details)) {
+        $details = $this->bank_details;
+        
+        if (!is_array($details)) {
             return [];
         }
 
         return [
-            'bank_name' => $this->bank_details['bank_name'] ?? 'N/A',
-            'account_number' => $this->bank_details['account_number'] ?? 'N/A',
-            'account_name' => $this->bank_details['account_name'] ?? 'N/A',
-            'branch' => $this->bank_details['branch'] ?? 'N/A',
+            'bank_name' => $details['bank_name'] ?? 'N/A',
+            'account_number' => $details['account_number'] ?? 'N/A',
+            'account_name' => $details['account_name'] ?? 'N/A',
+            'branch' => $details['branch'] ?? 'N/A',
         ];
     }
-    
 }

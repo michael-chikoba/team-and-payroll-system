@@ -1,0 +1,457 @@
+/**
+ * Archangel Payroll - Color System
+ * A comprehensive design token system for consistent theming across the application
+ * Version: 1.0.0
+ */
+
+:root {
+  /* ============================================
+     PRIMARY BRAND COLORS
+     ============================================ */
+  
+  /* Main brand gradient colors */
+  --primary-start: #667eea;        /* Soft Blue-Purple */
+  --primary-end: #764ba2;          /* Deep Purple */
+  --primary-gradient: linear-gradient(135deg, var(--primary-start) 0%, var(--primary-end) 100%);
+  
+  /* Primary color variations */
+  --primary-50: #f5f7ff;           /* Lightest tint */
+  --primary-100: #e8ecff;
+  --primary-200: #d1d9ff;
+  --primary-300: #a5b4fc;
+  --primary-400: #818cf8;
+  --primary-500: #667eea;          /* Base primary */
+  --primary-600: #5568d3;
+  --primary-700: #4c59ba;
+  --primary-800: #3f4694;
+  --primary-900: #2e3465;
+  
+  /* Secondary purple variations */
+  --secondary-50: #faf5ff;
+  --secondary-100: #f3e8ff;
+  --secondary-200: #e9d5ff;
+  --secondary-300: #d8b4fe;
+  --secondary-400: #c084fc;
+  --secondary-500: #a855f7;
+  --secondary-600: #764ba2;        /* Base secondary */
+  --secondary-700: #6d3f92;
+  --secondary-800: #5e3579;
+  --secondary-900: #4a2960;
+
+
+  /* ============================================
+     ACCENT COLORS
+     ============================================ */
+  
+  /* Success - Green */
+  --success-50: #f0fdf4;
+  --success-100: #dcfce7;
+  --success-200: #bbf7d0;
+  --success-300: #86efac;
+  --success-400: #4ade80;
+  --success-500: #22c55e;
+  --success-600: #10b981;          /* Base success */
+  --success-700: #059669;
+  --success-800: #047857;
+  --success-900: #065f46;
+  
+  /* Warning - Amber */
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-200: #fde68a;
+  --warning-300: #fcd34d;
+  --warning-400: #fbbf24;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;          /* Base warning */
+  --warning-700: #b45309;
+  --warning-800: #92400e;
+  --warning-900: #78350f;
+  
+  /* Error - Red */
+  --error-50: #fef2f2;
+  --error-100: #fee2e2;
+  --error-200: #fecaca;
+  --error-300: #fca5a5;
+  --error-400: #f87171;
+  --error-500: #ef4444;
+  --error-600: #dc2626;            /* Base error */
+  --error-700: #b91c1c;
+  --error-800: #991b1b;
+  --error-900: #7f1d1d;
+  
+  /* Info - Blue */
+  --info-50: #eff6ff;
+  --info-100: #dbeafe;
+  --info-200: #bfdbfe;
+  --info-300: #93c5fd;
+  --info-400: #60a5fa;
+  --info-500: #3b82f6;
+  --info-600: #2563eb;             /* Base info */
+  --info-700: #1d4ed8;
+  --info-800: #1e40af;
+  --info-900: #1e3a8a;
+
+
+  /* ============================================
+     NEUTRAL COLORS (Grays)
+     ============================================ */
+  
+  --neutral-50: #fafafa;           /* Almost white */
+  --neutral-100: #f5f5f5;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d4d4d4;
+  --neutral-400: #a3a3a3;
+  --neutral-500: #737373;
+  --neutral-600: #525252;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+  --neutral-900: #171717;          /* Almost black */
+  
+  /* Semantic neutral colors */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+
+  /* ============================================
+     BACKGROUND COLORS
+     ============================================ */
+  
+  --bg-primary: #ffffff;           /* Main white background */
+  --bg-secondary: #f9fafb;         /* Light gray background */
+  --bg-tertiary: #f3f4f6;          /* Slightly darker gray */
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+  --bg-overlay-light: rgba(255, 255, 255, 0.95);
+  --bg-gradient-primary: var(--primary-gradient);
+  --bg-gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --bg-gradient-dark: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
+  
+  /* Background overlays for cards */
+  --bg-card: #ffffff;
+  --bg-card-hover: #fafafa;
+  --bg-card-elevated: #ffffff;
+  
+  /* Feature-specific backgrounds */
+  --bg-input: #ffffff;
+  --bg-input-disabled: #f3f4f6;
+  --bg-badge: rgba(102, 126, 234, 0.1);
+  --bg-badge-success: rgba(16, 185, 129, 0.1);
+  --bg-badge-warning: rgba(217, 119, 6, 0.1);
+  --bg-badge-error: rgba(220, 38, 38, 0.1);
+
+
+  /* ============================================
+     TEXT COLORS
+     ============================================ */
+  
+  --text-primary: #1a1a1a;         /* Main text color */
+  --text-secondary: #666666;       /* Secondary text */
+  --text-tertiary: #999999;        /* Muted text */
+  --text-disabled: #cbd5e1;        /* Disabled text */
+  --text-inverse: #ffffff;         /* White text on dark bg */
+  --text-link: #667eea;            /* Links */
+  --text-link-hover: #764ba2;      /* Link hover */
+  
+  /* Text on colored backgrounds */
+  --text-on-primary: #ffffff;
+  --text-on-success: #ffffff;
+  --text-on-warning: #ffffff;
+  --text-on-error: #ffffff;
+  --text-on-dark: #ffffff;
+
+
+  /* ============================================
+     BORDER COLORS
+     ============================================ */
+  
+  --border-primary: #e5e7eb;       /* Main border */
+  --border-secondary: #d1d5db;     /* Slightly darker */
+  --border-tertiary: #f3f4f6;      /* Very light */
+  --border-focus: #667eea;         /* Focus state */
+  --border-error: #dc2626;         /* Error state */
+  --border-success: #10b981;       /* Success state */
+  --border-transparent: transparent;
+
+
+  /* ============================================
+     SHADOW DEFINITIONS
+     ============================================ */
+  
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* Colored shadows */
+  --shadow-primary: 0 4px 15px rgba(102, 126, 234, 0.3);
+  --shadow-primary-lg: 0 6px 20px rgba(102, 126, 234, 0.4);
+  --shadow-success: 0 4px 15px rgba(16, 185, 129, 0.3);
+  --shadow-error: 0 4px 15px rgba(220, 38, 38, 0.3);
+  
+  /* Special effects */
+  --shadow-navbar: 0 2px 20px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 4px 6px rgba(0, 0, 0, 0.05);
+  --shadow-card-hover: 0 12px 24px rgba(0, 0, 0, 0.1);
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.3);
+
+
+  /* ============================================
+     SPACING SYSTEM (8px base)
+     ============================================ */
+  
+  --spacing-0: 0;
+  --spacing-1: 0.25rem;    /* 4px */
+  --spacing-2: 0.5rem;     /* 8px */
+  --spacing-3: 0.75rem;    /* 12px */
+  --spacing-4: 1rem;       /* 16px */
+  --spacing-5: 1.25rem;    /* 20px */
+  --spacing-6: 1.5rem;     /* 24px */
+  --spacing-8: 2rem;       /* 32px */
+  --spacing-10: 2.5rem;    /* 40px */
+  --spacing-12: 3rem;      /* 48px */
+  --spacing-16: 4rem;      /* 64px */
+  --spacing-20: 5rem;      /* 80px */
+  --spacing-24: 6rem;      /* 96px */
+
+
+  /* ============================================
+     BORDER RADIUS
+     ============================================ */
+  
+  --radius-none: 0;
+  --radius-sm: 0.25rem;    /* 4px */
+  --radius-base: 0.5rem;   /* 8px */
+  --radius-md: 0.75rem;    /* 12px */
+  --radius-lg: 1rem;       /* 16px */
+  --radius-xl: 1.5rem;     /* 24px */
+  --radius-2xl: 2rem;      /* 32px */
+  --radius-full: 9999px;   /* Pill shape */
+
+
+  /* ============================================
+     TYPOGRAPHY
+     ============================================ */
+  
+  /* Font families */
+  --font-primary: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-heading: var(--font-primary);
+  --font-mono: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', 'Droid Sans Mono', 'Source Code Pro', monospace;
+  
+  /* Font sizes */
+  --text-xs: 0.75rem;      /* 12px */
+  --text-sm: 0.875rem;     /* 14px */
+  --text-base: 1rem;       /* 16px */
+  --text-lg: 1.125rem;     /* 18px */
+  --text-xl: 1.25rem;      /* 20px */
+  --text-2xl: 1.5rem;      /* 24px */
+  --text-3xl: 1.875rem;    /* 30px */
+  --text-4xl: 2.25rem;     /* 36px */
+  --text-5xl: 3rem;        /* 48px */
+  --text-6xl: 3.75rem;     /* 60px */
+  
+  /* Font weights */
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+  --font-extrabold: 800;
+  
+  /* Line heights */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+
+  /* ============================================
+     TRANSITIONS & ANIMATIONS
+     ============================================ */
+  
+  /* Timing functions */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  
+  /* Durations */
+  --duration-75: 75ms;
+  --duration-100: 100ms;
+  --duration-150: 150ms;
+  --duration-200: 200ms;
+  --duration-300: 300ms;
+  --duration-500: 500ms;
+  --duration-700: 700ms;
+  --duration-1000: 1000ms;
+  
+  /* Common transitions */
+  --transition-base: all 300ms var(--ease-in-out);
+  --transition-colors: color 300ms var(--ease-in-out), background-color 300ms var(--ease-in-out), border-color 300ms var(--ease-in-out);
+  --transition-transform: transform 300ms var(--ease-in-out);
+  --transition-opacity: opacity 300ms var(--ease-in-out);
+
+
+  /* ============================================
+     Z-INDEX SCALE
+     ============================================ */
+  
+  --z-base: 0;
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-fixed: 30;
+  --z-modal-backdrop: 40;
+  --z-modal: 50;
+  --z-popover: 60;
+  --z-tooltip: 70;
+  --z-notification: 80;
+  --z-max: 9999;
+
+
+  /* ============================================
+     BREAKPOINTS (for reference in media queries)
+     ============================================ */
+  
+  --breakpoint-xs: 375px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 992px;
+  --breakpoint-xl: 1200px;
+  --breakpoint-2xl: 1400px;
+
+
+  /* ============================================
+     COMPONENT-SPECIFIC COLORS
+     ============================================ */
+  
+  /* Buttons */
+  --btn-primary-bg: var(--primary-gradient);
+  --btn-primary-text: var(--text-on-primary);
+  --btn-primary-shadow: var(--shadow-primary);
+  --btn-primary-hover-shadow: var(--shadow-primary-lg);
+  
+  --btn-secondary-bg: var(--bg-primary);
+  --btn-secondary-text: var(--primary-500);
+  --btn-secondary-border: var(--primary-500);
+  
+  --btn-outline-bg: transparent;
+  --btn-outline-text: var(--primary-500);
+  --btn-outline-border: var(--primary-500);
+  --btn-outline-hover-bg: var(--primary-500);
+  --btn-outline-hover-text: var(--text-on-primary);
+  
+  --btn-disabled-bg: var(--gray-300);
+  --btn-disabled-text: var(--gray-500);
+  
+  /* Forms */
+  --form-input-bg: var(--bg-input);
+  --form-input-border: var(--border-primary);
+  --form-input-text: var(--text-primary);
+  --form-input-placeholder: var(--gray-400);
+  --form-input-focus-border: var(--border-focus);
+  --form-input-focus-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  --form-input-error-border: var(--border-error);
+  --form-input-error-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+  
+  /* Cards */
+  --card-bg: var(--bg-card);
+  --card-border: var(--border-primary);
+  --card-shadow: var(--shadow-card);
+  --card-hover-shadow: var(--shadow-card-hover);
+  --card-hover-border: var(--primary-500);
+  
+  /* Navigation */
+  --nav-bg: rgba(255, 255, 255, 0.95);
+  --nav-backdrop: blur(10px);
+  --nav-shadow: var(--shadow-navbar);
+  --nav-link-color: var(--text-secondary);
+  --nav-link-hover: var(--primary-500);
+  
+  /* Footer */
+  --footer-bg: var(--neutral-900);
+  --footer-text: var(--text-inverse);
+  --footer-link: var(--gray-400);
+  --footer-link-hover: var(--text-inverse);
+  --footer-border: var(--gray-700);
+}
+
+
+/* ============================================
+   DARK MODE OVERRIDES (Optional)
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Background adjustments */
+    --bg-primary: #0f0f0f;
+    --bg-secondary: #1a1a1a;
+    --bg-tertiary: #262626;
+    --bg-card: #1a1a1a;
+    --bg-card-hover: #262626;
+    
+    /* Text adjustments */
+    --text-primary: #f5f5f5;
+    --text-secondary: #d4d4d4;
+    --text-tertiary: #a3a3a3;
+    
+    /* Border adjustments */
+    --border-primary: #404040;
+    --border-secondary: #525252;
+    --border-tertiary: #262626;
+    
+    /* Input adjustments */
+    --form-input-bg: #262626;
+    --form-input-border: #404040;
+    --form-input-text: #f5f5f5;
+  }
+}
+
+
+/* ============================================
+   UTILITY CLASSES (Optional - use as needed)
+   ============================================ */
+
+.gradient-primary {
+  background: var(--primary-gradient);
+}
+
+.gradient-hero {
+  background: var(--bg-gradient-hero);
+}
+
+.text-gradient {
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.shadow-primary {
+  box-shadow: var(--shadow-primary);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.transition-base {
+  transition: var(--transition-base);
+}
+
+.transition-colors {
+  transition: var(--transition-colors);
+}
+
+.transition-transform {
+  transition: var(--transition-transform);
+}

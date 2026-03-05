@@ -23,28 +23,77 @@ class ManagerController extends Controller
         return Employee::where('user_id', $request->user()->id)->first();
     }
 
-    public function employees(Request $request): AnonymousResourceCollection
-    {
-        $managerProfile = $this->getManagerProfile($request);
+    public function employees(Request $request): JsonResponse
+{
+    $managerProfile = $this->getManagerProfile($request);
 
-        if (!$managerProfile) {
-            // Return empty collection if the manager has no employee profile
-            return EmployeeResource::collection(collect([]));
-        }
+    if (!$managerProfile) {
+        return response()->json([
+            'data' => [],
+            'message' => 'Manager profile not found'
+        ]);
+    }
 
-        $employees = Employee::with(['user', 'attendances' => function ($query) use ($request) {
-            if ($request->has('month')) {
-                $query->whereYear('date', $request->get('year', date('Y')))
-                      ->whereMonth('date', $request->get('month', date('m')));
-            }
-        }])
+    $employees = Employee::with(['user', 'business', 'country'])
         ->where('manager_id', $request->user()->id)
-        // STRICT CHECK: Must match Manager's Business and Country
         ->sameContext($managerProfile)
         ->get();
 
-        return EmployeeResource::collection($employees);
-    }
+    // Transform the data to match what Vue component expects
+    $transformed = $employees->map(function ($employee) {
+        return [
+            'id' => $employee->id,
+            'employee_id' => $employee->employee_id,
+            'full_name' => $employee->full_name,
+            'first_name' => $employee->user->first_name ?? null,
+            'last_name' => $employee->user->last_name ?? null,
+            'email' => $employee->user->email ?? null,
+            'position' => $employee->position,
+            'department' => $employee->department,
+            'employment_type' => $employee->employment_type,
+            'hire_date' => $employee->hire_date?->format('Y-m-d'),
+            'phone' => $employee->phone, // Auto-decrypts
+            'address' => $employee->address,
+            'emergency_contact' => $employee->emergency_contact,
+            'location' => $employee->address ? 'Office' : 'Remote', // You can customize this
+            'reports_to' => $this->getManagerName($employee->manager_id),
+            'user' => $employee->user ? [
+                'id' => $employee->user->id,
+                'name' => $employee->user->first_name . ' ' . $employee->user->last_name,
+                'email' => $employee->user->email,
+                'first_name' => $employee->user->first_name,
+                'last_name' => $employee->user->last_name,
+            ] : null,
+            'business' => $employee->business ? [
+                'id' => $employee->business->id,
+                'name' => $employee->business->name,
+            ] : null,
+        ];
+    });
+
+    Log::info('MANAGER_CONTROLLER: Team employees fetched', [
+        'manager_id' => $request->user()->id,
+        'count' => $transformed->count()
+    ]);
+
+    return response()->json([
+        'data' => $transformed,
+        'meta' => [
+            'total' => $transformed->count()
+        ]
+    ]);
+}
+
+/**
+ * Helper to get manager name
+ */
+private function getManagerName($managerId): string
+{
+    if (!$managerId) return 'N/A';
+    
+    $manager = \App\Models\User::find($managerId);
+    return $manager ? $manager->first_name . ' ' . $manager->last_name : 'N/A';
+}
 
     public function employeeDetails(Employee $employee, Request $request): JsonResponse
     {

@@ -7,11 +7,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use App\Traits\HasEncryptedFields;
 
 class Business extends Model
 {
     use HasFactory;
+    use HasEncryptedFields;
 
+       
     protected $fillable = [
         // Original fields
         'name',
@@ -90,6 +93,20 @@ class Business extends Model
         'employee_usage_percentage',
     ];
 
+
+
+        /**
+     * Define which fields should be encrypted
+     */
+    public function getEncryptedFields(): array
+    {
+        return [
+            'registration_number',       // ✓ Registration Number
+            'tax_identification_number', // ✓ Tax ID
+            'email',                     // ✓ Email
+            'phone',                     // ✓ Phone
+        ];
+    }
     /**
      * ========================================
      * CORE RELATIONSHIPS

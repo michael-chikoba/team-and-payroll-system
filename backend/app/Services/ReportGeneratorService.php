@@ -105,6 +105,15 @@ class ReportGeneratorService
         $globalDeductionTypes = [];
         $earningBreakdownForSummary = [];
         $deductionBreakdownForSummary = [];
+
+        // Detect whether the result set spans multiple currencies
+        $uniqueCurrencies = $payslips
+            ->map(fn($p) => optional(optional($p->employee)->country)->currency)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $isMultiCurrency = $uniqueCurrencies->count() > 1;
         
         // Process each payslip
         $formattedPayslips = $payslips->map(function ($payslip) use (
@@ -199,12 +208,12 @@ class ReportGeneratorService
                 $deductionBreakdownForSummary[$name]['employee_count']++;
             }
             
-            // Get currency info
-            $currency = $payslip->currency;
-            $currencySymbol = $currency;
+            // Resolve currency strictly from the payslip's own employee/country — no fallback defaults
+            $currency = null;
+            $currencySymbol = null;
             if ($payslip->employee && $payslip->employee->country) {
-                $currency = $payslip->employee->country->currency ?? $currency;
-                $currencySymbol = $payslip->employee->country->currency_symbol ?? $currency;
+                $currency = $payslip->employee->country->currency ?? null;
+                $currencySymbol = $payslip->employee->country->currency_symbol ?? null;
             }
             
             return [
@@ -214,7 +223,7 @@ class ReportGeneratorService
                 'employee_id' => $payslip->employee_id,
                 'business' => $payslip->employee->business ? $payslip->employee->business->name : 'N/A',
                 'country' => $payslip->employee->country ? $payslip->employee->country->name : 'N/A',
-                'country_code' => $payslip->employee->country ? $payslip->employee->country->code : 'N/A',
+                'country_code' => $payslip->employee->country ? $payslip->employee->country->code : null,
                 'currency' => $currency,
                 'currency_symbol' => $currencySymbol,
                 'department' => $payslip->employee->department ?? 'Unassigned',
@@ -246,21 +255,40 @@ class ReportGeneratorService
         $averageGross = $processedCount > 0 ? $totals['gross_salary'] / $processedCount : 0;
         $averageNet = $processedCount > 0 ? $totals['net_salary'] / $processedCount : 0;
         
-        // Build filter info
+        // Build filter info (may contain currency if a single country filter was applied)
         $filterInfo = $this->buildFilterInfo($filters);
-        
-        // Get currency from first payslip
-        if ($payslips->isNotEmpty() && $payslips->first()->employee && $payslips->first()->employee->country) {
-            $filterInfo['currency'] = $payslips->first()->employee->country->currency;
-            $filterInfo['currency_symbol'] = $payslips->first()->employee->country->currency_symbol;
+
+        // Resolve report-level currency:
+        // - Use the country filter's currency when a single country is explicitly filtered.
+        // - Fall back to the first payslip's country only when ALL payslips share one currency.
+        // - Leave null for multi-currency result sets — never invent a value.
+        $reportCurrency = null;
+        $reportCurrencySymbol = null;
+
+        if (!empty($filterInfo['currency'])) {
+            // A country filter was applied — currency is unambiguous
+            $reportCurrency = $filterInfo['currency'];
+            $reportCurrencySymbol = $filterInfo['currency_symbol'] ?? null;
+        } elseif (!$isMultiCurrency && $uniqueCurrencies->isNotEmpty()) {
+            // All payslips share the same currency — safe to surface it
+            $firstWithCountry = $payslips->first(
+                fn($p) => optional(optional($p->employee)->country)->currency !== null
+            );
+            if ($firstWithCountry) {
+                $reportCurrency = $firstWithCountry->employee->country->currency;
+                $reportCurrencySymbol = $firstWithCountry->employee->country->currency_symbol ?? null;
+            }
         }
-        
+        // else: multi-currency or no country data — both remain null
+
         Log::info('REPORT_SERVICE: Report generation complete', [
             'processed_employees' => $processedCount,
             'earning_types' => count($earningHeaders),
             'deduction_types' => count($deductionHeaders),
             'total_earnings' => $totals['total_earnings'],
-            'total_deductions' => $totals['total_deductions']
+            'total_deductions' => $totals['total_deductions'],
+            'is_multi_currency' => $isMultiCurrency,
+            'report_currency' => $reportCurrency,
         ]);
         
         return [
@@ -282,8 +310,9 @@ class ReportGeneratorService
                 'deduction_breakdown' => array_values($deductionBreakdownForSummary),
                 'department_breakdown' => $this->calculateDepartmentBreakdown($formattedPayslips),
                 'filters' => $filterInfo,
-                'currency' => $filterInfo['currency'] ?? 'KES',
-                'currency_symbol' => $filterInfo['currency_symbol'] ?? 'KES',
+                'is_multi_currency' => $isMultiCurrency,
+                'currency' => $reportCurrency,
+                'currency_symbol' => $reportCurrencySymbol,
             ],
             'generated_at' => now(),
         ];
@@ -455,6 +484,7 @@ class ReportGeneratorService
                 'earning_breakdown' => $payrollReport['summary']['earning_breakdown'],
                 'department_breakdown' => $this->calculateDepartmentEarningsBreakdown($earningsData),
                 'filters' => $payrollReport['summary']['filters'],
+                'is_multi_currency' => $payrollReport['summary']['is_multi_currency'],
                 'currency' => $payrollReport['summary']['currency'],
                 'currency_symbol' => $payrollReport['summary']['currency_symbol'],
             ],
@@ -508,6 +538,7 @@ class ReportGeneratorService
                 'deduction_breakdown' => $payrollReport['summary']['deduction_breakdown'],
                 'department_breakdown' => $this->calculateDepartmentDeductionsBreakdown($deductionsData),
                 'filters' => $payrollReport['summary']['filters'],
+                'is_multi_currency' => $payrollReport['summary']['is_multi_currency'],
                 'currency' => $payrollReport['summary']['currency'],
                 'currency_symbol' => $payrollReport['summary']['currency_symbol'],
             ],
@@ -598,7 +629,7 @@ class ReportGeneratorService
     }
     
     /**
-     * Helper method to build filter info
+     * Helper method to build filter info - NO DEFAULTS
      */
     private function buildFilterInfo(array $filters): array
     {
@@ -606,7 +637,7 @@ class ReportGeneratorService
         
         if (!empty($filters['business_id'])) {
             $business = Business::find($filters['business_id']);
-            $filterInfo['business'] = $business ? $business->name : 'Unknown Business';
+            $filterInfo['business'] = $business ? $business->name : null;
             $filterInfo['business_id'] = $filters['business_id'];
         }
         
@@ -617,10 +648,13 @@ class ReportGeneratorService
                 $country = Country::where('code', $filters['country'])->first();
             }
             
-            $filterInfo['country'] = $country ? $country->name : 'Unknown Country';
-            $filterInfo['country_code'] = $country ? $country->code : $filters['country'];
-            $filterInfo['currency'] = $country ? $country->currency : 'KES';
-            $filterInfo['currency_symbol'] = $country ? $country->currency_symbol : 'KES';
+            if ($country) {
+                $filterInfo['country'] = $country->name;
+                $filterInfo['country_code'] = $country->code;
+                $filterInfo['currency'] = $country->currency;
+                $filterInfo['currency_symbol'] = $country->currency_symbol;
+            }
+            // No else clause — don't set defaults
         }
         
         if (!empty($filters['department'])) {
@@ -642,7 +676,7 @@ class ReportGeneratorService
         return $filterInfo;
     }
   
-     /**
+    /**
      * Calculate deduction breakdown
      */
     private function calculateDeductionBreakdown($payslips): array
@@ -671,7 +705,8 @@ class ReportGeneratorService
         
         return array_values($deductionBreakdown);
     }
-   /**
+
+    /**
      * Calculate earning breakdown
      */
     private function calculateEarningBreakdown($payslips): array
@@ -725,6 +760,7 @@ class ReportGeneratorService
         
         return $deductionsByType;
     }
+
     /**
      * Calculate earnings by type
      */
@@ -750,7 +786,7 @@ class ReportGeneratorService
         return $earningsByType;
     }
 
-   /**
+    /**
      * Map deduction field to type
      */
     private function mapDeductionType($field): string
@@ -770,6 +806,7 @@ class ReportGeneratorService
         
         return $typeMapping[$field] ?? 'other';
     }
+
     /**
      * Generate attendance report with business and country filters
      */
@@ -854,6 +891,7 @@ class ReportGeneratorService
             'generated_at' => now(),
         ];
     }
+
     /**
      * Generate leave report with business and country filters
      */
@@ -971,8 +1009,11 @@ class ReportGeneratorService
     }
 
     /**
-     * Prepare data structure for PDF views
-     * This method is crucial for ensuring the Blade view receives the expected keys.
+     * Prepare data structure for PDF views.
+     *
+     * Currency and country values are passed through as-is from the report data.
+     * No defaults are injected — the Blade view is responsible for handling null values gracefully
+     * (e.g. showing "Multi-currency" or omitting the symbol when currency is null).
      */
     private function prepareDataForPdf(array $data): array
     {
@@ -981,11 +1022,13 @@ class ReportGeneratorService
             'has_summary' => isset($data['summary']),
             'has_data' => isset($data['data'])
         ]);
+
         $preparedData = [];
+
         // Scenario 1: Data comes directly from ReportController (wrapped in 'success' and 'data')
         if (isset($data['success']) && isset($data['data']) && is_array($data['data'])) {
-             Log::info('REPORT_SERVICE: Detected Controller JSON response structure, unpacking data');
-             $preparedData = $data['data'];
+            Log::info('REPORT_SERVICE: Detected Controller JSON response structure, unpacking data');
+            $preparedData = $data['data'];
         }
         // Scenario 2: Data comes from ReportGeneratorService's own generateXReport methods (has 'summary' and 'data')
         elseif (isset($data['summary']) && isset($data['data'])) {
@@ -993,22 +1036,43 @@ class ReportGeneratorService
             $preparedData = array_merge($data['summary'], ['payslip_details' => $data['data'] ?? []]);
             $preparedData['generated_at'] = $data['generated_at'] ?? now();
         }
-        // Scenario 3: Data is already a flattened array (e.g., from generatePayrollReportData helper)
+        // Scenario 3: Data is already a flattened array
         else {
             Log::info('REPORT_SERVICE: Detected flattened data structure, using as is.');
             $preparedData = $data;
         }
-        // Ensure period_start and period_end are always present and in Y-m-d format for Carbon parsing in view
-        $preparedData['period_start'] = $preparedData['start_date'] ?? ($preparedData['period_start'] ?? now()->startOfMonth()->toDateString());
-        $preparedData['period_end'] = $preparedData['end_date'] ?? ($preparedData['period_end'] ?? now()->endOfMonth()->toDateString());
-        
-        // Ensure tax-related keys match what the Blade view expects
-        $preparedData['total_paye_tax'] = $preparedData['total_paye_tax'] ?? $preparedData['total_paye'] ?? 0;
-        $preparedData['total_tax_withheld'] = $preparedData['total_tax_withheld'] ?? $preparedData['total_tax_amount'] ?? 0;
-        // Ensure earnings and deductions totals are present
-        $preparedData['total_earnings'] = $preparedData['total_earnings'] ?? $preparedData['total_gross_salary'] ?? 0;
-        $preparedData['total_deductions'] = $preparedData['total_all_deductions'] ?? $preparedData['total_deductions'] ?? 0;
-        // Log the final structure being sent to the PDF view
+
+        // Period dates — use values from the data; null if not provided (no invented defaults)
+        $preparedData['period_start'] = $preparedData['start_date']
+            ?? $preparedData['period_start']
+            ?? null;
+
+        $preparedData['period_end'] = $preparedData['end_date']
+            ?? $preparedData['period_end']
+            ?? null;
+
+        // Tax-related key normalisation (no numeric defaults — keep null if absent)
+        $preparedData['total_paye_tax'] = $preparedData['total_paye_tax']
+            ?? $preparedData['total_paye']
+            ?? null;
+
+        $preparedData['total_tax_withheld'] = $preparedData['total_tax_withheld']
+            ?? $preparedData['total_tax_amount']
+            ?? null;
+
+        // Earnings / deductions totals — normalise key names, preserve null if absent
+        $preparedData['total_earnings'] = $preparedData['total_earnings']
+            ?? $preparedData['total_gross_salary']
+            ?? null;
+
+        $preparedData['total_deductions'] = $preparedData['total_all_deductions']
+            ?? $preparedData['total_deductions']
+            ?? null;
+
+        // Currency — pass through exactly what the report resolved; never inject a default
+        // $preparedData['currency'] and $preparedData['currency_symbol'] are already set
+        // (or null) from the summary; no action needed here.
+
         Log::info('REPORT_SERVICE: Final data structure for PDF view', [
             'keys' => array_keys($preparedData),
             'period_start' => $preparedData['period_start'],
@@ -1017,7 +1081,11 @@ class ReportGeneratorService
             'total_tax_withheld' => $preparedData['total_tax_withheld'],
             'total_earnings' => $preparedData['total_earnings'],
             'total_deductions' => $preparedData['total_deductions'],
+            'currency' => $preparedData['currency'] ?? null,
+            'currency_symbol' => $preparedData['currency_symbol'] ?? null,
+            'is_multi_currency' => $preparedData['is_multi_currency'] ?? null,
         ]);
+
         return $preparedData;
     }
 
@@ -1244,7 +1312,7 @@ class ReportGeneratorService
         ];
     }
 
-   /**
+    /**
      * Calculate productivity score
      */
     private function calculateProductivityScore(Employee $employee, array $filters): float
@@ -1267,6 +1335,7 @@ class ReportGeneratorService
         // Ensure score is between 0 and 100
         return max(0, min(100, $score));
     }
+
     private function getTotalWorkingDays(Employee $employee, array $filters): int
     {
         $attendanceQuery = $employee->attendances();
@@ -1279,7 +1348,8 @@ class ReportGeneratorService
         }
         return $attendanceQuery->count();
     }
-private function getPresentDays(Employee $employee, array $filters): int
+
+    private function getPresentDays(Employee $employee, array $filters): int
     {
         $attendanceQuery = $employee->attendances()->where('status', 'present');
         
@@ -1291,6 +1361,7 @@ private function getPresentDays(Employee $employee, array $filters): int
         }
         return $attendanceQuery->count();
     }
+
     private function getLateDays(Employee $employee, array $filters): int
     {
         $attendanceQuery = $employee->attendances()->where('status', 'late');
@@ -1303,6 +1374,7 @@ private function getPresentDays(Employee $employee, array $filters): int
         }
         return $attendanceQuery->count();
     }
+
     private function getAbsentDays(Employee $employee, array $filters): int
     {
         $attendanceQuery = $employee->attendances()->where('status', 'absent');
@@ -1315,6 +1387,7 @@ private function getPresentDays(Employee $employee, array $filters): int
         }
         return $attendanceQuery->count();
     }
+
     private function getTotalHoursWorked(Employee $employee, array $filters): float
     {
         $attendanceQuery = $employee->attendances();
@@ -1327,6 +1400,7 @@ private function getPresentDays(Employee $employee, array $filters): int
         }
         return $attendanceQuery->sum('total_hours');
     }
+
     private function getApprovedLeaveDays(Employee $employee, array $filters): int
     {
         $leaveQuery = $employee->leaves()->where('status', 'approved');

@@ -1,8 +1,9 @@
 <template>
   <div class="dashboard-container">
-    <!-- Header Section -->
-    <div class="dashboard-header">
-      <div class="header-top">
+    <!-- Header Section - Card Style -->
+    <div class="dashboard-main">
+      <div class="dashboard-header-card">
+        <div class="header-card-accent"></div>
         <div class="user-greeting">
           <div class="avatar-section">
             <div class="avatar">
@@ -43,10 +44,7 @@
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Main Content -->
-    <div class="dashboard-main">
       <!-- Stats Cards Grid -->
       <div class="stats-grid" v-if="!loading && statsLoaded">
         <div class="stat-card" style="--accent: #10b981;">
@@ -224,8 +222,9 @@
 
         <!-- Right Column -->
         <div class="content-column">
-          <!-- Recent Leaves -->
-          <div class="content-card">
+
+          <!-- ── Recent Leaves — redesigned to match Leaves page ── -->
+          <div class="content-card leaves-card">
             <div class="card-title-bar">
               <h2>Recent Leave Requests</h2>
               <router-link to="/employee/leaves" class="action-link">
@@ -236,40 +235,65 @@
                 </svg>
               </router-link>
             </div>
-            <div class="table-container" v-if="hasRecentLeaves()">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Dates</th>
-                    <th>Days</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="leave in getRecentLeaves()" :key="leave.id">
-                    <td>
-                      <span class="type-badge" :style="{ background: getLeaveColor(leave.type) + '20', color: getLeaveColor(leave.type) }">
-                        {{ formatLeaveType(leave.type) }}
-                      </span>
-                    </td>
-                    <td>
-                      <div class="date-range">
-                        <span>{{ formatDate(leave.start_date) }}</span>
-                        <span class="separator">→</span>
-                        <span>{{ formatDate(leave.end_date) }}</span>
-                      </div>
-                    </td>
-                    <td class="days-cell">{{ getLeaveDays(leave) }}</td>
-                    <td>
-                      <span :class="['status-badge', getLeaveStatusClass(leave.status)]">
-                        {{ leave.status }}
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+
+            <div v-if="hasRecentLeaves()" class="leaves-table-wrap">
+              <!-- Header row -->
+              <div class="leaves-list-header leaves-grid">
+                <div>Type</div>
+                <div>Date Range</div>
+                <div class="text-right">Days</div>
+                <div>Status</div>
+                <div class="text-right">Action</div>
+              </div>
+
+              <!-- Data rows -->
+              <div
+                v-for="leave in getRecentLeaves()"
+                :key="leave.id"
+                class="leaves-list-row leaves-grid"
+              >
+                <!-- Leave Type -->
+                <div class="leave-type-cell">
+                  <span class="leave-dot" :style="{ background: getLeaveColor(leave.type || leave.leave_type) }"></span>
+                  <span class="leave-type-name">{{ formatLeaveType(leave.type || leave.leave_type) }}</span>
+                </div>
+
+                <!-- Date Range -->
+                <div class="date-range-wrap">
+                  <span class="date-val">{{ formatDate(leave.start_date) }}</span>
+                  <span class="date-sep">→</span>
+                  <span class="date-val">{{ formatDate(leave.end_date) }}</span>
+                </div>
+
+                <!-- Duration -->
+                <div class="text-right">
+                  <span class="duration-badge">{{ getLeaveDays(leave) }}d</span>
+                </div>
+
+                <!-- Status -->
+                <div>
+                  <span :class="['status-badge', getLeaveStatusClass(leave.status)]">
+                    <span class="status-dot"></span>
+                    {{ formatStatus(leave.status) }}
+                  </span>
+                </div>
+
+                <!-- Action -->
+                <div class="action-group">
+                  <router-link
+                    to="/employee/leaves"
+                    class="action-btn"
+                    title="View Details"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </router-link>
+                </div>
+              </div>
             </div>
+
             <div v-else class="empty-state">
               <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
@@ -445,7 +469,6 @@ export default {
       this.fetchDashboardData()
       this.fetchEmployeeProfile()
      
-      // Refresh data every 5 minutes
       this.refreshInterval = setInterval(() => {
         this.fetchDashboardData(true)
       }, 300000)
@@ -461,7 +484,6 @@ export default {
         const response = await axios.get('/api/dashboard')
        
         if (response.data.role === 'employee' && response.data.stats) {
-          // Initialize stats with default values
           this.stats = {
             attendance_summary: response.data.stats.attendance_summary || {},
             leave_balances: response.data.stats.leave_balances || {},
@@ -469,7 +491,6 @@ export default {
             upcoming_payslip: response.data.stats.upcoming_payslip || null
           }
           
-          // Fix the payslip data if it has invalid dates
           if (this.stats.upcoming_payslip) {
             this.fixPayslipData()
           }
@@ -490,42 +511,27 @@ export default {
       }
     },
     
-    // Fix payslip data with invalid dates
     fixPayslipData() {
       if (!this.stats.upcoming_payslip) return
-      
       const payslip = this.stats.upcoming_payslip
-      
-      // If processing_date is invalid, try to parse it from payroll_period
       if (!this.isValidDate(payslip.processing_date) && payslip.payroll_period) {
-        // Try to extract date from payroll_period format like "2012-01"
         const match = payslip.payroll_period.match(/^(\d{4})-(\d{2})$/)
         if (match) {
           const year = parseInt(match[1])
-          const month = parseInt(match[2]) - 1 // JavaScript months are 0-indexed
-          
-          // Create a date for the end of the pay period (last day of month)
+          const month = parseInt(match[2]) - 1
           const endOfMonth = new Date(year, month + 1, 0)
-          
-          // Set processing date to 3 days after end of pay period (typical payroll processing)
           const processingDate = new Date(endOfMonth)
           processingDate.setDate(endOfMonth.getDate() + 3)
-          
           payslip.processing_date = processingDate.toISOString().split('T')[0]
         }
       }
-      
-      // Fix estimated_days if it's invalid
       if (typeof payslip.estimated_days === 'number' && (payslip.estimated_days < 0 || !Number.isInteger(payslip.estimated_days))) {
-        // Use our frontend calculation instead
         payslip.estimated_days = this.getDaysUntilPaydayValue()
       }
     },
     
-    // Check if a date string is valid
     isValidDate(dateString) {
       if (!dateString) return false
-      
       try {
         const date = new Date(dateString)
         return !isNaN(date.getTime()) && date.toString() !== 'Invalid Date'
@@ -552,7 +558,6 @@ export default {
             phone: employee.phone || '',
             email: user.email || ''
           }
-          
           if (employee.profile_pic) {
             this.profilePicUrl = `/storage/${employee.profile_pic}`
           }
@@ -564,187 +569,96 @@ export default {
     handleApiError(err) {
       this.error = err.response?.data?.message || 'Failed to load dashboard data.'
     },
-    handleImageLoad() {
-      this.profilePicLoaded = true
-    },
-    handleImageError() {
-      this.profilePicLoaded = false
-      this.profilePicUrl = null
-    },
-    retryFetch() {
-      this.fetchDashboardData()
-      this.fetchEmployeeProfile()
-    },
+    handleImageLoad() { this.profilePicLoaded = true },
+    handleImageError() { this.profilePicLoaded = false; this.profilePicUrl = null },
+    retryFetch() { this.fetchDashboardData(); this.fetchEmployeeProfile() },
     
-    // Payslip date calculations - FIXED
     getDaysUntilPaydayValue() {
-      if (!this.stats.upcoming_payslip?.processing_date) {
-        return 0
-      }
-      
+      if (!this.stats.upcoming_payslip?.processing_date) return 0
       try {
         const processingDate = new Date(this.stats.upcoming_payslip.processing_date)
         const today = new Date()
-        
-        // Reset both dates to midnight for accurate day calculation
         today.setHours(0, 0, 0, 0)
         processingDate.setHours(0, 0, 0, 0)
-        
-        // Calculate difference in days
         const diffTime = processingDate - today
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-        
         return Math.max(diffDays, 0)
-      } catch (error) {
-        console.error('Error calculating days until payday:', error)
-        return 0
-      }
+      } catch (error) { return 0 }
     },
-    
     getDaysUntilPayday() {
       const days = this.getDaysUntilPaydayValue()
-      
-      if (days === 0) {
-        return 'Today'
-      } else if (days === 1) {
-        return '1 day'
-      } else if (days < 0) {
-        return 'Past due'
-      } else {
-        return `${days} days`
-      }
+      if (days === 0) return 'Today'
+      else if (days === 1) return '1 day'
+      else if (days < 0) return 'Past due'
+      else return `${days} days`
     },
-    
     getPaydayStatusClass() {
       const days = this.getDaysUntilPaydayValue()
-      
-      if (days === 0) {
-        return 'today'
-      } else if (days < 0) {
-        return 'past-due'
-      } else if (days <= 7) {
-        return 'upcoming'
-      } else {
-        return 'upcoming'
-      }
+      if (days === 0) return 'today'
+      else if (days < 0) return 'past-due'
+      else return 'upcoming'
     },
-    
     getPaydayStatusText() {
       const days = this.getDaysUntilPaydayValue()
-      
-      if (days === 0) {
-        return 'Today'
-      } else if (days < 0) {
-        return 'Past Due'
-      } else if (days <= 7) {
-        return 'Upcoming'
-      } else {
-        return 'Upcoming'
-      }
+      if (days === 0) return 'Today'
+      else if (days < 0) return 'Past Due'
+      else return 'Upcoming'
     },
-    
-    // Format pay period (e.g., "2012-01" -> "Jan 2012")
     formatPayPeriod(period) {
       if (!period) return 'N/A'
-      
       try {
-        // Handle format like "2012-01"
         const match = period.match(/^(\d{4})-(\d{2})$/)
         if (match) {
           const year = match[1]
           const month = parseInt(match[2]) - 1
-          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+          const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
           return `${monthNames[month]} ${year}`
         }
-        
-        // Handle other formats
         return period
-      } catch (error) {
-        console.error('Error formatting pay period:', error)
-        return period || 'N/A'
-      }
+      } catch (error) { return period || 'N/A' }
     },
-    
-    // Special date formatter for payslip dates
     formatPayslipDate(date) {
       if (!date) return 'N/A'
-      
       try {
         const dateObj = new Date(date)
-        
         if (isNaN(dateObj.getTime())) {
-          // Try alternative parsing if standard parsing fails
           const parts = date.split('-')
           if (parts.length === 3) {
             const [year, month, day] = parts.map(Number)
             const altDate = new Date(year, month - 1, day)
             if (!isNaN(altDate.getTime())) {
-              return altDate.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-              })
+              return altDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
             }
           }
           return 'Invalid Date'
         }
-        
-        return dateObj.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric'
-        })
-      } catch (e) {
-        console.error('Date formatting error:', e)
-        return 'Invalid Date'
-      }
+        return dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+      } catch (e) { return 'Invalid Date' }
     },
     
-    // Safe getter methods for stats
-    getPresentDays() {
-      return this.stats.attendance_summary?.present_days || 0
-    },
-    getAbsentDays() {
-      return this.stats.attendance_summary?.absent_days || 0
-    },
-    getLateDays() {
-      return this.stats.attendance_summary?.late_days || 0
-    },
-    getTotalHours() {
-      return this.stats.attendance_summary?.total_hours || 0
-    },
-    getOvertimeHours() {
-      return this.stats.attendance_summary?.overtime_hours || 0
-    },
+    getPresentDays()  { return this.stats.attendance_summary?.present_days || 0 },
+    getAbsentDays()   { return this.stats.attendance_summary?.absent_days || 0 },
+    getLateDays()     { return this.stats.attendance_summary?.late_days || 0 },
+    getTotalHours()   { return this.stats.attendance_summary?.total_hours || 0 },
+    getOvertimeHours(){ return this.stats.attendance_summary?.overtime_hours || 0 },
     
     getTotalLeaveBalance() {
       if (!this.stats.leave_balances) return 0
-      
       return Object.values(this.stats.leave_balances).reduce((sum, item) => {
-        const val = typeof item === 'object' ? item.available : item;
-        return sum + (Number(val) || 0);
+        const val = typeof item === 'object' ? item.available : item
+        return sum + (Number(val) || 0)
       }, 0)
     },
     
-    // Safe getter methods for employee info
-    getUserName() {
-      return this.authStore.user?.name || this.employeeInfo?.first_name || 'Employee'
-    },
-    getFullName() {
+    getUserName()         { return this.authStore.user?.name || this.employeeInfo?.first_name || 'Employee' },
+    getFullName()         {
       if (!this.employeeInfo) return 'N/A'
       return `${this.employeeInfo.first_name || ''} ${this.employeeInfo.last_name || ''}`.trim() || 'N/A'
     },
-    getEmployeeId() {
-      return this.employeeInfo?.employee_id || 'N/A'
-    },
-    getEmployeePosition() {
-      return this.employeeInfo?.position || 'N/A'
-    },
-    getEmployeeDepartment() {
-      return this.employeeInfo?.department || 'N/A'
-    },
+    getEmployeeId()       { return this.employeeInfo?.employee_id || 'N/A' },
+    getEmployeePosition() { return this.employeeInfo?.position || 'N/A' },
+    getEmployeeDepartment(){ return this.employeeInfo?.department || 'N/A' },
     
-    // Safe getter methods for leave balances
     getAvailableDays(balanceData) {
       if (!balanceData) return 0
       return typeof balanceData === 'object' ? balanceData.available || 0 : Number(balanceData) || 0
@@ -754,33 +668,32 @@ export default {
       return typeof balanceData === 'object' ? balanceData.total || 1 : Number(balanceData) || 1
     },
     
-    // Check methods
-    hasLeaveBalances() {
-      return this.stats.leave_balances && Object.keys(this.stats.leave_balances).length > 0
-    },
-    hasRecentLeaves() {
-      return this.stats.recent_leaves && this.stats.recent_leaves.length > 0
-    },
+    hasLeaveBalances()   { return this.stats.leave_balances && Object.keys(this.stats.leave_balances).length > 0 },
+    hasRecentLeaves()    { return this.stats.recent_leaves && this.stats.recent_leaves.length > 0 },
     hasUpcomingPayslip() {
-      if (!this.stats.upcoming_payslip) {
-        return false
-      }
-      
-      // Check if we have at least a pay period
+      if (!this.stats.upcoming_payslip) return false
       return !!this.stats.upcoming_payslip.payroll_period
     },
     
-    // Getter methods with limits
     getRecentLeaves() {
       if (!this.stats.recent_leaves) return []
       return this.stats.recent_leaves.slice(0, 5)
     },
-    getLeaveDays(leave) {
-      return leave.number_of_days || leave.total_days || 0
+    getLeaveDays(leave)      { return leave.number_of_days || leave.total_days || 0 },
+
+    /* ── Status helpers matching Leaves page ── */
+    formatStatus(status) {
+      return {
+        pending: 'Pending', approved: 'Approved', rejected: 'Rejected',
+        cancelled: 'Cancelled', under_review: 'Under Review'
+      }[status] || status || '—'
     },
     getLeaveStatusClass(status) {
-      if (!status) return ''
-      return status.toLowerCase()
+      if (!status) return 'neutral'
+      return {
+        approved: 'success', pending: 'warning', under_review: 'warning',
+        rejected: 'danger', cancelled: 'neutral'
+      }[status.toLowerCase()] || 'neutral'
     },
     
     formatHours(hours) {
@@ -791,49 +704,29 @@ export default {
     formatLeaveType(type) {
       if (!type) return 'N/A'
       const typeMap = {
-        'annual': 'Annual',
-        'sick': 'Sick',
-        'maternity': 'Maternity',
-        'paternity': 'Paternity',
-        'bereavement': 'Bereavement',
-        'unpaid': 'Unpaid'
+        'annual': 'Annual Leave', 'sick': 'Sick Leave', 'maternity': 'Maternity Leave',
+        'paternity': 'Paternity Leave', 'bereavement': 'Bereavement Leave',
+        'unpaid': 'Unpaid Leave', 'casual': 'Casual Leave', 'emergency': 'Emergency Leave'
       }
       return typeMap[type.toLowerCase()] || type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
     },
     formatDate(date) {
       if (!date) return 'N/A'
-      
       try {
-        // Handle string dates that might have timezone issues
         const dateObj = new Date(date)
-        
-        // Check if date is valid
         if (isNaN(dateObj.getTime())) {
-          // Try alternative parsing
           const parts = date.split('-')
           if (parts.length === 3) {
             const [year, month, day] = parts.map(Number)
             const altDate = new Date(year, month - 1, day)
             if (!isNaN(altDate.getTime())) {
-              return altDate.toLocaleDateString('en-US', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-              })
+              return altDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
             }
           }
           return 'Invalid Date'
         }
-        
-        return dateObj.toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric'
-        })
-      } catch (e) {
-        console.error('Date formatting error:', e)
-        return 'Invalid Date'
-      }
+        return dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+      } catch (e) { return 'Invalid Date' }
     },
     formatEmploymentType(type) {
       if (!type) return 'N/A'
@@ -841,248 +734,94 @@ export default {
     },
     calculateProgress(balanceData) {
       if (!balanceData) return 0
-      
       const total = this.getTotalDays(balanceData)
       const available = this.getAvailableDays(balanceData)
-      
       if (total === 0) return 0
-      
-      const percentage = (available / total) * 100
-      return Math.min(Math.max(percentage, 0), 100)
+      return Math.min(Math.max((available / total) * 100, 0), 100)
     },
     calculateAttendancePercentage(type) {
       if (!this.stats.attendance_summary) return 0
-      
       const present = this.getPresentDays()
-      const absent = this.getAbsentDays()
-      const late = this.getLateDays()
-      const total = present + absent + late
-      
+      const absent  = this.getAbsentDays()
+      const late    = this.getLateDays()
+      const total   = present + absent + late
       if (total === 0) return 0
-      
       switch(type) {
         case 'present': return Math.round((present / total) * 100)
-        case 'absent': return Math.round((absent / total) * 100)
-        case 'late': return Math.round((late / total) * 100)
+        case 'absent':  return Math.round((absent  / total) * 100)
+        case 'late':    return Math.round((late    / total) * 100)
         default: return 0
       }
     },
     getLeaveColor(type) {
       if (!type) return '#6366f1'
       const colors = {
-        'annual': '#10b981',
-        'sick': '#3b82f6',
-        'maternity': '#8b5cf6',
-        'paternity': '#f59e0b',
-        'bereavement': '#64748b',
-        'unpaid': '#ef4444'
+        'annual': '#3b82f6', 'sick': '#f59e0b', 'maternity': '#ec4899',
+        'paternity': '#8b5cf6', 'bereavement': '#6b7280',
+        'unpaid': '#94a3b8', 'casual': '#10b981', 'emergency': '#ef4444'
       }
       return colors[type.toLowerCase()] || '#6366f1'
     },
     getUserInitials() {
       if (this.employeeInfo) {
         const first = this.employeeInfo.first_name?.[0] || ''
-        const last = this.employeeInfo.last_name?.[0] || ''
+        const last  = this.employeeInfo.last_name?.[0]  || ''
         return `${first}${last}`.toUpperCase() || 'E'
       }
       const name = this.authStore.user?.name || 'Employee'
-      const initials = name.split(' ').map(n => n[0]).join('')
-      return initials.toUpperCase() || 'E'
+      return name.split(' ').map(n => n[0]).join('').toUpperCase() || 'E'
     }
   },
   beforeUnmount() {
-    if (this.refreshInterval) {
-      clearInterval(this.refreshInterval)
-    }
+    if (this.refreshInterval) clearInterval(this.refreshInterval)
   }
 }
 </script>
 
 <style scoped>
-/* Add these new styles to the existing CSS */
 @import '@/assets/css/responsive-utilities.css';
-/* Profile image in avatar */
-.profile-avatar-img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
 
-/* Employee details in subtitle */
-.employee-details {
-  font-weight: 500;
-  color: #e2e8f0;
-}
-
-.employee-id {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.id-badge {
-  background: rgba(255, 255, 255, 0.15);
-  padding: 0.125rem 0.5rem;
-  border-radius: 8px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #f1f5f9;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.employment-type {
-  font-size: 0.7rem;
-  color: #cbd5e1;
-  font-weight: 500;
-}
-
-/* Profile Summary Card */
-.profile-summary-card {
-  display: flex;
-  flex-direction: column;
-}
-
-.profile-summary-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.profile-detail {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 0.875rem;
-}
-
-.profile-detail .detail-label {
-  color: #64748b;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.profile-detail .detail-value {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 0.875rem;
-}
-
-.profile-detail .detail-value.badge {
-  background: #f1f5f9;
-  padding: 0.125rem 0.5rem;
-  border-radius: 6px;
-  font-size: 0.7rem;
-  color: #475569;
-}
-
-.profile-detail .detail-value.highlight {
-  color: #6366f1;
-  font-weight: 700;
-}
-
-.profile-actions {
-  margin-top: auto;
-  padding-top: 1rem;
-  border-top: 1px solid #f1f5f9;
-}
-
-/* Payday status badges */
-.status-badge.upcoming {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.status-badge.today {
-  background: rgba(245, 158, 11, 0.1);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.2);
-}
-
-.status-badge.past-due {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-/* Update existing styles for better spacing */
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.greeting {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #fff 0%, #e2e8f0 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.subtitle {
-  margin: 0;
-  color: #cbd5e1;
-  font-size: 0.875rem;
-}
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .employee-id {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-  
-  .profile-detail {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.125rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .employee-details {
-    font-size: 0.75rem;
-  }
-  
-  .profile-detail .detail-label,
-  .profile-detail .detail-value {
-    font-size: 0.75rem;
-  }
-}
-
+/* ─── Base ─────────────────────────────────────────────── */
 .dashboard-container {
   min-height: 100vh;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
-.dashboard-header {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-  color: white;
-  padding: 1.5rem 2rem;
+.dashboard-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+}
+
+/* ─── Header Card ───────────────────────────────────────── */
+.dashboard-header-card {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  border: 1px solid #e2e8f0;
+  margin-bottom: 1.25rem;
   position: relative;
   overflow: hidden;
 }
 
-.dashboard-header::after {
-  content: '';
+.header-card-accent {
   position: absolute;
   top: 0;
+  left: 0;
   right: 0;
-  width: 200px;
-  height: 200px;
-  background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+  height: 3px;
 }
 
-.header-top {
-  max-width: 1200px;
-  margin: 0 auto;
+.dashboard-header-card::after {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 160px;
+  height: 160px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.06) 0%, transparent 70%);
+  pointer-events: none;
 }
 
 .user-greeting {
@@ -1099,84 +838,75 @@ export default {
 }
 
 .avatar {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 1.125rem;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  flex-shrink: 0;
 }
 
-.user-info {
-  display: flex;
-  flex-direction: column;
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  object-fit: cover;
 }
+
+.user-info { display: flex; flex-direction: column; gap: 0.2rem; }
 
 .greeting {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
-  font-weight: 700;
-  background: linear-gradient(135deg, #fff 0%, #e2e8f0 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.subtitle {
   margin: 0;
-  color: #cbd5e1;
-  font-size: 0.875rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
 }
 
-.date-badge {
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
-  padding: 0.75rem 1rem;
-  min-width: 120px;
-}
+.subtitle { margin: 0; font-size: 0.875rem; color: #64748b; }
+.employee-details { font-weight: 500; color: #475569; }
 
-.date-content {
+.employee-id {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  margin-top: 0.125rem;
 }
 
-.day {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #f1f5f9;
+.id-badge {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  padding: 0.125rem 0.5rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #475569;
 }
 
-.date-details {
-  display: flex;
-  flex-direction: column;
+.employment-type { font-size: 0.7rem; color: #94a3b8; font-weight: 500; }
+
+.date-badge {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.75rem 1.125rem;
+  min-width: 130px;
+  flex-shrink: 0;
 }
 
-.date {
-  font-size: 1rem;
-  font-weight: 700;
-}
+.date-content { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+.day { font-size: 1rem; font-weight: 700; color: #8b5cf6; padding-right: 0.25rem; }
+.date-details { display: flex; align-items: baseline; gap: 0.25rem; }
+.date-num { font-size: 1rem; font-weight: 700; color: #1e293b; }
+.month-year { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
 
-.month-year {
-  font-size: 0.75rem;
-  color: #cbd5e1;
-}
-
-.dashboard-main {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.5rem 2rem 3rem;
-  position: relative;
-  z-index: 1;
-}
-
-/* Stats Grid - Compact Cards */
+/* ─── Stats Grid ────────────────────────────────────────── */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1201,21 +931,16 @@ export default {
   border-color: var(--accent);
 }
 
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--accent);
-}
+.stat-card::before { display: none; }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.75rem;
+  border: none;        /* ← removes any inherited border */
+  padding: 0;          /* ← removes any padding that could show a line */
+  background: none;    /* ← ensures no background bleed */
 }
 
 .icon-wrapper {
@@ -1227,9 +952,7 @@ export default {
   justify-content: center;
 }
 
-.icon-wrapper svg {
-  color: var(--accent);
-}
+.icon-wrapper svg { color: var(--accent); }
 
 .trend-indicator {
   font-size: 0.7rem;
@@ -1267,13 +990,9 @@ export default {
   border-top: 1px solid #f1f5f9;
 }
 
-.compare {
-  font-weight: 500;
-  color: #64748b;
-  font-size: 0.7rem;
-}
+.compare { font-weight: 500; color: #64748b; font-size: 0.7rem; }
 
-/* Content Grid - Compact Cards */
+/* ─── Content Grid ──────────────────────────────────────── */
 .content-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1281,9 +1000,7 @@ export default {
 }
 
 @media (max-width: 1024px) {
-  .content-grid {
-    grid-template-columns: 1fr;
-  }
+  .content-grid { grid-template-columns: 1fr; }
 }
 
 .content-card {
@@ -1339,12 +1056,9 @@ export default {
   font-size: 0.75rem;
   transition: color 0.2s;
 }
+.action-link:hover { color: #4f46e5; }
 
-.action-link:hover {
-  color: #4f46e5;
-}
-
-/* Attendance Breakdown - Compact */
+/* ─── Attendance Breakdown ──────────────────────────────── */
 .attendance-breakdown {
   display: flex;
   flex-direction: column;
@@ -1361,40 +1075,23 @@ export default {
   border-radius: 10px;
 }
 
-.metric {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+.metric { display: flex; align-items: center; gap: 0.5rem; }
 
 .dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
 }
-
 .dot.present { background: #10b981; }
-.dot.absent { background: #ef4444; }
-.dot.late { background: #f59e0b; }
-.dot.total { background: #6366f1; }
+.dot.absent  { background: #ef4444; }
+.dot.late    { background: #f59e0b; }
+.dot.total   { background: #6366f1; }
 
-.label {
-  font-weight: 500;
-  color: #475569;
-  font-size: 0.875rem;
-}
+.label { font-weight: 500; color: #475569; font-size: 0.875rem; }
 
-.values {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
+.values { display: flex; align-items: center; gap: 0.75rem; }
 
-.value {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 0.875rem;
-}
+.value { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
 
 .percentage {
   font-weight: 700;
@@ -1404,9 +1101,7 @@ export default {
   font-size: 0.875rem;
 }
 
-.attendance-progress {
-  width: 100%;
-}
+.attendance-progress { width: 100%; }
 
 .progress-bar {
   height: 6px;
@@ -1416,47 +1111,22 @@ export default {
   overflow: hidden;
 }
 
-.progress-segment {
-  height: 100%;
-  transition: width 0.3s ease;
-}
+.progress-segment { height: 100%; transition: width 0.3s ease; }
+.progress-segment.present { background: #10b981; }
+.progress-segment.absent  { background: #ef4444; }
+.progress-segment.late    { background: #f59e0b; }
 
-/* Leave Balances - Compact */
-.leave-balances-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
+/* ─── Leave Balances ────────────────────────────────────── */
+.leave-balances-grid { display: flex; flex-direction: column; gap: 1rem; }
 
-.leave-balance-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
+.leave-balance-item { display: flex; flex-direction: column; gap: 0.375rem; }
 
-.leave-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+.leave-info { display: flex; justify-content: space-between; align-items: center; }
 
-.leave-type {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 0.875rem;
-}
+.leave-type { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
+.leave-stats { font-weight: 700; color: #6366f1; font-size: 0.75rem; }
 
-.leave-stats {
-  font-weight: 700;
-  color: #6366f1;
-  font-size: 0.75rem;
-}
-
-.progress-container {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
+.progress-container { display: flex; align-items: center; gap: 0.75rem; }
 
 .progress-track {
   flex: 1;
@@ -1466,95 +1136,149 @@ export default {
   overflow: hidden;
 }
 
-.progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.5s ease;
+.progress-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+
+/* ─── Recent Leaves Table (Leaves-page style) ───────────── */
+.leaves-card { padding-bottom: 0.75rem; }
+
+.leaves-table-wrap {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
 }
 
-.percentage {
-  font-size: 0.75rem;
-  font-weight: 600;
+/* 5-column grid: type | dates | days | status | action */
+.leaves-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1.8fr 0.55fr 1fr 0.45fr;
+  padding: 0.7rem 1rem;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.leaves-list-header {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.68rem;
+  font-weight: 700;
   color: #64748b;
-  min-width: 28px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-/* Table Styles - Compact */
-.table-container {
-  overflow-x: auto;
-  margin: 0 -0.5rem;
-  padding: 0 0.5rem;
+.leaves-list-row {
+  border-bottom: 1px solid #f1f5f9;
+  background: white;
+  transition: background 0.15s;
+}
+.leaves-list-row:last-child { border-bottom: none; }
+.leaves-list-row:hover { background: #f8fafc; }
+
+/* Leave type cell */
+.leave-type-cell { display: flex; align-items: center; gap: 0.5rem; }
+.leave-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.leave-type-name { font-weight: 600; color: #334155; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Date range */
+.date-range-wrap { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.date-val { font-size: 0.78rem; color: #475569; font-weight: 500; white-space: nowrap; }
+.date-sep { color: #94a3b8; font-size: 0.72rem; }
+
+/* Duration badge */
+.duration-badge {
+  display: inline-block;
+  padding: 0.18rem 0.5rem;
+  background: #f1f5f9;
+  color: #475569;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border: 1px solid #e2e8f0;
 }
 
-.data-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+.text-right { text-align: right; }
+
+/* Status badges — matching Leaves page exactly */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+.status-badge.success { background: #d1fae5; color: #065f46; }
+.status-badge.warning { background: #fef3c7; color: #92400e; }
+.status-badge.danger  { background: #fee2e2; color: #991b1b; }
+.status-badge.neutral { background: #f1f5f9; color: #64748b; }
+
+/* Payslip status overrides (pill style) */
+.status-badge.upcoming { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+.status-badge.today    { background: rgba(245, 158, 11, 0.1);  color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+.status-badge.past-due { background: rgba(239, 68, 68, 0.1);   color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+
+/* Action buttons — matching Leaves page */
+.action-group { display: flex; justify-content: flex-end; gap: 0.35rem; }
+
+.action-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+.action-btn:hover { background: #eff6ff; color: #4f46e5; border-color: #a5b4fc; }
+
+/* ─── Profile Summary ───────────────────────────────────── */
+.profile-summary-card { display: flex; flex-direction: column; }
+
+.profile-summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.profile-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 0.875rem;
 }
 
-.data-table th {
-  padding: 0.625rem 0.75rem;
-  text-align: left;
-  font-weight: 600;
-  color: #64748b;
+.profile-detail .detail-label { color: #64748b; font-size: 0.75rem; font-weight: 500; }
+.profile-detail .detail-value { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
+
+.profile-detail .detail-value.badge {
+  background: #f1f5f9;
+  padding: 0.125rem 0.5rem;
+  border-radius: 6px;
   font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
-  white-space: nowrap;
+  color: #475569;
 }
 
-.data-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid #f1f5f9;
+.profile-detail .detail-value.highlight { color: #6366f1; font-weight: 700; }
+
+.profile-actions {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid #f1f5f9;
 }
 
-.data-table tr:hover {
-  background: #f8fafc;
-}
-
-.type-badge {
-  padding: 0.2rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.date-range {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 0.75rem;
-}
-
-.separator {
-  color: #cbd5e1;
-  font-size: 0.75rem;
-}
-
-.days-cell {
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.status-badge {
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-
-/* Payslip Card - Compact */
-.payslip-card {
-  display: flex;
-  flex-direction: column;
-}
+/* ─── Payslip Card ──────────────────────────────────────── */
+.payslip-card { display: flex; flex-direction: column; }
 
 .payslip-content {
   display: flex;
@@ -1575,12 +1299,7 @@ export default {
   flex-shrink: 0;
 }
 
-.payslip-details {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
+.payslip-details { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
 
 .payslip-detail {
   display: flex;
@@ -1589,28 +1308,13 @@ export default {
   font-size: 0.875rem;
 }
 
-.payslip-detail .label {
-  color: #64748b;
-  font-size: 0.75rem;
-}
+.payslip-detail .label   { color: #64748b; font-size: 0.75rem; }
+.payslip-detail .value   { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
+.payslip-detail .highlight { color: #10b981; font-weight: 700; }
 
-.payslip-detail .value {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 0.875rem;
-}
+.payslip-actions { display: flex; gap: 0.5rem; margin-top: auto; }
 
-.payslip-detail .highlight {
-  color: #10b981;
-  font-weight: 700;
-}
-
-.payslip-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: auto;
-}
-
+/* ─── Buttons ───────────────────────────────────────────── */
 .btn-outline, .btn-primary {
   padding: 0.5rem 1rem;
   border-radius: 10px;
@@ -1630,12 +1334,9 @@ export default {
   background: white;
   border: 1.5px solid #e2e8f0;
   color: #475569;
+  text-decoration: none;
 }
-
-.btn-outline:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
-}
+.btn-outline:hover { border-color: #cbd5e1; background: #f8fafc; }
 
 .btn-primary {
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
@@ -1643,30 +1344,21 @@ export default {
   color: white;
   box-shadow: 0 1px 2px rgba(99, 102, 241, 0.2);
 }
-
 .btn-primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
 }
 
-/* Empty States - Compact */
+/* ─── Empty States ──────────────────────────────────────── */
 .empty-state {
   padding: 2rem 1.5rem;
   text-align: center;
   color: #94a3b8;
 }
+.empty-state svg { margin-bottom: 0.75rem; color: #e2e8f0; }
+.empty-state p   { margin: 0; font-size: 0.875rem; }
 
-.empty-state svg {
-  margin-bottom: 0.75rem;
-  color: #e2e8f0;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 0.875rem;
-}
-
-/* Loading State */
+/* ─── Loading ───────────────────────────────────────────── */
 .loading-container {
   display: flex;
   justify-content: center;
@@ -1674,9 +1366,7 @@ export default {
   min-height: 300px;
 }
 
-.spinner-container {
-  text-align: center;
-}
+.spinner-container { text-align: center; }
 
 .spinner {
   width: 40px;
@@ -1689,11 +1379,11 @@ export default {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
+  0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
-/* Error State */
+/* ─── Error ─────────────────────────────────────────────── */
 .error-container {
   display: flex;
   justify-content: center;
@@ -1706,105 +1396,67 @@ export default {
   max-width: 320px;
   padding: 1.5rem;
 }
+.error-content svg  { margin-bottom: 1rem; color: #ef4444; }
+.error-content h3   { margin: 0 0 0.5rem; color: #dc2626; font-size: 1.25rem; }
+.error-content p    { margin: 0 0 1rem; color: #7f1d1d; font-size: 0.875rem; }
 
-.error-content svg {
-  margin-bottom: 1rem;
-  color: #ef4444;
-}
-
-.error-content h3 {
-  margin: 0 0 0.5rem;
-  color: #dc2626;
-  font-size: 1.25rem;
-}
-
-.error-content p {
-  margin: 0 0 1rem;
-  color: #7f1d1d;
-  font-size: 0.875rem;
-}
-
-/* Responsive Design */
+/* ─── Responsive ────────────────────────────────────────── */
 @media (max-width: 768px) {
-  .dashboard-header {
-    padding: 1rem;
-  }
-  
-  .dashboard-main {
-    padding: 1rem;
-  }
-  
+  .dashboard-main { padding: 1rem; }
+
   .user-greeting {
     flex-direction: column;
     align-items: flex-start;
     gap: 1rem;
   }
-  
-  .greeting {
-    font-size: 1.25rem;
-  }
-  
+
+  .greeting { font-size: 1.25rem; }
+
   .stats-grid {
     grid-template-columns: 1fr;
     gap: 0.75rem;
   }
-  
-  .content-grid {
-    gap: 1rem;
+
+  .content-grid { gap: 1rem; }
+
+  /* Leaves table — hide header, stack columns on mobile */
+  .leaves-list-header { display: none; }
+
+  .leaves-grid {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "type   status"
+      "dates  action";
+    gap: 0.4rem;
+    padding: 0.75rem 0.875rem;
   }
-  
-  .payslip-content {
-    flex-direction: column;
-    text-align: center;
-    gap: 0.75rem;
-  }
-  
-  .payslip-actions {
-    flex-direction: column;
-  }
-  
-  .data-table {
-    font-size: 0.75rem;
-  }
-  
-  .data-table th,
-  .data-table td {
-    padding: 0.5rem;
-  }
+
+  .leave-type-cell   { grid-area: type; }
+  .date-range-wrap   { grid-area: dates; }
+  .status-badge      { grid-area: status; justify-self: end; }
+  .action-group      { grid-area: action; justify-self: end; }
+  .duration-badge    { display: none; } /* hide duration col on mobile */
+
+  .payslip-content   { flex-direction: column; text-align: center; gap: 0.75rem; }
+  .payslip-actions   { flex-direction: column; }
+
+  .employee-id { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+
+  .profile-detail { flex-direction: column; align-items: flex-start; gap: 0.125rem; }
 }
 
 @media (max-width: 480px) {
-  .dashboard-header {
-    padding: 0.75rem;
-  }
-  
-  .dashboard-main {
-    padding: 0.75rem;
-  }
-  
-  .content-card {
-    padding: 1rem;
-  }
-  
-  .breakdown-item {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
-  }
-  
-  .values {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .avatar {
-    width: 40px;
-    height: 40px;
-    font-size: 1rem;
-  }
-  
-  .stat-value {
-    font-size: 1.5rem;
-  }
+  .dashboard-main { padding: 0.75rem; }
+  .content-card   { padding: 1rem; }
+
+  .breakdown-item { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+  .values { width: 100%; justify-content: space-between; }
+
+  .avatar { width: 44px; height: 44px; font-size: 1rem; border-radius: 12px; }
+  .stat-value { font-size: 1.5rem; }
+
+  .employee-details { font-size: 0.75rem; }
+  .profile-detail .detail-label,
+  .profile-detail .detail-value { font-size: 0.75rem; }
 }
 </style>
