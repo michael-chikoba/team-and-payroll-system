@@ -8,11 +8,11 @@
             <h1 class="text-3xl font-extrabold text-gray-900">Team Schedule & Operations</h1>
             <p class="mt-1 text-sm text-gray-600 font-medium">Manage weekly tasks, assignments, and deadlines</p>
           </div>
-          
+
           <div class="flex items-center space-x-4">
             <!-- Notifications Bell -->
             <div class="relative" ref="notificationContainer">
-              <button 
+              <button
                 type="button"
                 @click="toggleNotifications"
                 class="relative p-2 text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 rounded-full transition-colors bg-white hover:bg-gray-100 border border-gray-200">
@@ -24,7 +24,7 @@
                   {{ unreadCount }}
                 </span>
               </button>
-              
+
               <!-- Notifications Dropdown -->
               <transition
                 enter-active-class="transition ease-out duration-100"
@@ -45,8 +45,8 @@
                     No new notifications
                   </div>
                   <div v-else>
-                    <div 
-                      v-for="notif in notifications" 
+                    <div
+                      v-for="notif in notifications"
                       :key="notif.id"
                       @click="handleNotificationClick(notif)"
                       :class="['p-4 border-b border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors', !notif.is_read ? 'bg-blue-50' : 'bg-white']">
@@ -70,13 +70,13 @@
 
             <!-- View Toggle -->
             <div class="flex rounded-lg border border-gray-300 overflow-hidden shadow-sm">
-              <button 
+              <button
                 type="button"
                 @click="currentView = 'calendar'"
                 :class="['px-4 py-2 text-sm font-bold focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:z-10', currentView === 'calendar' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50']">
                 Calendar
               </button>
-              <button 
+              <button
                 type="button"
                 @click="currentView = 'list'"
                 :class="['px-4 py-2 text-sm font-bold border-l border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:z-10', currentView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-800 hover:bg-gray-50']">
@@ -85,7 +85,7 @@
             </div>
 
             <!-- Create Button -->
-            <button 
+            <button
               type="button"
               @click="openCreateModal"
               class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-bold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition shadow-sm">
@@ -101,7 +101,7 @@
 
     <!-- Error/Loading/Content Section -->
     <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 relative z-0">
-      
+
       <!-- Error State -->
       <div v-if="error" class="mb-6 bg-red-50 border-l-4 border-red-400 p-4">
         <div class="flex">
@@ -123,14 +123,14 @@
 
       <!-- Content -->
       <div v-else>
-        <ScheduleCalendar 
+        <ScheduleCalendar
           v-if="currentView === 'calendar'"
           :schedules="schedules"
           @schedule-click="openScheduleDetail"
           @date-click="openCreateModalWithDate"
         />
 
-        <ScheduleListView 
+        <ScheduleListView
           v-if="currentView === 'list'"
           :schedules="schedules"
           :employees="employees"
@@ -142,26 +142,98 @@
       </div>
     </div>
 
-    <!-- Create/Edit Modal -->
-    <ScheduleModal
-      v-if="showCreateModal"
-      :schedule="editingSchedule"
-      :employees="employees"
-      :preset-date="presetDate"
-      :saving="isSaving"
-      @close="closeModal"
-      @save="saveSchedule"
-    />
+    <!-- ─── Create/Edit Modal — Teleported to <body> ──────────────────────── -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition ease-out duration-200"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition ease-in duration-150"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showCreateModal"
+          class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          @mousedown.self="closeModal"
+        >
+          <!-- Backdrop -->
+          <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true"></div>
 
-    <!-- Schedule Detail Modal -->
-    <ScheduleDetailModal
-      v-if="showDetailModal"
-      :schedule="selectedSchedule"
-      @close="showDetailModal = false"
-      @edit="editSchedule"
-      @complete="completeSchedule"
-      @delete="deleteSchedule"
-    />
+          <!-- Modal Panel -->
+          <Transition
+            enter-active-class="transition ease-out duration-200"
+            enter-from-class="opacity-0 scale-95 translate-y-2"
+            enter-to-class="opacity-100 scale-100 translate-y-0"
+            leave-active-class="transition ease-in duration-150"
+            leave-from-class="opacity-100 scale-100 translate-y-0"
+            leave-to-class="opacity-0 scale-95 translate-y-2"
+          >
+            <div
+              v-if="showCreateModal"
+              class="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl ring-1 ring-black/10"
+              role="dialog"
+              aria-modal="true"
+            >
+              <ScheduleModal
+                :schedule="editingSchedule"
+                :employees="employees"
+                :preset-date="presetDate"
+                :saving="isSaving"
+                @close="closeModal"
+                @save="saveSchedule"
+              />
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ─── Schedule Detail Modal — Teleported to <body> ─────────────────── -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition ease-out duration-200"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition ease-in duration-150"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showDetailModal"
+          class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          @mousedown.self="showDetailModal = false"
+        >
+          <!-- Backdrop -->
+          <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true"></div>
+
+          <!-- Modal Panel -->
+          <Transition
+            enter-active-class="transition ease-out duration-200"
+            enter-from-class="opacity-0 scale-95 translate-y-2"
+            enter-to-class="opacity-100 scale-100 translate-y-0"
+            leave-active-class="transition ease-in duration-150"
+            leave-from-class="opacity-100 scale-100 translate-y-0"
+            leave-to-class="opacity-0 scale-95 translate-y-2"
+          >
+            <div
+              v-if="showDetailModal"
+              class="relative z-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl ring-1 ring-black/10"
+              role="dialog"
+              aria-modal="true"
+            >
+              <ScheduleDetailModal
+                :schedule="selectedSchedule"
+                @close="showDetailModal = false"
+                @edit="editSchedule"
+                @complete="completeSchedule"
+                @delete="deleteSchedule"
+              />
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
 
   </div>
 </template>
@@ -198,16 +270,15 @@ const unreadCount = computed(() => {
   return (notifications.value || []).filter(n => !n.is_read).length;
 });
 
-// --- Helper for Default Object (Prevents NULL crashes) ---
+// --- Helper for Default Object ---
 const createEmptySchedule = () => {
   try {
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0];
-    
     return {
       title: '',
       description: '',
-      type: 'banner_creation', // Frontend uses 'type'
+      type: 'banner_creation',
       priority: 'moderate',
       due_date: dateStr,
       scheduled_date: dateStr,
@@ -220,7 +291,6 @@ const createEmptySchedule = () => {
     console.error('Error creating empty schedule:', err);
     const now = new Date();
     const fallbackDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    
     return {
       title: '',
       description: '',
@@ -236,10 +306,8 @@ const createEmptySchedule = () => {
   }
 };
 
-// Helper to validate and fix date strings
 const validateDate = (dateValue) => {
   if (!dateValue) return null;
-  
   try {
     const date = new Date(dateValue);
     if (isNaN(date.getTime())) {
@@ -253,14 +321,24 @@ const validateDate = (dateValue) => {
   }
 };
 
+// --- Keyboard handler (Escape closes modal) ---
+const handleKeydown = (e) => {
+  if (e.key === 'Escape') {
+    if (showCreateModal.value) closeModal();
+    if (showDetailModal.value) showDetailModal.value = false;
+  }
+};
+
 // --- Lifecycle ---
 onMounted(async () => {
   document.addEventListener('click', handleClickOutside);
+  document.addEventListener('keydown', handleKeydown);
   await loadInitialData();
   const pollInterval = setInterval(fetchNotifications, 60000);
-  
+
   onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside);
+    document.removeEventListener('keydown', handleKeydown);
     clearInterval(pollInterval);
   });
 });
@@ -291,22 +369,18 @@ const loadInitialData = async () => {
 // --- API Calls ---
 const fetchEmployees = async () => {
   try {
-    // Try manager endpoint first, fall back to admin endpoint if needed
     let response;
     try {
       response = await axios.get('/api/manager/employees');
     } catch (err) {
       if (err.response?.status === 403 || err.response?.status === 404) {
-        // Try admin endpoint
         response = await axios.get('/api/admin/employees');
       } else {
         throw err;
       }
     }
-    
     employees.value = response.data.data || response.data || [];
-    console.log('Employees loaded:', employees.value.length);
-  } catch (err) { 
+  } catch (err) {
     console.error('Failed to fetch employees:', err);
     employees.value = [];
   }
@@ -315,43 +389,24 @@ const fetchEmployees = async () => {
 const fetchSchedules = async () => {
   try {
     const response = await axios.get('/api/schedules');
-    console.log('Raw API Response:', response.data);
-    
-    // Handle different possible response structures
     let rawSchedules = [];
-    if (response.data.schedules) {
-      rawSchedules = response.data.schedules;
-    } else if (response.data.data) {
-      rawSchedules = response.data.data;
-    } else if (Array.isArray(response.data)) {
-      rawSchedules = response.data;
-    }
-    
-    // Normalize and validate schedules
-    schedules.value = rawSchedules.map(schedule => {
-      const normalized = {
-        ...schedule,
-        // Normalize field names (backend may use 'type', frontend normalizes to both)
-        type: schedule.type || schedule.schedule_type || 'other',
-        schedule_type: schedule.type || schedule.schedule_type || 'other',
-        // Validate dates
-        due_date: validateDate(schedule.due_date) || validateDate(schedule.scheduled_date) || new Date().toISOString().split('T')[0],
-        scheduled_date: validateDate(schedule.scheduled_date) || validateDate(schedule.due_date) || new Date().toISOString().split('T')[0],
-        created_at: validateDate(schedule.created_at),
-        updated_at: validateDate(schedule.updated_at),
-        // Ensure meta_data is an object
-        meta_data: schedule.meta_data || {},
-        // Ensure assigned_to is properly formatted
-        assigned_to: schedule.assigned_to || null
-      };
-      
-      return normalized;
-    });
-    
-    console.log('Schedules loaded and normalized:', schedules.value.length);
+    if (response.data.schedules) rawSchedules = response.data.schedules;
+    else if (response.data.data) rawSchedules = response.data.data;
+    else if (Array.isArray(response.data)) rawSchedules = response.data;
+
+    schedules.value = rawSchedules.map(schedule => ({
+      ...schedule,
+      type: schedule.type || schedule.schedule_type || 'other',
+      schedule_type: schedule.type || schedule.schedule_type || 'other',
+      due_date: validateDate(schedule.due_date) || validateDate(schedule.scheduled_date) || new Date().toISOString().split('T')[0],
+      scheduled_date: validateDate(schedule.scheduled_date) || validateDate(schedule.due_date) || new Date().toISOString().split('T')[0],
+      created_at: validateDate(schedule.created_at),
+      updated_at: validateDate(schedule.updated_at),
+      meta_data: schedule.meta_data || {},
+      assigned_to: schedule.assigned_to || null
+    }));
   } catch (err) {
     console.error('Failed to fetch schedules:', err);
-    console.error('Error details:', err.response?.data);
     error.value = 'Failed to load schedules: ' + (err.response?.data?.message || err.message);
     schedules.value = [];
   }
@@ -361,7 +416,6 @@ const fetchNotifications = async () => {
   try {
     const response = await axios.get('/api/notifications');
     const rawNotifications = response.data.notifications || response.data.data || [];
-    
     notifications.value = rawNotifications.map(notif => ({
       ...notif,
       created_at: notif.created_at || new Date().toISOString()
@@ -373,12 +427,10 @@ const fetchNotifications = async () => {
 };
 
 // --- Actions ---
-
 const openCreateModal = () => {
   editingSchedule.value = createEmptySchedule();
   presetDate.value = null;
   showCreateModal.value = true;
-  console.log('Opening create modal with:', editingSchedule.value);
 };
 
 const openCreateModalWithDate = (date) => {
@@ -397,32 +449,25 @@ const openCreateModalWithDate = (date) => {
   }
   editingSchedule.value = newSchedule;
   showCreateModal.value = true;
-  console.log('Opening create modal with date:', date, editingSchedule.value);
 };
 
 const saveSchedule = async (scheduleData) => {
   isSaving.value = true;
   error.value = null;
-  
   try {
-    // Validate required fields
     if (!scheduleData.title || !scheduleData.due_date) {
       alert('Please fill in all required fields (Title and Due Date)');
       return;
     }
-
-    // Validate the due_date
     const validatedDate = validateDate(scheduleData.due_date);
     if (!validatedDate) {
       alert('Invalid due date. Please select a valid date.');
       return;
     }
-
-    // Prepare data for backend - backend expects 'type' field
     const dataToSend = {
       title: scheduleData.title,
       description: scheduleData.description || '',
-      type: scheduleData.type || scheduleData.schedule_type || 'other', // Backend expects 'type'
+      type: scheduleData.type || scheduleData.schedule_type || 'other',
       priority: scheduleData.priority || 'moderate',
       due_date: validatedDate,
       scheduled_date: scheduleData.scheduled_date || validatedDate,
@@ -432,26 +477,18 @@ const saveSchedule = async (scheduleData) => {
       status: scheduleData.status || 'pending'
     };
 
-    console.log('Saving schedule:', dataToSend);
-
-    // Check if ID exists to determine update vs create
     let response;
     if (scheduleData.id) {
       response = await axios.put(`/api/schedules/${scheduleData.id}`, dataToSend);
-      console.log('Schedule updated:', response.data);
     } else {
       response = await axios.post('/api/schedules', dataToSend);
-      console.log('Schedule created:', response.data);
     }
-    
+
     await fetchSchedules();
     closeModal();
   } catch (err) {
     console.error('Failed to save schedule:', err);
-    console.error('Error response:', err.response?.data);
-    
     if (err.response?.data?.errors) {
-      console.error('Validation errors:', err.response.data.errors);
       const errorMessages = Object.values(err.response.data.errors).flat().join('\n');
       alert('Validation failed:\n' + errorMessages);
     } else if (err.response?.data?.message) {
@@ -479,12 +516,9 @@ const completeSchedule = async (scheduleId) => {
 };
 
 const editSchedule = (schedule) => {
-  // Deep clone and normalize fields
   const clonedSchedule = JSON.parse(JSON.stringify(schedule));
-  // Ensure both type and schedule_type are set
   clonedSchedule.type = clonedSchedule.type || clonedSchedule.schedule_type || 'other';
-  clonedSchedule.schedule_type = clonedSchedule.type || clonedSchedule.schedule_type || 'other';
-  
+  clonedSchedule.schedule_type = clonedSchedule.type;
   editingSchedule.value = clonedSchedule;
   showCreateModal.value = true;
   showDetailModal.value = false;
@@ -505,13 +539,10 @@ const deleteSchedule = async (scheduleId) => {
 const toggleBannerRegion = async (schedule, region) => {
   const newMeta = { ...(schedule.meta_data || {}) };
   newMeta[region] = !newMeta[region];
-  
   const oldMeta = { ...schedule.meta_data };
   schedule.meta_data = newMeta;
-  
   try {
     await axios.put(`/api/schedules/${schedule.id}/meta`, { meta_data: newMeta });
-    console.log('Banner region toggled successfully');
   } catch (err) {
     console.error('Failed to toggle banner region:', err);
     schedule.meta_data = oldMeta;
@@ -548,7 +579,7 @@ const markAsRead = async (id) => {
     const idx = notifications.value.findIndex(n => n.id === id);
     if (idx !== -1) notifications.value[idx].is_read = true;
     await axios.post(`/api/notifications/${id}/read`);
-  } catch (err) { 
+  } catch (err) {
     console.error('Failed to mark as read:', err);
   }
 };
@@ -557,59 +588,45 @@ const markAllRead = async () => {
   try {
     await axios.post('/api/notifications/read-all');
     notifications.value.forEach(n => n.is_read = true);
-  } catch (err) { 
+  } catch (err) {
     console.error('Failed to mark all as read:', err);
   }
 };
 
 // --- Helpers ---
-
 const getNotificationColor = (type) => {
-  const colors = { 
-    assigned: 'bg-blue-500', 
-    reminder: 'bg-yellow-500', 
-    overdue: 'bg-red-500', 
-    completed: 'bg-green-500' 
+  const colors = {
+    assigned: 'bg-blue-500',
+    reminder: 'bg-yellow-500',
+    overdue: 'bg-red-500',
+    completed: 'bg-green-500'
   };
   return colors[type] || 'bg-gray-500';
 };
 
 const getNotificationMessage = (notif) => {
   if (!notif) return 'New notification';
-  
   const title = (notif.schedule && notif.schedule.title) ? notif.schedule.title : 'Unknown Task';
-  
   const messages = {
     assigned: `You've been assigned: ${title}`,
     reminder: `Reminder: ${title} is due soon`,
     overdue: `Overdue: ${title}`,
     completed: `Completed: ${title}`
   };
-  
   return messages[notif.notification_type] || notif.message || 'New notification';
 };
 
 const formatDateTime = (dateString) => {
-  if (!dateString || dateString === '') {
-    return 'Just now';
-  }
-  
+  if (!dateString || dateString === '') return 'Just now';
   try {
     const date = new Date(dateString);
-    
-    if (isNaN(date.getTime())) {
-      return 'Recently';
-    }
-    
+    if (isNaN(date.getTime())) return 'Recently';
     const now = new Date();
     const diffMinutes = Math.floor((now - date) / 60000);
-    
     if (diffMinutes < 1) return 'Just now';
     if (diffMinutes < 60) return `${diffMinutes}m ago`;
     if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}h ago`;
-    
-    const options = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-    return date.toLocaleDateString('en-GB', options);
+    return date.toLocaleDateString('en-GB', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   } catch (err) {
     console.error('Date formatting error:', err);
     return 'Recently';

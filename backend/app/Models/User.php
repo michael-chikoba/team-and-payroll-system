@@ -40,7 +40,7 @@ class User extends Authenticatable
 
      public function getEncryptedFields(): array
 {
-    return ['email'];
+    return [];
 }
     /**
      * Get the employee profile associated with the user.

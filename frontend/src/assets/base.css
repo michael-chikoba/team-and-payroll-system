@@ -2,3 +2,54 @@
 @import 'tailwindcss/base';
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
+
+/*
+ * ============================================================
+ * BASE.CSS — Global reset & scroll-safe foundation
+ *
+ * CRITICAL RULE: Never set overflow: hidden or height: 100vh
+ * on html or body here. The app-shell layouts
+ * (.admin-layout, .employee-layout, .modern-manager-layout)
+ * handle their own scroll containment via shared-layout-styles.css.
+ * Landing pages need html/body to scroll freely.
+ * ============================================================
+ */
+
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+  /* NO height: 100% — lets landing pages grow with content */
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont,
+               'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-page, #f1f3f8);
+  color: var(--text-primary, #111827);
+  line-height: 1.5;
+  overflow-x: hidden;
+  min-height: 100vh;
+  /*
+   * REMOVED: overflow: hidden  ← was killing landing page scroll
+   * REMOVED: height: 100vh     ← was killing landing page scroll
+   *
+   * App-shell layouts use their own height/overflow containment:
+   *   .admin-layout, .employee-layout, .modern-manager-layout
+   *   all have  height: 100vh; overflow: hidden
+   * That creates the app-shell scroll container correctly
+   * WITHOUT affecting landing pages.
+   */
+}
+
+*:focus-visible {
+  outline: 2px solid var(--primary-color, #3b5bdb);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(59, 91, 219, 0.18);
+}

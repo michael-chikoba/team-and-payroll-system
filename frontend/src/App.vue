@@ -1,35 +1,25 @@
 <!-- src/App.vue -->
 <template>
   <div id="app">
-    <!-- ── Global loading overlay ────────────────────────────────────────────
-         Sits at the very top of the tree, above Suspense and router-view,
-         so it renders during boot, route transitions, AND axios requests.  -->
-    <GlobalLoading />
-
+    <GlobalLoading :loading="isNavigating" />
     <Suspense>
       <template #default>
         <div class="app-wrapper">
           <NotificationPermission v-if="showNotificationPermission" />
-
           <router-view v-slot="{ Component }">
             <component :is="Component" />
           </router-view>
-
-          <!-- ── Idle warning overlay ──────────────────────────────────────
-               Sits outside router-view so it survives all route changes.
-               Only visible when an overtime session is active + user is idle -->
           <IdleWarningBanner />
         </div>
       </template>
     </Suspense>
-
-    <!-- Notifications (kyvg/vue3-notification) -->
     <notifications position="top right" />
   </div>
 </template>
 
 <script>
 import { ref, onMounted, defineAsyncComponent } from 'vue'
+import { useRouter } from 'vue-router'
 import IdleWarningBanner from '@/components/IdleWarningBanner.vue'
 import GlobalLoading     from '@/components/GlobalLoading.vue'
 
@@ -38,7 +28,6 @@ export default {
   components: {
     GlobalLoading,
     IdleWarningBanner,
-
     NotificationPermission: defineAsyncComponent({
       loader: () => import('@/components/NotificationPermission.vue'),
       delay: 200,
@@ -47,19 +36,44 @@ export default {
       loadingComponent: { template: '<div></div>' },
     }),
   },
-
   setup() {
     const showNotificationPermission = ref(false)
+    const isNavigating = ref(false)
+    const router = useRouter()
+
+    router.beforeEach(() => { isNavigating.value = true })
+    router.afterEach(() => { isNavigating.value = false })
+    router.onError(() => { isNavigating.value = false })
 
     onMounted(() => {
-      setTimeout(() => {
-        showNotificationPermission.value = true
-      }, 3000)
-
+      setTimeout(() => { showNotificationPermission.value = true }, 3000)
       console.log('✅ App component mounted')
     })
 
-    return { showNotificationPermission }
+    return { showNotificationPermission, isNavigating }
   },
 }
 </script>
+
+<style>
+/*
+ * App-level global styles.
+ * NOTE: body/html base rules live in base.css (imported in main.js).
+ * These rules only handle the #app shell — they do NOT set
+ * overflow: hidden or height: 100vh on html/body.
+ */
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+.app-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+</style>

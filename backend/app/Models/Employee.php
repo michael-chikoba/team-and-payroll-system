@@ -37,15 +37,28 @@ class Employee extends Model
         'emergency_contact',
         'profile_pic',
         'is_active',
+        // Status / archive fields
+        'status',
+        'suspended_at',
+        'archived_at',
+        'reinstated_at',
+        'suspended_by',
+        'archived_by',
+        'reinstated_by',
+        'suspension_reason',
+        'archive_reason',
+        'status_notes',
     ];
 
     protected $casts = [
-        // REMOVED decimal casts for salary fields - they're encrypted now
-        'hire_date' => 'date',
-        'date_of_birth' => 'date',
-        'bank_details' => 'array',        // Will be auto-encrypted by trait
-        'emergency_contact' => 'array',    // Will be auto-encrypted by trait
-        'is_active' => 'boolean',
+        'hire_date'       => 'date',
+        'date_of_birth'   => 'date',
+        'bank_details'    => 'array',
+        'emergency_contact' => 'array',
+        'is_active'       => 'boolean',
+        'suspended_at'    => 'datetime',
+        'archived_at'     => 'datetime',
+        'reinstated_at'   => 'datetime',
     ];
 
     protected $appends = [
@@ -55,70 +68,69 @@ class Employee extends Model
         'total_salary',
     ];
 
-    /**
-     * Define which fields should be encrypted
-     */
+    // ─────────────────────────────────────────────────────────────
+    // ENCRYPTED FIELDS
+    // ─────────────────────────────────────────────────────────────
+
     public function getEncryptedFields(): array
     {
         return [
-            // Personal Information
-            'phone',                    // Phone
-            'national_id',              // National ID
-            'address',                  // Address
-            'emergency_contact',        // Emergency Contact
-            
-            // Financial Information
-            'base_salary',               // Salary (ENCRYPTED)
-            'transport_allowance',       // Transport allowance (ENCRYPTED)
-            'lunch_allowance',           // Lunch allowance (ENCRYPTED)
-            'bank_details',              // Bank details
+            'phone',
+            'national_id',
+            'address',
+            'emergency_contact',
+            'base_salary',
+            'transport_allowance',
+            'lunch_allowance',
+            'bank_details',
         ];
-        // NOTE: 'email' is not in employees table - it's from user relation
     }
 
-    /**
-     * ========================================
-     * ACCESSORS FOR ENCRYPTED FIELDS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // STATUS HELPERS
+    // ─────────────────────────────────────────────────────────────
 
-    /**
-     * Get base salary as float (decrypted automatically by trait)
-     */
+    public function isActive(): bool
+    {
+        return $this->status === 'active';
+    }
+
+    public function isSuspended(): bool
+    {
+        return $this->status === 'suspended';
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->status === 'archived';
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // SALARY ACCESSORS
+    // ─────────────────────────────────────────────────────────────
+
     public function getBaseSalaryValueAttribute(): float
     {
         return (float) ($this->base_salary ?? 0);
     }
 
-    /**
-     * Get transport allowance as float
-     */
     public function getTransportAllowanceValueAttribute(): float
     {
         return (float) ($this->transport_allowance ?? 0);
     }
 
-    /**
-     * Get lunch allowance as float
-     */
     public function getLunchAllowanceValueAttribute(): float
     {
         return (float) ($this->lunch_allowance ?? 0);
     }
 
-    /**
-     * Get total salary as float
-     */
     public function getTotalSalaryAttribute(): float
     {
-        return $this->base_salary_value + 
-               $this->transport_allowance_value + 
+        return $this->base_salary_value +
+               $this->transport_allowance_value +
                $this->lunch_allowance_value;
     }
 
-    /**
-     * Get formatted total salary
-     */
     public function getFormattedTotalSalaryAttribute(): string
     {
         if (!$this->country) {
@@ -126,55 +138,36 @@ class Employee extends Model
         }
         return $this->country->formatCurrency($this->total_salary);
     }
-    /**
-     * Get transport allowance (for backward compatibility)
-     */
+
     public function getTransportAllowance(): float
     {
         return $this->transport_allowance_value;
     }
 
-    /**
-     * Get lunch allowance (for backward compatibility)
-     */
     public function getLunchAllowance(): float
     {
         return $this->lunch_allowance_value;
     }
 
-    /**
-     * ========================================
-     * RELATIONSHIPS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // RELATIONSHIPS
+    // ─────────────────────────────────────────────────────────────
 
-    /**
-     * Get tasks assigned to this employee
-     */
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class, 'assigned_to', 'user_id');
     }
 
-    /**
-     * Get tasks created by this employee
-     */
     public function createdTasks(): HasMany
     {
         return $this->hasMany(Task::class, 'created_by', 'user_id');
     }
 
-    /**
-     * Get tickets submitted by this employee
-     */
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class, 'user_id', 'user_id');
     }
 
-    /**
-     * Get tickets assigned to this employee
-     */
     public function assignedTickets(): HasMany
     {
         return $this->hasMany(Ticket::class, 'assigned_to', 'user_id');
@@ -198,6 +191,21 @@ class Employee extends Model
     public function manager(): BelongsTo
     {
         return $this->belongsTo(User::class, 'manager_id');
+    }
+
+    public function suspendedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'suspended_by');
+    }
+
+    public function archivedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'archived_by');
+    }
+
+    public function reinstatedByUser(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reinstated_by');
     }
 
     public function attendances(): HasMany
@@ -249,11 +257,9 @@ class Employee extends Model
             ->where('balance', '>', 0);
     }
 
-    /**
-     * ========================================
-     * BOOT METHOD
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // BOOT
+    // ─────────────────────────────────────────────────────────────
 
     protected static function boot()
     {
@@ -262,49 +268,27 @@ class Employee extends Model
         static::creating(function ($employee) {
             if (empty($employee->manager_id) && $employee->department) {
                 $query = Manager::where('department', $employee->department);
-                
-                if ($employee->country_id) {
-                    $query->where('country_id', $employee->country_id);
-                }
-                
-                if ($employee->business_id) {
-                    $query->where('business_id', $employee->business_id);
-                }
-                
+                if ($employee->country_id)  $query->where('country_id',  $employee->country_id);
+                if ($employee->business_id) $query->where('business_id', $employee->business_id);
                 $manager = $query->first();
-                
-                if ($manager) {
-                    $employee->manager_id = $manager->user_id;
-                }
+                if ($manager) $employee->manager_id = $manager->user_id;
             }
         });
 
         static::updating(function ($employee) {
             if ($employee->isDirty('department') && empty($employee->manager_id) && $employee->department) {
                 $query = Manager::where('department', $employee->department);
-                
-                if ($employee->country_id) {
-                    $query->where('country_id', $employee->country_id);
-                }
-                
-                if ($employee->business_id) {
-                    $query->where('business_id', $employee->business_id);
-                }
-                
+                if ($employee->country_id)  $query->where('country_id',  $employee->country_id);
+                if ($employee->business_id) $query->where('business_id', $employee->business_id);
                 $manager = $query->first();
-                
-                if ($manager) {
-                    $employee->manager_id = $manager->user_id;
-                }
+                if ($manager) $employee->manager_id = $manager->user_id;
             }
         });
     }
 
-    /**
-     * ========================================
-     * SCOPES
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // SCOPES
+    // ─────────────────────────────────────────────────────────────
 
     public function scopeInBusiness(Builder $query, $businessId)
     {
@@ -319,12 +303,28 @@ class Employee extends Model
     public function scopeSameContext(Builder $query, Employee $managerProfile)
     {
         return $query->where('business_id', $managerProfile->business_id)
-                     ->where('country_id', $managerProfile->country_id);
+                     ->where('country_id',  $managerProfile->country_id);
     }
 
     public function scopeActive(Builder $query)
     {
-        return $query->where('is_active', true);
+        return $query->where('status', 'active');
+    }
+
+    public function scopeSuspended(Builder $query)
+    {
+        return $query->where('status', 'suspended');
+    }
+
+    public function scopeArchived(Builder $query)
+    {
+        return $query->where('status', 'archived');
+    }
+
+    /** Returns active + suspended (i.e. not archived) */
+    public function scopeNotArchived(Builder $query)
+    {
+        return $query->whereIn('status', ['active', 'suspended']);
     }
 
     public function scopeInDepartment(Builder $query, $department)
@@ -341,40 +341,30 @@ class Employee extends Model
     {
         return $query->whereHas('user', function ($q) use ($search) {
             $q->where('first_name', 'like', "%{$search}%")
-              ->orWhere('last_name', 'like', "%{$search}%")
-              ->orWhere('email', 'like', "%{$search}%");
+              ->orWhere('last_name',  'like', "%{$search}%")
+              ->orWhere('email',      'like', "%{$search}%");
         })->orWhere('employee_id', 'like', "%{$search}%");
     }
 
     public function scopeByBusinessAndCountry(Builder $query, $businessId = null, $countryId = null)
     {
-        if ($businessId) {
-            $query->where('business_id', $businessId);
-        }
-        
-        if ($countryId) {
-            $query->where('country_id', $countryId);
-        }
-        
+        if ($businessId) $query->where('business_id', $businessId);
+        if ($countryId)  $query->where('country_id',  $countryId);
         return $query;
     }
 
-    /**
-     * ========================================
-     * ACCESSORS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // ACCESSORS
+    // ─────────────────────────────────────────────────────────────
 
     public function getFullNameAttribute(): string
     {
         if ($this->relationLoaded('user') && $this->user) {
             return trim($this->user->first_name . ' ' . $this->user->last_name);
         }
-        
-        if (isset($this->attributes['user_first_name']) && isset($this->attributes['user_last_name'])) {
+        if (isset($this->attributes['user_first_name'], $this->attributes['user_last_name'])) {
             return trim($this->attributes['user_first_name'] . ' ' . $this->attributes['user_last_name']);
         }
-        
         return 'N/A';
     }
 
@@ -383,11 +373,9 @@ class Employee extends Model
         if ($this->relationLoaded('user') && $this->user) {
             return $this->user->email;
         }
-        
         if (isset($this->attributes['user_email'])) {
             return $this->attributes['user_email'];
         }
-        
         return 'N/A';
     }
 
@@ -396,54 +384,27 @@ class Employee extends Model
         if (!$this->country) {
             return number_format($this->base_salary_value, 2);
         }
-
         return $this->country->formatCurrency($this->base_salary_value);
     }
 
-    /**
-     * ========================================
-     * PAYROLL-SPECIFIC METHODS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // PAYROLL HELPERS
+    // ─────────────────────────────────────────────────────────────
 
-    /**
-     * Get country code for this employee
-     * Priority: Employee's country > Business's country
-     */
     public function getCountryCode(): ?string
     {
-        // Try employee's direct country first
-        if ($this->country_id && $this->country) {
-            return $this->country->code;
-        }
-
-        // Fall back to business country
-        if ($this->business && $this->business->country_code) {
-            return $this->business->country_code;
-        }
-
+        if ($this->country_id && $this->country) return $this->country->code;
+        if ($this->business && $this->business->country_code) return $this->business->country_code;
         return null;
     }
-    
-    /**
-     * Helper to get the country model
-     */
+
     public function resolveCountry()
     {
-        if ($this->country_id) {
-            return $this->country;
-        }
-        
-        if ($this->business && $this->business->country) {
-            return $this->business->country;
-        }
-        
+        if ($this->country_id) return $this->country;
+        if ($this->business && $this->business->country) return $this->business->country;
         return Country::where('code', 'ZM')->first();
     }
 
-    /**
-     * Get the tax configuration for this employee
-     */
     public function getTaxConfiguration(): ?TaxConfiguration
     {
         return TaxConfiguration::getForBusinessAndCountry(
@@ -452,64 +413,42 @@ class Employee extends Model
         );
     }
 
-    /**
-     * ========================================
-     * LEAVE MANAGEMENT METHODS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // LEAVE MANAGEMENT
+    // ─────────────────────────────────────────────────────────────
 
     public function getCurrentLeaveBalance(string $type): float
     {
-        $balance = $this->leaveBalances()
-            ->where('type', $type)
-            ->first();
-
+        $balance = $this->leaveBalances()->where('type', $type)->first();
         return $balance ? $balance->balance : 0;
     }
 
     public function getAllLeaveBalances(): array
     {
-        return $this->leaveBalances()
-            ->get()
-            ->pluck('balance', 'type')
-            ->toArray();
+        return $this->leaveBalances()->get()->pluck('balance', 'type')->toArray();
     }
 
     public function initializeLeaveBalances(): void
     {
-        if (!$this->country || !$this->country->configuration) {
-            return;
-        }
-
+        if (!$this->country || !$this->country->configuration) return;
         $config = $this->country->configuration;
-
         $leaveTypes = [
-            'annual' => $config->annual_leave_days,
-            'sick' => $config->sick_leave_days,
+            'annual'    => $config->annual_leave_days,
+            'sick'      => $config->sick_leave_days,
             'maternity' => $config->maternity_leave_days,
             'paternity' => $config->paternity_leave_days,
         ];
-
         foreach ($leaveTypes as $type => $days) {
             LeaveBalance::firstOrCreate(
-                [
-                    'employee_id' => $this->id,
-                    'type' => $type,
-                ],
-                [
-                    'balance' => $days,
-                    'used' => 0,
-                    'year' => now()->year,
-                ]
+                ['employee_id' => $this->id, 'type' => $type],
+                ['balance' => $days, 'used' => 0, 'year' => now()->year]
             );
         }
     }
 
-    /**
-     * ========================================
-     * DEDUCTION METHODS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // DEDUCTIONS
+    // ─────────────────────────────────────────────────────────────
 
     public function hasActiveDeductions(): bool
     {
@@ -518,10 +457,11 @@ class Employee extends Model
 
     public function getTotalMonthlyDeductions(): float
     {
-        $advanceDeductions = $this->activeAdvances()->sum('monthly_deduction');
-        $loanDeductions = $this->activeLoans()->sum('monthly_deduction');
-
-        return round($advanceDeductions + $loanDeductions, 2);
+        return round(
+            $this->activeAdvances()->sum('monthly_deduction') +
+            $this->activeLoans()->sum('monthly_deduction'),
+            2
+        );
     }
 
     public function getDeductionsBreakdown(): array
@@ -541,11 +481,9 @@ class Employee extends Model
         ];
     }
 
-    /**
-     * ========================================
-     * UTILITY METHODS
-     * ========================================
-     */
+    // ─────────────────────────────────────────────────────────────
+    // UTILITIES
+    // ─────────────────────────────────────────────────────────────
 
     public function belongsToBusiness(int $businessId): bool
     {
@@ -581,53 +519,42 @@ class Employee extends Model
 
     public function calculateNetSalary(array $additionalDeductions = []): array
     {
-        $config = $this->getCountryConfiguration();
+        $config     = $this->getCountryConfiguration();
         $baseSalary = $this->base_salary_value;
 
         if (!$config) {
-            return [
-                'gross_salary' => $baseSalary,
-                'net_salary' => $baseSalary,
-                'tax' => 0,
-                'deductions' => [],
-            ];
+            return ['gross_salary' => $baseSalary, 'net_salary' => $baseSalary, 'tax' => 0, 'deductions' => []];
         }
 
-        $tax = $config->calculateTax($baseSalary);
+        $tax                 = $config->calculateTax($baseSalary);
         $statutoryDeductions = $config->calculateStatutoryDeductions($baseSalary);
-        
-        $monthlyDeductions = $this->getTotalMonthlyDeductions();
+        $monthlyDeductions   = $this->getTotalMonthlyDeductions();
         $additionalDeductions['advances_loans'] = $monthlyDeductions;
 
-        $totalStatutory = array_sum($statutoryDeductions);
-        $totalAdditional = array_sum($additionalDeductions);
-        $totalDeductions = $tax + $totalStatutory + $totalAdditional;
-
-        $netSalary = $baseSalary - $totalDeductions;
+        $totalStatutory   = array_sum($statutoryDeductions);
+        $totalAdditional  = array_sum($additionalDeductions);
+        $totalDeductions  = $tax + $totalStatutory + $totalAdditional;
+        $netSalary        = $baseSalary - $totalDeductions;
 
         return [
-            'gross_salary' => round($baseSalary, 2),
-            'tax' => round($tax, 2),
-            'statutory_deductions' => array_map(fn($v) => round($v, 2), $statutoryDeductions),
+            'gross_salary'          => round($baseSalary, 2),
+            'tax'                   => round($tax, 2),
+            'statutory_deductions'  => array_map(fn($v) => round($v, 2), $statutoryDeductions),
             'additional_deductions' => array_map(fn($v) => round($v, 2), $additionalDeductions),
-            'total_deductions' => round($totalDeductions, 2),
-            'net_salary' => round($netSalary, 2),
+            'total_deductions'      => round($totalDeductions, 2),
+            'net_salary'            => round($netSalary, 2),
         ];
     }
 
     public function getYearsOfService(): int
     {
-        if (!$this->hire_date) {
-            return 0;
-        }
+        if (!$this->hire_date) return 0;
         return $this->hire_date->diffInYears(now());
     }
 
     public function getAge(): ?int
     {
-        if (!$this->date_of_birth) {
-            return null;
-        }
+        if (!$this->date_of_birth) return null;
         return $this->date_of_birth->diffInYears(now());
     }
 
@@ -639,25 +566,19 @@ class Employee extends Model
 
     public function getProfilePictureUrl(): string
     {
-        if ($this->profile_pic) {
-            return asset('storage/' . $this->profile_pic);
-        }
+        if ($this->profile_pic) return asset('storage/' . $this->profile_pic);
         return asset('images/default-avatar.png');
     }
 
     public function getFormattedBankDetails(): array
     {
         $details = $this->bank_details;
-        
-        if (!is_array($details)) {
-            return [];
-        }
-
+        if (!is_array($details)) return [];
         return [
-            'bank_name' => $details['bank_name'] ?? 'N/A',
+            'bank_name'      => $details['bank_name']      ?? 'N/A',
             'account_number' => $details['account_number'] ?? 'N/A',
-            'account_name' => $details['account_name'] ?? 'N/A',
-            'branch' => $details['branch'] ?? 'N/A',
+            'account_name'   => $details['account_name']   ?? 'N/A',
+            'branch'         => $details['branch']         ?? 'N/A',
         ];
     }
 }

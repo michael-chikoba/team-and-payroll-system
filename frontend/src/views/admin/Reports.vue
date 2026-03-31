@@ -3,7 +3,11 @@
 
     <!-- ── Auth / Error Gates ──────────────────────── -->
     <div v-if="!authStore.isAuthenticated || !authStore.isAdmin" class="empty-state">
-      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
       <p>{{ !authStore.isAuthenticated ? 'Please log in to access admin reports.' : 'You don\'t have permission to access this page.' }}</p>
     </div>
 
@@ -15,7 +19,11 @@
         <div class="user-greeting">
           <div class="avatar-section">
             <div class="avatar">
-              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
             </div>
             <div class="user-info">
               <h1 class="greeting">Organization Reports</h1>
@@ -30,7 +38,11 @@
           </div>
           <div class="header-actions">
             <button @click="fetchAdminData" class="btn-outline" :disabled="loading">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6"></path>
+                <path d="M1 20v-6h6"></path>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
               {{ loading ? 'Loading…' : 'Refresh' }}
             </button>
           </div>
@@ -49,7 +61,11 @@
 
         <div v-else-if="error" class="table-section">
           <div class="empty-state">
-            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
             <p>{{ error }}</p>
             <button @click="retryFetch" class="btn-primary">Try Again</button>
           </div>
@@ -63,28 +79,44 @@
             <div class="metrics-grid">
               <div class="metric-card" style="--accent:#6366f1;">
                 <div class="metric-icon-wrap" style="background:rgba(99,102,241,0.1);">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
                 </div>
                 <div class="metric-value">{{ orgStats.total_employees || 0 }}</div>
                 <div class="metric-label">Total Employees</div>
               </div>
               <div class="metric-card" style="--accent:#10b981;">
                 <div class="metric-icon-wrap" style="background:rgba(16,185,129,0.1);">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                  </svg>
                 </div>
                 <div class="metric-value">{{ orgStats.present_today || 0 }}</div>
                 <div class="metric-label">Present Today</div>
               </div>
               <div class="metric-card" style="--accent:#f59e0b;">
                 <div class="metric-icon-wrap" style="background:rgba(245,158,11,0.1);">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                  </svg>
                 </div>
                 <div class="metric-value">{{ orgStats.pending_leaves || 0 }}</div>
                 <div class="metric-label">Pending Leaves</div>
               </div>
               <div class="metric-card" style="--accent:#3b82f6;">
                 <div class="metric-icon-wrap" style="background:rgba(59,130,246,0.1);">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                  </svg>
                 </div>
                 <div class="metric-value">{{ orgStats.avg_attendance || 0 }}%</div>
                 <div class="metric-label">Avg. Attendance</div>
@@ -117,7 +149,10 @@
               </div>
               <div class="controls-right">
                 <button v-if="selectedBusinessId || selectedCountry" @click="clearBusinessFilters" class="btn-clear">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
                   Clear Filters
                 </button>
               </div>
@@ -145,7 +180,7 @@
                   @click="selectReportType(rt.value)"
                   :class="['type-btn', { active: selectedReportType === rt.value }]"
                 >
-                  <span class="type-icon">{{ rt.icon }}</span>
+                  <span class="type-icon" v-html="rt.iconSvg"></span>
                   <span class="type-label">{{ rt.name }}</span>
                 </button>
               </div>
@@ -187,7 +222,9 @@
                 </div>
                 <div class="form-generate-col">
                   <button @click="generateAttendanceReport" class="btn-primary btn-generate" :disabled="generatingReport">
-                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
                     {{ generatingReport ? 'Generating…' : 'Generate Report' }}
                   </button>
                 </div>
@@ -225,7 +262,9 @@
                 </div>
                 <div class="form-generate-col">
                   <button @click="generateLeaveReport" class="btn-primary btn-generate" :disabled="generatingReport">
-                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
                     {{ generatingReport ? 'Generating…' : 'Generate Report' }}
                   </button>
                 </div>
@@ -258,7 +297,9 @@
                 </div>
                 <div class="form-generate-col">
                   <button @click="generatePayrollReport" class="btn-primary btn-generate" :disabled="generatingReport">
-                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
                     {{ generatingReport ? 'Generating…' : 'Generate Report' }}
                   </button>
                 </div>
@@ -283,7 +324,9 @@
                 </div>
                 <div class="form-generate-col">
                   <button @click="generateEarningsReport" class="btn-primary btn-generate" :disabled="generatingReport">
-                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
                     {{ generatingReport ? 'Generating…' : 'Generate Report' }}
                   </button>
                 </div>
@@ -320,7 +363,9 @@
                 </div>
                 <div class="form-generate-col">
                   <button @click="generateDeductionsReport" class="btn-primary btn-generate" :disabled="generatingReport">
-                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    <svg v-if="!generatingReport" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
                     {{ generatingReport ? 'Generating…' : 'Generate Report' }}
                   </button>
                 </div>
@@ -328,7 +373,11 @@
 
               <!-- Applied Filters Notice -->
               <div v-if="selectedBusinessId || selectedCountry" class="applied-notice">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="16" x2="12" y2="12"></line>
+                  <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
                 Filters applied:
                 <span v-if="selectedBusinessId" class="notice-tag">{{ getBusinessName(selectedBusinessId) }}</span>
                 <span v-if="selectedCountry" class="notice-tag">{{ getCountryName(selectedCountry) }}</span>
@@ -343,7 +392,7 @@
 
             <div class="reports-list">
               <div v-for="report in paginatedReports" :key="report.id" class="report-row">
-                <div class="report-row-icon">{{ getReportIcon(report.type) }}</div>
+                <div class="report-row-icon" v-html="getReportIconSvg(report.type)"></div>
                 <div class="report-row-info">
                   <div class="report-row-title">{{ report.title }}</div>
                   <div class="report-row-period">{{ report.period }}</div>
@@ -358,15 +407,26 @@
                 </div>
                 <div class="report-row-actions">
                   <button @click="downloadReport(report)" class="action-btn" title="Download PDF">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
                     PDF
                   </button>
                   <button @click="exportToExcel(report)" class="action-btn export" title="Export CSV">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <line x1="3" y1="9" x2="21" y2="9"></line>
+                      <line x1="9" y1="21" x2="9" y2="9"></line>
+                    </svg>
                     CSV
                   </button>
                   <button @click="viewReport(report)" class="action-btn view" title="View Report">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
                     View
                   </button>
                 </div>
@@ -378,12 +438,16 @@
               <span class="pagination-info">Page <strong>{{ currentPage }}</strong> of <strong>{{ totalPages }}</strong></span>
               <div class="pagination-controls">
                 <button @click="prevPage" :disabled="currentPage === 1" class="page-btn">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                  </svg>
                   Prev
                 </button>
                 <button @click="nextPage" :disabled="currentPage === totalPages" class="page-btn">
                   Next
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
                 </button>
               </div>
             </div>
@@ -403,15 +467,26 @@
               </div>
               <div class="preview-actions">
                 <button @click="downloadReport(currentReport)" class="btn-outline export">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
                   Download PDF
                 </button>
                 <button @click="exportToExcel(currentReport)" class="btn-outline">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                  </svg>
                   Export CSV
                 </button>
                 <button @click="currentReport = null" class="btn-outline danger">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
                   Close
                 </button>
               </div>
@@ -599,8 +674,14 @@
     <!-- ── Toast ─────────────────────────────────── -->
     <transition name="toast-slide">
       <div v-if="toast.show" :class="['toast', toast.type]">
-        <svg v-if="toast.type==='success'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <svg v-if="toast.type==='success'" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
         <span>{{ toast.message }}</span>
       </div>
     </transition>
@@ -637,11 +718,36 @@ export default {
       toast: { show: false, message: '', type: 'success' },
       selectedReportType: '',
       reportTypes: [
-        { value: 'attendance', name: 'Attendance',  icon: '📊', description: 'Comprehensive attendance report for selected period' },
-        { value: 'leave',      name: 'Leave',       icon: '📋', description: 'Leave utilization and approval report' },
-        { value: 'payroll',    name: 'Payroll',     icon: '💰', description: 'Full payroll summary with earnings and deductions' },
-        { value: 'earnings',   name: 'Earnings',    icon: '📈', description: 'Earnings-only report with type breakdown' },
-        { value: 'deductions', name: 'Deductions',  icon: '📉', description: 'Deductions-only report with detailed breakdown' }
+        { 
+          value: 'attendance', 
+          name: 'Attendance',  
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>',
+          description: 'Comprehensive attendance report for selected period' 
+        },
+        { 
+          value: 'leave',      
+          name: 'Leave',       
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>',
+          description: 'Leave utilization and approval report' 
+        },
+        { 
+          value: 'payroll',    
+          name: 'Payroll',     
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
+          description: 'Full payroll summary with earnings and deductions' 
+        },
+        { 
+          value: 'earnings',   
+          name: 'Earnings',    
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8 10 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>',
+          description: 'Earnings-only report with type breakdown' 
+        },
+        { 
+          value: 'deductions', 
+          name: 'Deductions',  
+          iconSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
+          description: 'Deductions-only report with detailed breakdown' 
+        }
       ],
       attendanceReportParams:  { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], department: '', report_type: 'summary' },
       leaveReportParams:       { start_date: new Date().toISOString().split('T')[0], end_date: new Date().toISOString().split('T')[0], leave_type: '', status: 'all' },
@@ -677,6 +783,16 @@ export default {
     selectReportType(type) { this.selectedReportType = type; },
     getReportTypeName(type) { return this.reportTypes.find(r => r.value === type)?.name || 'Report'; },
     getReportTypeDescription(type) { return this.reportTypes.find(r => r.value === type)?.description || ''; },
+    getReportIconSvg(type) {
+      const icons = {
+        attendance: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>',
+        leave: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>',
+        payroll: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
+        earnings: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8 10 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>',
+        deductions: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>'
+      };
+      return icons[type] || '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>';
+    },
     onBusinessFilterChange() { this.fetchAdminData(); },
     onCountryFilterChange()  { this.fetchAdminData(); },
     removeBusinessFilter()   { this.selectedBusinessId = ''; this.fetchAdminData(); },
@@ -703,7 +819,11 @@ export default {
     async generateAttendanceReport() {
       this.generatingReport = true;
       try {
-        const params = { start_date: this.ensureDate(this.attendanceReportParams.start_date), end_date: this.ensureDate(this.attendanceReportParams.end_date), report_type: this.attendanceReportParams.report_type || 'summary' };
+        const params = { 
+          start_date: this.ensureDate(this.attendanceReportParams.start_date), 
+          end_date: this.ensureDate(this.attendanceReportParams.end_date), 
+          report_type: this.attendanceReportParams.report_type || 'summary' 
+        };
         if (this.attendanceReportParams.department) params.department = this.attendanceReportParams.department;
         if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
         if (this.selectedCountry)    params.country = this.selectedCountry;
@@ -718,7 +838,12 @@ export default {
     async generateLeaveReport() {
       this.generatingReport = true;
       try {
-        const params = { start_date: this.ensureDate(this.leaveReportParams.start_date), end_date: this.ensureDate(this.leaveReportParams.end_date), leave_type: this.leaveReportParams.leave_type || '', status: this.leaveReportParams.status || 'all' };
+        const params = { 
+          start_date: this.ensureDate(this.leaveReportParams.start_date), 
+          end_date: this.ensureDate(this.leaveReportParams.end_date), 
+          leave_type: this.leaveReportParams.leave_type || '', 
+          status: this.leaveReportParams.status || 'all' 
+        };
         if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
         if (this.selectedCountry)    params.country = this.selectedCountry;
         const r = await axios.post('/api/admin/reports/generate/leave', params);
@@ -732,7 +857,11 @@ export default {
     async generatePayrollReport() {
       this.generatingReport = true;
       try {
-        const params = { start_date: this.ensureDate(this.payrollReportParams.start_date), end_date: this.ensureDate(this.payrollReportParams.end_date), status: this.payrollReportParams.status || 'all' };
+        const params = { 
+          start_date: this.ensureDate(this.payrollReportParams.start_date), 
+          end_date: this.ensureDate(this.payrollReportParams.end_date), 
+          status: this.payrollReportParams.status || 'all' 
+        };
         if (this.payrollReportParams.department) params.department = this.payrollReportParams.department;
         if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
         if (this.selectedCountry)    params.country = this.selectedCountry;
@@ -747,7 +876,10 @@ export default {
     async generateEarningsReport() {
       this.generatingReport = true;
       try {
-        const params = { start_date: this.ensureDate(this.earningsReportParams.start_date), end_date: this.ensureDate(this.earningsReportParams.end_date) };
+        const params = { 
+          start_date: this.ensureDate(this.earningsReportParams.start_date), 
+          end_date: this.ensureDate(this.earningsReportParams.end_date) 
+        };
         if (this.earningsReportParams.department) params.department = this.earningsReportParams.department;
         if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
         if (this.selectedCountry)    params.country = this.selectedCountry;
@@ -762,7 +894,10 @@ export default {
     async generateDeductionsReport() {
       this.generatingReport = true;
       try {
-        const params = { start_date: this.ensureDate(this.deductionsReportParams.start_date), end_date: this.ensureDate(this.deductionsReportParams.end_date) };
+        const params = { 
+          start_date: this.ensureDate(this.deductionsReportParams.start_date), 
+          end_date: this.ensureDate(this.deductionsReportParams.end_date) 
+        };
         if (this.deductionsReportParams.department)    params.department = this.deductionsReportParams.department;
         if (this.deductionsReportParams.deduction_type !== 'all') params.deduction_type = this.deductionsReportParams.deduction_type;
         if (this.selectedBusinessId) params.business_id = this.selectedBusinessId;
@@ -776,7 +911,22 @@ export default {
       finally { this.generatingReport = false; }
     },
     addToGenerated(type, title, period, params, data) {
-      const r = { id: Date.now(), type, title, period, filters: { business: params.business_id ? this.getBusinessName(params.business_id) : null, country: params.country ? this.getCountryName(params.country) : null, department: params.department || null, leave_type: params.leave_type || null, deduction_type: params.deduction_type || null }, generated_at: new Date().toISOString(), data, originalParams: { ...params } };
+      const r = { 
+        id: Date.now(), 
+        type, 
+        title, 
+        period, 
+        filters: { 
+          business: params.business_id ? this.getBusinessName(params.business_id) : null, 
+          country: params.country ? this.getCountryName(params.country) : null, 
+          department: params.department || null, 
+          leave_type: params.leave_type || null, 
+          deduction_type: params.deduction_type || null 
+        }, 
+        generated_at: new Date().toISOString(), 
+        data, 
+        originalParams: { ...params } 
+      };
       this.generatedReports.unshift(r);
       if (this.generatedReports.length > 10) this.generatedReports = this.generatedReports.slice(0,10);
       this.currentPage = 1;
@@ -827,7 +977,6 @@ export default {
     showToast(message, type = 'success') { this.toast = { show: true, message, type }; setTimeout(() => { this.toast.show = false; }, 3500); },
     formatNumber(v) { const n = parseFloat(v); return isNaN(n) ? '0.00' : n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); },
     formatDate(d) { return d ? new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : 'N/A'; },
-    getReportIcon(type) { return {attendance:'📊',leave:'📋',payroll:'💰',earnings:'📈',deductions:'📉'}[type] || '📄'; },
     ensureDate(s) { if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; try { const d=new Date(s); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; } catch { return new Date().toISOString().split('T')[0]; } },
     prevPage() { if (this.currentPage > 1) this.currentPage--; },
     nextPage() { if (this.currentPage < this.totalPages) this.currentPage++; }
@@ -915,7 +1064,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem 0; color: #334155;
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; }
 .metric-card { padding: 1.25rem; background: #f8fafc; border-radius: 12px; display: flex; flex-direction: column; align-items: center; text-align: center; border: 1px solid #e2e8f0; position: relative; overflow: hidden; transition: transform 0.2s, box-shadow 0.2s; }
 .metric-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -4px rgba(0,0,0,0.08); border-color: var(--accent); }
-.metric-card::before { display: none; }
 .metric-icon-wrap { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 0.75rem; }
 .metric-value { font-size: 1.8rem; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 0.25rem; }
 .metric-label { font-size: 0.78rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -961,7 +1109,8 @@ input.filter-select { min-width: 145px; appearance: auto; }
 }
 .type-btn:hover { border-color: #a5b4fc; background: #eff6ff; }
 .type-btn.active { border-color: #6366f1; background: linear-gradient(135deg, #eff6ff, #e0e7ff); box-shadow: 0 2px 8px rgba(99,102,241,0.2); }
-.type-icon  { font-size: 1.5rem; }
+.type-icon  { font-size: 1.5rem; display: flex; align-items: center; justify-content: center; }
+.type-icon svg { width: 20px; height: 20px; stroke: #6366f1; }
 .type-label { font-size: 0.75rem; font-weight: 700; color: #334155; text-align: center; }
 
 /* ── Report Form ─────────────────────────────────── */
@@ -997,7 +1146,8 @@ input.filter-select { min-width: 145px; appearance: auto; }
 }
 .report-row:hover { background: #f0f4ff; border-color: #a5b4fc; }
 
-.report-row-icon { font-size: 1.75rem; flex-shrink: 0; }
+.report-row-icon { font-size: 1.75rem; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.report-row-icon svg { width: 22px; height: 22px; stroke: #6366f1; }
 .report-row-info { flex: 1; min-width: 0; }
 .report-row-title  { font-size: 0.9rem; font-weight: 700; color: #1e293b; }
 .report-row-period { font-size: 0.78rem; color: #6366f1; font-weight: 600; margin-top: 0.1rem; }

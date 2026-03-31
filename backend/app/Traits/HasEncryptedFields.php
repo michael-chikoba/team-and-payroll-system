@@ -7,34 +7,33 @@ use Illuminate\Support\Facades\Log;
 
 trait HasEncryptedFields
 {
-    /**
-     * Boot the trait - auto-encrypt on save
-     */
+    // =========================================================================
+    // BOOT — encrypt on save
+    // =========================================================================
+
     public static function bootHasEncryptedFields(): void
     {
         static::saving(function ($model) {
             $service = app(EncryptionService::class);
-            
+
             foreach ($model->getEncryptedFields() as $field) {
-                if (!isset($model->attributes[$field])) {
+                if (!array_key_exists($field, $model->attributes)) {
                     continue;
                 }
 
                 $value = $model->attributes[$field];
-                
-                // Handle JSON fields - encode to string before encryption
+
                 if (is_array($value) || is_object($value)) {
                     $value = json_encode($value);
                 }
-                
-                // Encrypt if it's not already encrypted
-                if ($value !== null && $value !== '' && !$service->isEncrypted($value)) {
+
+                if ($value !== null && $value !== '' && !$service->isEncrypted((string) $value)) {
                     try {
-                        $model->attributes[$field] = $service->encrypt($value);
+                        $model->attributes[$field] = $service->encrypt((string) $value);
                     } catch (\Exception $e) {
                         Log::error("Failed to encrypt field {$field}", [
                             'model' => get_class($model),
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
                         throw $e;
                     }
@@ -43,64 +42,51 @@ trait HasEncryptedFields
         });
     }
 
+    // =========================================================================
+    // READ — decrypt on every property / array / JSON access
+    // =========================================================================
+
     /**
-     * Override getAttribute to auto-decrypt with role checking
+     * Called by Laravel for $model->field access.
      */
     public function getAttribute($key)
     {
         $value = parent::getAttribute($key);
-
-        if (in_array($key, $this->getEncryptedFields(), true)) {
-            $ownerId = $this->getOwnerId();
-            
-            // If value is already an array (from casting), it's not encrypted
-            if (is_array($value)) {
-                return $value;
-            }
-            
-            // Handle JSON fields that might be stored as encrypted strings
-            if (is_string($value)) {
-                $service = app(EncryptionService::class);
-                
-                // Check if it's encrypted
-                if ($service->isEncrypted($value)) {
-                    $decrypted = $service->decrypt($value, $key, $ownerId);
-                    
-                    // If this is a JSON field, decode it
-                    if ($this->isJsonField($key) && $decrypted && is_string($decrypted)) {
-                        return json_decode($decrypted, true) ?: $decrypted;
-                    }
-                    
-                    return $decrypted;
-                }
-                
-                // Not encrypted, but might be JSON string
-                if ($this->isJsonField($key)) {
-                    $decoded = json_decode($value, true);
-                    return $decoded !== null ? $decoded : $value;
-                }
-            }
-            
-            return $value;
-        }
-
-        return $value;
+        return $this->decryptIfNeeded($key, $value);
     }
 
     /**
-     * Set attribute with auto-encryption
+     * Called by toArray() → toJson() → API responses.
+     * Without this override Laravel serialises straight from $this->attributes,
+     * bypassing getAttribute() and returning raw ciphertext to the frontend.
      */
+    public function toArray(): array
+    {
+        $array = parent::toArray();
+
+        foreach ($this->getEncryptedFields() as $field) {
+            if (!array_key_exists($field, $array)) {
+                continue;
+            }
+            $array[$field] = $this->decryptIfNeeded($field, $array[$field]);
+        }
+
+        return $array;
+    }
+
+    // =========================================================================
+    // WRITE
+    // =========================================================================
+
     public function setAttribute($key, $value)
     {
         if (in_array($key, $this->getEncryptedFields(), true)) {
             $service = app(EncryptionService::class);
-            
-            // Handle JSON fields - encode to string before encryption
+
             if (is_array($value) || is_object($value)) {
                 $value = json_encode($value);
             }
-            
-            // Only encrypt if it's a string and not already encrypted
+
             if (is_string($value) && $value !== '' && !$service->isEncrypted($value)) {
                 $this->attributes[$key] = $service->encrypt($value);
                 return $this;
@@ -110,92 +96,150 @@ trait HasEncryptedFields
         return parent::setAttribute($key, $value);
     }
 
-    /**
-     * Get raw encrypted value (no decryption)
-     */
-    public function getRawEncrypted(string $field): ?string
-    {
-        $value = $this->attributes[$field] ?? null;
-        
-        // If it's an array, it's not encrypted
-        if (is_array($value)) {
-            return null;
-        }
-        
-        return $value;
-    }
+    // =========================================================================
+    // HELPERS
+    // =========================================================================
 
     /**
-     * Force decrypt (system use only - for exports, payroll processing)
+     * Core decrypt logic shared by getAttribute() and toArray().
+     *
+     * Owner resolution:
+     *   - For the User model:      ownerId = the record's own id
+     *   - For the Payslip model:   ownerId = employee->user_id  (NOT employee_id)
+     *   - For other models:        ownerId = user_id column if present, else null
+     *
+     * This means an employee (userId=60) viewing their own payslip
+     * (payslip->employee->user_id=60) passes the owner check and gets
+     * their own financial data decrypted.
      */
-    public function getForcedDecrypted(string $field): mixed
+    private function decryptIfNeeded(string $key, mixed $value): mixed
     {
-        $value = $this->attributes[$field] ?? null;
-        
-        // If it's already an array, return as is
+        if (!in_array($key, $this->getEncryptedFields(), true)) {
+            return $value;
+        }
+
         if (is_array($value)) {
             return $value;
         }
-        
-        // If it's a string, try to decrypt
-        if (is_string($value)) {
+
+        if (is_string($value) && $value !== '') {
             $service = app(EncryptionService::class);
+
             if ($service->isEncrypted($value)) {
-                $decrypted = $service->decryptRaw($value);
-                
-                // Handle JSON fields
-                if ($this->isJsonField($field) && $decrypted && is_string($decrypted)) {
-                    return json_decode($decrypted, true) ?: $decrypted;
+                $ownerId   = $this->resolveOwnerId();
+                $decrypted = $service->decrypt($value, $key, $ownerId);
+
+                if ($this->isJsonField($key) && is_string($decrypted)) {
+                    return json_decode($decrypted, true) ?? $decrypted;
                 }
-                
+
                 return $decrypted;
             }
-            
-            // Not encrypted, but might be JSON
-            if ($this->isJsonField($field)) {
+
+            if ($this->isJsonField($key)) {
                 $decoded = json_decode($value, true);
                 return $decoded !== null ? $decoded : $value;
             }
         }
-        
+
         return $value;
     }
 
     /**
-     * Check if current user can decrypt a field
+     * Resolve the user_id that "owns" this record for permission checking.
+     *
+     * The EncryptionService compares this against Auth::user()->id.
+     * We must return the USER id, not the employee id.
+     *
+     * Override this method in any model that needs custom owner resolution.
      */
-    public function canDecryptField(string $field): bool
+    protected function resolveOwnerId(): ?int
     {
-        return app(EncryptionService::class)->canDecrypt($field, $this->getOwnerId());
-    }
+        $class = get_class($this);
 
-    /**
-     * Get the owner ID for this record (usually user_id)
-     */
-    protected function getOwnerId(): ?int
-    {
-        if (isset($this->user_id)) {
-            return (int) $this->user_id;
+        // User model — the record IS the user
+        if ($class === 'App\Models\User') {
+            return isset($this->attributes['id']) ? (int) $this->attributes['id'] : null;
         }
 
-        if (isset($this->id) && get_class($this) === 'App\Models\User') {
-            return (int) $this->id;
+        // Payslip model — owner is the user linked to the employee
+        // We resolve lazily: check loaded relation first, then query
+        if ($class === 'App\Models\Payslip') {
+            // If employee relation is already loaded, use it
+            if ($this->relationLoaded('employee') && $this->employee) {
+                return isset($this->employee->attributes['user_id'])
+                    ? (int) $this->employee->attributes['user_id']
+                    : null;
+            }
+            // Fall back to a lightweight query — only runs once per payslip instance
+            $employeeUserId = \DB::table('employees')
+                ->where('id', $this->attributes['employee_id'] ?? 0)
+                ->value('user_id');
+            return $employeeUserId ? (int) $employeeUserId : null;
+        }
+
+        // All other models — use user_id column if present
+        if (isset($this->attributes['user_id'])) {
+            return (int) $this->attributes['user_id'];
         }
 
         return null;
     }
 
     /**
-     * Check if field should be treated as JSON
+     * Return the raw ciphertext without decrypting.
+     * Use only for internal / system operations.
      */
-    protected function isJsonField(string $field): bool
+    public function getRawEncrypted(string $field): ?string
     {
-        $casts = $this->getCasts();
-        return isset($casts[$field]) && in_array($casts[$field], ['array', 'json']);
+        $value = $this->attributes[$field] ?? null;
+        return is_array($value) ? null : $value;
     }
 
     /**
-     * Define which fields should be encrypted
+     * Force-decrypt bypassing all role checks.
+     * Use only in trusted server-side contexts (PDF generation, exports, commands).
      */
+    public function getForcedDecrypted(string $field): mixed
+    {
+        $value = $this->attributes[$field] ?? null;
+
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $service = app(EncryptionService::class);
+
+            if ($service->isEncrypted($value)) {
+                $decrypted = $service->decryptRaw($value);
+
+                if ($this->isJsonField($field) && is_string($decrypted)) {
+                    return json_decode($decrypted, true) ?? $decrypted;
+                }
+
+                return $decrypted;
+            }
+
+            if ($this->isJsonField($field)) {
+                $decoded = json_decode($value, true);
+                return $decoded !== null ? $decoded : $value;
+            }
+        }
+
+        return $value;
+    }
+
+    public function canDecryptField(string $field): bool
+    {
+        return app(EncryptionService::class)->canDecrypt($field, $this->resolveOwnerId());
+    }
+
+    protected function isJsonField(string $field): bool
+    {
+        $casts = $this->getCasts();
+        return isset($casts[$field]) && in_array($casts[$field], ['array', 'json'], true);
+    }
+
     abstract public function getEncryptedFields(): array;
 }

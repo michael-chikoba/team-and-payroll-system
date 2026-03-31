@@ -17,7 +17,7 @@
         <div
           v-if="item.type === 'group'"
           class="nav-group"
-          :class="{ 'is-expanded': expandedGroups[item.key], 'is-active': item.isActive?.() }"
+          :class="{ 'is-expanded': expandedGroups[item.key], 'is-active': item.isActive }"
         >
           <button
             class="nav-group-button"
@@ -45,7 +45,7 @@
               >
                 <component :is="child.icon" class="sub-icon icon" />
                 <span class="sub-text">{{ child.label }}</span>
-                <span v-if="child.badge?.() > 0" class="nav-badge">{{ child.badge() }}</span>
+                <span v-if="child.badge > 0" class="nav-badge">{{ child.badge }}</span>
               </router-link>
             </div>
           </transition>
@@ -62,7 +62,7 @@
           <component :is="item.icon" class="nav-icon icon" />
           <span class="nav-text">{{ item.label }}</span>
           <span v-if="item.superAdmin" class="super-admin-badge">Super Admin</span>
-          <span v-if="item.badge?.() > 0" class="nav-badge">{{ item.badge() }}</span>
+          <span v-if="item.badge > 0" class="nav-badge">{{ item.badge }}</span>
         </router-link>
       </template>
     </nav>
@@ -74,268 +74,155 @@
 </template>
 
 <script>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, shallowRef, markRaw } from 'vue'
 import { useRoute } from 'vue-router'
 import AttendanceToggle from '@/components/common/Toggle.vue'
 import { useAdminPermissions } from '@/composables/useAdminPermissions'
 import { useAuthStore } from '@/stores/auth'
 import {
-  BriefcaseIcon,
-  TicketIcon,
-  ChevronDownIcon,
-  HomeIcon,
-  UsersIcon,
-  UserPlusIcon,
-  BanknotesIcon,
-  DocumentTextIcon,
-  ClockIcon,
-  CalendarDaysIcon,
-  ClipboardDocumentListIcon,
-  CalculatorIcon,
-  ChartBarIcon,
-  ClipboardDocumentCheckIcon,
-  GlobeAltIcon,
-  Cog6ToothIcon,
-  BuildingOfficeIcon,
-  BuildingLibraryIcon,
-  ChatBubbleLeftRightIcon,
-  PresentationChartLineIcon,
-  ListBulletIcon,
-  RocketLaunchIcon,
-  DocumentChartBarIcon,
-  BoltIcon,
-  CalendarIcon,
-  FolderOpenIcon,
-  ShieldCheckIcon,
+  BriefcaseIcon, TicketIcon, ChevronDownIcon, HomeIcon, UsersIcon, UserPlusIcon,
+  BanknotesIcon, DocumentTextIcon, ClockIcon, CalendarDaysIcon, ClipboardDocumentListIcon,
+  CalculatorIcon, ChartBarIcon, ClipboardDocumentCheckIcon, GlobeAltIcon, Cog6ToothIcon,
+  BuildingOfficeIcon, BuildingLibraryIcon, ChatBubbleLeftRightIcon, PresentationChartLineIcon,
+  ListBulletIcon, RocketLaunchIcon, DocumentChartBarIcon, BoltIcon, CalendarIcon,
+  FolderOpenIcon, ShieldCheckIcon,
 } from '@heroicons/vue/24/outline'
+
+const icons = {
+  BriefcaseIcon: markRaw(BriefcaseIcon), TicketIcon: markRaw(TicketIcon),
+  ChevronDownIcon: markRaw(ChevronDownIcon), HomeIcon: markRaw(HomeIcon),
+  UsersIcon: markRaw(UsersIcon), UserPlusIcon: markRaw(UserPlusIcon),
+  BanknotesIcon: markRaw(BanknotesIcon), DocumentTextIcon: markRaw(DocumentTextIcon),
+  ClockIcon: markRaw(ClockIcon), CalendarDaysIcon: markRaw(CalendarDaysIcon),
+  ClipboardDocumentListIcon: markRaw(ClipboardDocumentListIcon), CalculatorIcon: markRaw(CalculatorIcon),
+  ChartBarIcon: markRaw(ChartBarIcon), ClipboardDocumentCheckIcon: markRaw(ClipboardDocumentCheckIcon),
+  GlobeAltIcon: markRaw(GlobeAltIcon), Cog6ToothIcon: markRaw(Cog6ToothIcon),
+  BuildingOfficeIcon: markRaw(BuildingOfficeIcon), BuildingLibraryIcon: markRaw(BuildingLibraryIcon),
+  ChatBubbleLeftRightIcon: markRaw(ChatBubbleLeftRightIcon),
+  PresentationChartLineIcon: markRaw(PresentationChartLineIcon),
+  ListBulletIcon: markRaw(ListBulletIcon), RocketLaunchIcon: markRaw(RocketLaunchIcon),
+  DocumentChartBarIcon: markRaw(DocumentChartBarIcon), BoltIcon: markRaw(BoltIcon),
+  CalendarIcon: markRaw(CalendarIcon), FolderOpenIcon: markRaw(FolderOpenIcon),
+  ShieldCheckIcon: markRaw(ShieldCheckIcon),
+}
 
 export default {
   name: 'AppSidebar',
-
-  components: {
-    AttendanceToggle,
-    BriefcaseIcon, TicketIcon, ChevronDownIcon, HomeIcon, UsersIcon, UserPlusIcon,
-    BanknotesIcon, DocumentTextIcon, ClockIcon, CalendarDaysIcon, ClipboardDocumentListIcon,
-    CalculatorIcon, ChartBarIcon, ClipboardDocumentCheckIcon, GlobeAltIcon, Cog6ToothIcon,
-    BuildingOfficeIcon, BuildingLibraryIcon, ChatBubbleLeftRightIcon, PresentationChartLineIcon,
-    ListBulletIcon, RocketLaunchIcon, DocumentChartBarIcon, BoltIcon, CalendarIcon, FolderOpenIcon,
-    ShieldCheckIcon,
-  },
-
+  components: { AttendanceToggle, ...icons },
   props: {
-    role: {
-      type: String,
-      required: true,
-      validator: v => ['admin', 'manager', 'employee'].includes(v),
-    },
-    sidebarClasses: {
-      type: [String, Object, Array],
-      default: '',
-    },
-    pendingTicketsCount: {
-      type: Number,
-      default: 0,
-    },
-    unreadChatCount: {
-      type: Number,
-      default: 0,
-    },
-    isChatOpen: {
-      type: Boolean,
-      default: false,
-    },
-    canAccessRestrictedPages: {
-      type: Boolean,
-      default: false,
-    },
+    role: { type: String, required: true, validator: v => ['admin', 'manager', 'employee'].includes(v) },
+    sidebarClasses: { type: [String, Object, Array], default: '' },
+    pendingTicketsCount: { type: Number, default: 0 },
+    unreadChatCount: { type: Number, default: 0 },
+    isChatOpen: { type: Boolean, default: false },
+    canAccessRestrictedPages: { type: Boolean, default: false },
   },
-
-  emits: ['nav-click', 'open-chat', 'toggle-sidebar'],
+  emits: ['nav-click', 'open-chat'],
 
   setup(props, { emit }) {
     const route = useRoute()
     const authStore = useAuthStore()
     const expandedGroups = ref({})
-    const recomputeKey = ref(0)
 
-    const user = computed(() => authStore.user)
-    const currentBusinessId = computed(() => authStore.currentBusinessId)
-
-    const permissions = useAdminPermissions(currentBusinessId.value)
-
-    const {
-      flags,
-      canAddEmployee,
-      canViewPayroll,
-      canViewPayslip,
-      canManageAdmins,
-      isSuspended,
-      refresh,
-      fetched,
-      fetching,
-      fetchError,
-    } = permissions
-
-    watch([flags, canAddEmployee, canViewPayroll, canViewPayslip, canManageAdmins, isSuspended, fetchError],
-      ([newFlags, add, payroll, payslip, manage, suspended, error]) => {
-        console.log('🔄 Sidebar permissions updated:', {
-          flags: newFlags,
-          canAddEmployee: add,
-          canViewPayroll: payroll,
-          canViewPayslip: payslip,
-          canManageAdmins: manage,
-          isSuspended: suspended,
-          error: error,
-          businessId: currentBusinessId.value,
-          fetched: fetched.value,
-        })
-    }, { immediate: true, deep: true })
-
-    watch(currentBusinessId, (newId, oldId) => {
-      if (newId && newId !== oldId) {
-        refresh(newId)
-      }
+    const permissionsState = shallowRef({
+      canAddEmployee: false, canViewPayroll: false, canViewPayslip: false,
+      canManageAdmins: false, isSuspended: false, fetched: false
     })
 
-    watch(user, (newUser, oldUser) => {
-      if (newUser?.id !== oldUser?.id) {
-        refresh(currentBusinessId.value)
-      }
-    }, { deep: true })
+    const currentBusinessId = computed(() => authStore.currentBusinessId)
+
+    const loadPermissions = async (businessId) => {
+      if (!businessId) return
+      try {
+        const permissions = useAdminPermissions(businessId)
+        await permissions.waitForFetch()
+        permissionsState.value = {
+          canAddEmployee: permissions.canAddEmployee?.value ?? false,
+          canViewPayroll: permissions.canViewPayroll?.value ?? false,
+          canViewPayslip: permissions.canViewPayslip?.value ?? false,
+          canManageAdmins: permissions.canManageAdmins?.value ?? false,
+          isSuspended: permissions.isSuspended?.value ?? false,
+          fetched: true
+        }
+      } catch (error) { console.error('Failed to load permissions:', error) }
+    }
+
+    watch(currentBusinessId, async (newId) => { if (newId) await loadPermissions(newId) }, { immediate: true })
 
     const toggleGroup = (key) => {
-      expandedGroups.value[key] = !expandedGroups.value[key]
+      expandedGroups.value = { ...expandedGroups.value, [key]: !expandedGroups.value[key] }
     }
 
     const handleNavClick = () => emit('nav-click')
 
-    const logoTitle = computed(() => ({
-      admin:    'Payroll System',
-      manager:  'Manager Hub',
-      employee: 'Portal',
-    }[props.role]))
+    const baseAdminNav = [
+      { to: '/admin/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
+      { to: '/admin/audit-logs', icon: icons.ClipboardDocumentCheckIcon, label: 'Audit Logs' }
+    ]
 
     const adminNav = computed(() => {
-      recomputeKey.value
+      const { canAddEmployee, canViewPayroll, canViewPayslip, canManageAdmins, isSuspended, fetched } = permissionsState.value
+      if (!fetched) return baseAdminNav
 
-      const hasManageAdmins = canManageAdmins?.value ?? false
-      const hasViewPayroll = canViewPayroll?.value ?? false
-      const hasViewPayslip = canViewPayslip?.value ?? false
-      const hasAddEmployee = canAddEmployee?.value ?? false
-      const isUserSuspended = isSuspended?.value ?? false
+      const items = [...baseAdminNav]
+      const currentPath = route.path
+      const isPathActive = (paths) => paths.some(p => currentPath.startsWith(p))
 
-      const items = []
-
-      items.push(
-        { to: '/admin/dashboard', icon: HomeIcon, label: 'Dashboard' },
-        { to: '/admin/audit-logs', icon: ClipboardDocumentCheckIcon, label: 'Audit Logs' }
-      )
-
-      if (hasManageAdmins && !isUserSuspended) {
-        items.push({
-          to: '/admin/admin-manager',
-          icon: ShieldCheckIcon,
-          label: 'Admin Manager',
-        })
+      if (canManageAdmins && !isSuspended) {
+        items.push({ to: '/admin/admin-manager', icon: icons.ShieldCheckIcon, label: 'Admin Manager' })
       }
 
-      const employeeChildren = []
-
-      employeeChildren.push({ to: '/admin/employees', icon: UsersIcon, label: 'Employees' })
-
-      if (hasViewPayroll && !isUserSuspended) {
-        employeeChildren.push({ to: '/admin/payroll', icon: BanknotesIcon, label: 'Payroll' })
-      }
-
-      if (hasViewPayslip && !isUserSuspended) {
-        employeeChildren.push({ to: '/admin/payslips', icon: DocumentTextIcon, label: 'Payslips' })
-      }
-
-      if (!isUserSuspended) {
+      const employeeChildren = [{ to: '/admin/employees', icon: icons.UsersIcon, label: 'Employees' }]
+      if (canViewPayroll && !isSuspended) employeeChildren.push({ to: '/admin/payroll', icon: icons.BanknotesIcon, label: 'Payroll' })
+      if (canViewPayslip && !isSuspended) employeeChildren.push({ to: '/admin/payslips', icon: icons.DocumentTextIcon, label: 'Payslips' })
+      if (!isSuspended) {
         employeeChildren.push(
-          { to: '/admin/attendance', icon: ClockIcon, label: 'Attendance' },
-          { to: '/admin/leaves', icon: CalendarDaysIcon, label: 'Leave Management' }
+          { to: '/admin/attendance', icon: icons.ClockIcon, label: 'Attendance' },
+          { to: '/admin/leaves', icon: icons.CalendarDaysIcon, label: 'Leave Management' }
         )
       }
+      items.push({
+        type: 'group', key: 'employee-management', icon: icons.UsersIcon, label: 'Employee Management',
+        isActive: isPathActive(['/admin/employees', '/admin/payroll', '/admin/payslips', '/admin/leaves', '/admin/attendance']),
+        children: employeeChildren,
+      })
 
-      if (employeeChildren.length > 0) {
+      if (!isSuspended) {
         items.push({
-          type: 'group',
-          key: 'employee-management',
-          icon: UsersIcon,
-          label: 'Employee Management',
-          isActive: () => [
-            '/admin/employees', '/admin/payroll', '/admin/payslips',
-            '/admin/leaves', '/admin/attendance',
-          ].some(p => route.path.startsWith(p)),
-          children: employeeChildren,
-        })
-      }
-
-      if (!isUserSuspended) {
-        items.push({
-          type: 'group',
-          key: 'service-management',
-          icon: ClipboardDocumentListIcon,
-          label: 'Service Management',
-          isActive: () => [
-            '/admin/Tasks', '/admin/tickets', '/admin/productivity', '/admin/reports',
-          ].some(p => route.path.startsWith(p)),
+          type: 'group', key: 'service-management', icon: icons.ClipboardDocumentListIcon, label: 'Service Management',
+          isActive: isPathActive(['/admin/Tasks', '/admin/tickets', '/admin/productivity', '/admin/reports']),
           children: [
-            { to: '/admin/Tasks', icon: ClipboardDocumentListIcon, label: 'Tasks Management' },
-            {
-              to: '/admin/tickets',
-              icon: TicketIcon,
-              label: 'Ticket Management',
-              badge: () => props.pendingTicketsCount
-            },
-            { to: '/admin/productivity', icon: BoltIcon, label: 'Productivity Monitor' },
-            { to: '/admin/reports', icon: ChartBarIcon, label: 'Reports' },
+            { to: '/admin/Tasks', icon: icons.ClipboardDocumentListIcon, label: 'Tasks Management' },
+            { to: '/admin/tickets', icon: icons.TicketIcon, label: 'Ticket Management', badge: props.pendingTicketsCount },
+            { to: '/admin/productivity', icon: icons.BoltIcon, label: 'Productivity Monitor' },
+            { to: '/admin/reports', icon: icons.ChartBarIcon, label: 'Reports' },
+          ],
+        })
+
+        items.push({
+          type: 'group', key: 'business-settings', icon: icons.BuildingOfficeIcon, label: 'Business Settings',
+          isActive: isPathActive(['/admin/settings', '/admin/business-groups', '/admin/businesses', '/admin/countries', '/admin/tax']),
+          children: [
+            { to: '/admin/settings', icon: icons.Cog6ToothIcon, label: 'Settings' },
+            { to: '/admin/businesses', icon: icons.BuildingOfficeIcon, label: 'Business Management' },
+            { to: '/admin/business-groups', icon: icons.BuildingLibraryIcon, label: 'Business Groups' },
+            { to: '/admin/countries', icon: icons.GlobeAltIcon, label: 'Country Management' },
+            { to: '/admin/tax', icon: icons.CalculatorIcon, label: 'Tax Configuration' },
           ],
         })
       }
 
-      if (!isUserSuspended) {
-        items.push({
-          type: 'group',
-          key: 'business-settings',
-          icon: BuildingOfficeIcon,
-          label: 'Business Settings',
-          isActive: () => [
-            '/admin/settings', '/admin/business-groups', '/admin/businesses',
-            '/admin/countries', '/admin/tax',
-          ].some(p => route.path.startsWith(p)),
-          children: [
-            { to: '/admin/settings', icon: Cog6ToothIcon, label: 'Settings' },
-            { to: '/admin/businesses', icon: BuildingOfficeIcon, label: 'Business Management' },
-            { to: '/admin/business-groups', icon: BuildingLibraryIcon, label: 'Business Groups' },
-            { to: '/admin/countries', icon: GlobeAltIcon, label: 'Country Management' },
-            { to: '/admin/tax', icon: CalculatorIcon, label: 'Tax Configuration' },
-          ],
-        })
-      }
-
-      if (props.canAccessRestrictedPages && !isUserSuspended) {
+      if (props.canAccessRestrictedPages && !isSuspended) {
         const superChildren = []
-
-        if (hasAddEmployee) {
-          superChildren.push({ to: '/admin/employ', icon: UserPlusIcon, label: 'Add Employees' })
-        }
-
+        if (canAddEmployee) superChildren.push({ to: '/admin/employ', icon: icons.UserPlusIcon, label: 'Add Employees' })
         superChildren.push(
-          { to: '/admin/demo-requests', icon: PresentationChartLineIcon, label: 'Demo Requests' },
-          { to: '/admin/contact-requests', icon: ChatBubbleLeftRightIcon, label: 'Contact Requests' },
+          { to: '/admin/demo-requests', icon: icons.PresentationChartLineIcon, label: 'Demo Requests' },
+          { to: '/admin/contact-requests', icon: icons.ChatBubbleLeftRightIcon, label: 'Contact Requests' },
         )
-
         if (superChildren.length > 0) {
           items.push({
-            type: 'group',
-            key: 'super-admin',
-            icon: ShieldCheckIcon,
-            label: 'Super Admin',
-            isActive: () => [
-              '/admin/employ', '/admin/demo-requests', '/admin/contact-requests',
-            ].some(p => route.path.startsWith(p)),
+            type: 'group', key: 'super-admin', icon: icons.ShieldCheckIcon, label: 'Super Admin',
+            isActive: isPathActive(['/admin/employ', '/admin/demo-requests', '/admin/contact-requests']),
             children: superChildren,
           })
         }
@@ -344,58 +231,43 @@ export default {
       return items
     })
 
-    const managerNav = computed(() => [
-      { to: '/manager/dashboard', icon: HomeIcon, label: 'Dashboard' },
-      { to: '/manager/schedule', icon: CalendarDaysIcon, label: 'Team Schedule' },
-      { to: '/manager/employees', icon: UsersIcon, label: 'Employees' },
-      { to: '/manager/attendance', icon: ClockIcon, label: 'Attendance' },
-      { to: '/manager/leave-approvals', icon: ClipboardDocumentCheckIcon, label: 'Approvals' },
-      {
-        to: '/manager/tickets',
-        icon: TicketIcon,
-        label: 'Tickets',
-        badge: () => props.pendingTicketsCount
-      },
-      { to: '/manager/reports', icon: PresentationChartLineIcon, label: 'Reports' },
-      { to: '/manager/productivity', icon: BoltIcon, label: 'Productivity' },
-      { to: '/manager/payslips', icon: BanknotesIcon, label: 'Payslips' },
-      { to: '/manager/tasks', icon: ClipboardDocumentListIcon, label: 'Assign Tasks' },
-      { to: '/manager/shifts', icon: ClockIcon, label: 'Assign Shifts' },
-    ])
+    const managerNav = [
+      { to: '/manager/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
+      { to: '/manager/schedule', icon: icons.CalendarDaysIcon, label: 'Team Schedule' },
+      { to: '/manager/employees', icon: icons.UsersIcon, label: 'Employees' },
+      { to: '/manager/attendance', icon: icons.ClockIcon, label: 'Attendance' },
+      { to: '/manager/leave-approvals', icon: icons.ClipboardDocumentCheckIcon, label: 'Approvals' },
+      { to: '/manager/tickets', icon: icons.TicketIcon, label: 'Tickets', badge: props.pendingTicketsCount },
+      { to: '/manager/reports', icon: icons.PresentationChartLineIcon, label: 'Reports' },
+      { to: '/manager/productivity', icon: icons.BoltIcon, label: 'Productivity' },
+      { to: '/manager/payslips', icon: icons.BanknotesIcon, label: 'Payslips' },
+      { to: '/manager/tasks', icon: icons.ClipboardDocumentListIcon, label: 'Assign Tasks' },
+      { to: '/manager/shifts', icon: icons.ClockIcon, label: 'Assign Shifts' },
+    ]
 
-    const employeeNav = computed(() => [
-      { to: '/employee/dashboard', icon: HomeIcon, label: 'Dashboard' },
-      { to: '/employee/attendance', icon: ClockIcon, label: 'Attendance' },
-      { to: '/employee/leaves', icon: CalendarDaysIcon, label: 'Leaves' },
-      { to: '/employee/apply-leave', icon: DocumentTextIcon, label: 'Apply Leave' },
-      { to: '/employee/payslips', icon: BanknotesIcon, label: 'Payslips' },
-      { to: { name: 'TaskBoard' }, icon: FolderOpenIcon, label: 'Tasks' },
-      { to: { name: 'EmployeeSchedules' }, icon: CalendarIcon, label: 'Schedules' },
-      { to: { name: 'myshifts' }, icon: ClockIcon, label: 'My Shifts' },
-      {
-        to: { name: 'mytickets' },
-        icon: TicketIcon,
-        label: 'Tickets',
-        badge: () => props.pendingTicketsCount
-      },
-      { to: { name: 'charts' }, icon: ChartBarIcon, label: 'Reports' },
-    ])
+    const employeeNav = [
+      { to: '/employee/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
+      { to: '/employee/attendance', icon: icons.ClockIcon, label: 'Attendance' },
+      { to: '/employee/leaves', icon: icons.CalendarDaysIcon, label: 'Leaves' },
+      { to: '/employee/apply-leave', icon: icons.DocumentTextIcon, label: 'Apply Leave' },
+      { to: '/employee/payslips', icon: icons.BanknotesIcon, label: 'Payslips' },
+      { to: { name: 'TaskBoard' }, icon: icons.FolderOpenIcon, label: 'Tasks' },
+      { to: { name: 'EmployeeSchedules' }, icon: icons.CalendarIcon, label: 'Schedules' },
+      { to: { name: 'myshifts' }, icon: icons.ClockIcon, label: 'My Shifts' },
+      { to: { name: 'mytickets' }, icon: icons.TicketIcon, label: 'Tickets', badge: props.pendingTicketsCount },
+      { to: { name: 'charts' }, icon: icons.ChartBarIcon, label: 'Reports' },
+    ]
 
-    const navItems = computed(() => ({
-      admin: adminNav.value,
-      manager: managerNav.value,
-      employee: employeeNav.value,
-    }[props.role]))
+    const navItems = computed(() => {
+      switch (props.role) {
+        case 'admin': return adminNav.value
+        case 'manager': return managerNav
+        case 'employee': return employeeNav
+        default: return []
+      }
+    })
 
-    return {
-      props,
-      navItems,
-      logoTitle,
-      expandedGroups,
-      toggleGroup,
-      handleNavClick,
-      ChevronDownIcon,
-    }
+    return { navItems, expandedGroups, toggleGroup, handleNavClick, ChevronDownIcon: icons.ChevronDownIcon }
   },
 }
 </script>
@@ -403,18 +275,25 @@ export default {
 <style scoped>
 @import '@/assets/css/shared-layout-styles.css';
 
-/* ─────────────────────────────────────────────────────────────────
-   LOGO SECTION
-   Only layout/sizing overrides — no color overrides that fight
-   the shared white-sidebar theme.
-───────────────────────────────────────────────────────────────── */
+/* ── Sidebar: desktop only ─────────────────────────────────────── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+/* On mobile the navbar hamburger handles navigation — hide sidebar */
+@media (max-width: 991px) {
+  .sidebar {
+    display: none !important;
+  }
+}
+
+/* ── Logo ────────────────────────────────────────────────────── */
 .logo-section {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 1rem 0.75rem;
-  position: relative;
-  /* Border is handled by shared CSS */
 }
 
 .logo-image {
@@ -424,51 +303,27 @@ export default {
   object-fit: contain;
   flex-shrink: 0;
   filter: drop-shadow(0px 2px 6px rgba(0, 0, 0, 0.12));
-  image-rendering: auto;
   transition: transform 0.3s ease;
 }
 
-.logo-image:hover {
-  transform: scale(1.04);
-}
+.logo-image:hover { transform: scale(1.04); }
 
-/* ─────────────────────────────────────────────────────────────────
-   ICON SIZING
-   Keep the .icon class for size only — color comes from shared CSS
-───────────────────────────────────────────────────────────────── */
-.icon {
-  width: 1.1rem;
-  height: 1.1rem;
-  flex-shrink: 0;
-}
+/* ── Icons ───────────────────────────────────────────────────── */
+.icon { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
 
-/* ─────────────────────────────────────────────────────────────────
-   NAV WRAPPER
-   Padding/gap only — everything else from shared CSS
-───────────────────────────────────────────────────────────────── */
-.nav {
-  padding: 0.75rem 0.5rem;
-}
+/* ── Nav wrapper ─────────────────────────────────────────────── */
+.nav { padding: 0.75rem 0.5rem; }
 
-/* ─────────────────────────────────────────────────────────────────
-   EXPAND ANIMATION
-───────────────────────────────────────────────────────────────── */
+/* ── Expand animation ────────────────────────────────────────── */
 .expand-enter-active,
 .expand-leave-active {
   transition: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out;
   max-height: 400px;
   overflow: hidden;
 }
+.expand-enter-from, .expand-leave-to { max-height: 0; opacity: 0; }
 
-.expand-enter-from,
-.expand-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   SIDEBAR FOOTER
-───────────────────────────────────────────────────────────────── */
+/* ── Footer ──────────────────────────────────────────────────── */
 .sidebar-footer {
   margin-top: auto;
   padding: 0.875rem 0.75rem 1.125rem;
@@ -476,30 +331,15 @@ export default {
   flex-shrink: 0;
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   SCROLLABLE NAV
-───────────────────────────────────────────────────────────────── */
+/* ── Scrollable nav ──────────────────────────────────────────── */
 .scrollable-nav {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
-
-.scrollable-nav::-webkit-scrollbar {
-  width: 3px;
-}
-
-.scrollable-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollable-nav::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 3px;
-}
-
-.scrollable-nav::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
-}
+.scrollable-nav::-webkit-scrollbar { width: 3px; }
+.scrollable-nav::-webkit-scrollbar-track { background: transparent; }
+.scrollable-nav::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
+.scrollable-nav::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
 </style>

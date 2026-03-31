@@ -20,20 +20,21 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
-            'superadmin' => \App\Http\Middleware\IsSuperAdmin::class,
-            'role' => \App\Http\Middleware\CheckRole::class,
-            'business_group' => \App\Http\Middleware\CheckBusinessGroupAccess::class,
-            'json-api' => \App\Http\Middleware\ValidateJsonApiDocument::class,
+            'verified'        => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'superadmin'      => \App\Http\Middleware\IsSuperAdmin::class,
+            'role'            => \App\Http\Middleware\CheckRole::class,
+            'business_group'  => \App\Http\Middleware\CheckBusinessGroupAccess::class,
+            'json-api'        => \App\Http\Middleware\ValidateJsonApiDocument::class,
             'ensure.employee' => \App\Http\Middleware\EnsureUserHasEmployee::class,
-            'dept' => \App\Http\Middleware\ValidateDepartment::class,
+            'dept'            => \App\Http\Middleware\ValidateDepartment::class,
+            'account.active'  => \App\Http\Middleware\CheckAccountStatus::class,
             \App\Http\Middleware\CheckTokenExpiration::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [
             'api/*',
         ]);
-        
+
         $middleware->trustProxies(at: '*');
     })
     ->withExceptions(function (Exceptions $exceptions) {
@@ -44,7 +45,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Idle threshold is 15 minutes + 5 minute warning = 20 minutes total
         // Running every minute ensures timely warnings and auto-closing
         $schedule->command('sessions:check-idle')
-            ->everyMinute() // Changed from everyFiveMinutes() to everyMinute()
+            ->everyMinute()
             ->name('check-idle-overtime-sessions')
             ->withoutOverlapping()
             ->runInBackground()

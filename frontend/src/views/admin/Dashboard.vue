@@ -1,12 +1,10 @@
 <template>
   <div class="admin-dashboard">
     <div class="dashboard-main">
-
       <!-- ── Header Card ─────────────────────────────── -->
       <div class="dashboard-header-card">
         <div class="header-card-accent"></div>
         <div class="header-inner">
-
           <!-- Brand + Title -->
           <div class="user-greeting">
             <div class="avatar-section">
@@ -22,7 +20,6 @@
                 <div class="role-meta">
                   <span class="role-badge">Admin View</span>
                   <span class="month-badge">{{ currentMonth }} {{ currentYear }}</span>
-                  <!-- Shows the active business name in the header meta row -->
                   <span v-if="activeBusiness" class="business-badge">
                     <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24"
                       fill="none" stroke="currentColor" stroke-width="2.5">
@@ -37,12 +34,8 @@
 
             <!-- Controls -->
             <div class="header-controls">
-
-              <!-- ══════════════════════════════════════════
-                   Business Switcher
-              ═══════════════════════════════════════════ -->
+              <!-- Business Switcher -->
               <div class="biz-switcher" :class="{ open: switcherOpen }" ref="switcherWrap">
-
                 <button class="biz-trigger" @click="toggleSwitcher">
                   <span v-if="activeBusiness" class="biz-trigger-avatar"
                     :style="{ background: bizColor(activeBusiness.id) }">
@@ -53,8 +46,7 @@
                       fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="10"/>
                       <line x1="2" y1="12" x2="22" y2="12"/>
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10
-                               15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                     </svg>
                   </span>
                   <span class="biz-trigger-label">
@@ -67,10 +59,8 @@
                   </svg>
                 </button>
 
-                <!-- Dropdown -->
                 <Transition name="biz-drop">
                   <div v-if="switcherOpen" class="biz-dropdown">
-
                     <!-- Search -->
                     <div class="biz-search-row">
                       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13"
@@ -88,15 +78,14 @@
                       <span v-if="switcherSearch" class="biz-search-clear" @click="switcherSearch = ''">✕</span>
                     </div>
 
-                    <!-- Loading state -->
+                    <!-- Loading -->
                     <div v-if="loadingBusinesses" class="biz-list-state">
                       <div class="mini-spin"></div> Loading…
                     </div>
 
-                    <!-- List -->
+                    <!-- Business List -->
                     <ul v-else class="biz-list">
-
-                      <!-- "All Businesses" option -->
+                      <!-- All Businesses -->
                       <li>
                         <button class="biz-item" :class="{ active: !activeBusiness }"
                           @click="selectBusiness(null)">
@@ -105,8 +94,7 @@
                               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                               <circle cx="12" cy="12" r="10"/>
                               <line x1="2" y1="12" x2="22" y2="12"/>
-                              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10
-                                       15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                             </svg>
                           </span>
                           <span class="biz-item-name">All Businesses</span>
@@ -118,7 +106,7 @@
                         </button>
                       </li>
 
-                      <!-- Fetched businesses -->
+                      <!-- Individual Businesses -->
                       <li v-for="biz in filteredBusinesses" :key="biz.id">
                         <button class="biz-item" :class="{ active: activeBusiness?.id === biz.id }"
                           @click="selectBusiness(biz)">
@@ -138,19 +126,16 @@
                         </button>
                       </li>
 
-                      <!-- Empty search result -->
                       <li v-if="!filteredBusinesses.length && switcherSearch" class="biz-list-state">
                         No match for "{{ switcherSearch }}"
                       </li>
-
-                      <!-- No businesses at all -->
                       <li v-if="!businesses.length && !loadingBusinesses && !switcherSearch"
                         class="biz-list-state">
                         No businesses found
                       </li>
                     </ul>
 
-                    <!-- Footer: go to Business Management -->
+                    <!-- Footer -->
                     <div class="biz-dropdown-footer">
                       <button class="biz-manage-link" @click="goToBusinessManagement">
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"
@@ -161,13 +146,11 @@
                         Manage Businesses
                       </button>
                     </div>
-
                   </div>
                 </Transition>
               </div>
-              <!-- ── End Business Switcher ─────────────── -->
 
-              <!-- Refresh button — compact 28×28, icon 10×10 -->
+              <!-- Refresh Button -->
               <button @click="refreshData" class="btn-icon-sm" title="Refresh Data">
                 <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -176,6 +159,7 @@
                 </svg>
               </button>
 
+              <!-- Process Payroll -->
               <button @click="processPayroll" class="btn-accent">
                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
                   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -187,7 +171,7 @@
             </div>
           </div>
 
-          <!-- Date badge -->
+          <!-- Date Badge -->
           <div class="date-badge">
             <div class="date-content">
               <span class="day">{{ currentDay }}</span>
@@ -197,11 +181,10 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
 
-      <!-- ── Switch confirmation toast ──────────────── -->
+      <!-- Switch Toast -->
       <Transition name="toast-drop">
         <div v-if="switchToast" class="switch-toast">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
@@ -213,7 +196,7 @@
         </div>
       </Transition>
 
-      <!-- ── Auth / Permission / Loading / Error guards ── -->
+      <!-- Guards -->
       <div v-if="!authStore.isAuthenticated" class="state-banner error">
         Please log in to access the dashboard.
       </div>
@@ -229,12 +212,10 @@
         <button @click="retryFetch" class="btn-text">Retry</button>
       </div>
 
-      <!-- ── Dashboard Content ───────────────────────── -->
+      <!-- Main Dashboard Content -->
       <div v-else class="dashboard-content">
-
-        <!-- 1. Stats Grid -->
+        <!-- Stats Grid -->
         <div class="stats-grid">
-
           <div class="stat-card" style="--accent:#3b82f6;">
             <div class="stat-icon-wrap" style="background:rgba(59,130,246,0.1);">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
@@ -291,6 +272,7 @@
             </div>
           </div>
 
+          <!-- Payroll with Dynamic Currency -->
           <div class="stat-card" style="--accent:#3b82f6;">
             <div class="stat-icon-wrap" style="background:rgba(59,130,246,0.1);">
               <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
@@ -301,18 +283,18 @@
             </div>
             <div class="stat-info">
               <span class="stat-label">Payroll ({{ currentMonth }})</span>
-              <div class="stat-number small">K{{ formatNumber(stats.monthlyPayroll) }}</div>
+              <div class="stat-number small">
+                {{ currencySymbol }}{{ formatNumber(stats.monthlyPayroll) }}
+              </div>
               <div class="stat-trend">Total processed</div>
             </div>
           </div>
-
         </div>
 
-        <!-- 2. Quick Actions -->
+        <!-- Quick Actions -->
         <div class="section-container">
           <h2 class="section-title">Quick Actions</h2>
           <div class="quick-actions-grid">
-
             <div class="action-card" @click="navigateToName('EmployeeManagement')">
               <div class="ql-icon" style="background:#eff6ff;color:#3b82f6;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
@@ -323,7 +305,6 @@
               </div>
               <span>Add Employee</span>
             </div>
-
             <div class="action-card" @click="navigateToName('PayslipGeneration')">
               <div class="ql-icon" style="background:#ecfdf5;color:#10b981;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
@@ -336,7 +317,6 @@
               </div>
               <span>Generate Payslips</span>
             </div>
-
             <div class="action-card" @click="navigateToName('AdminReports')">
               <div class="ql-icon" style="background:#fffbeb;color:#f59e0b;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
@@ -346,7 +326,6 @@
               </div>
               <span>View Reports</span>
             </div>
-
             <div class="action-card" @click="navigateToName('TaxConfiguration')">
               <div class="ql-icon" style="background:#eff6ff;color:#3b82f6;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
@@ -359,16 +338,13 @@
               </div>
               <span>Tax Settings</span>
             </div>
-
           </div>
         </div>
 
-        <!-- 3. Main Columns -->
+        <!-- Main Columns -->
         <div class="dashboard-columns">
-
-          <!-- Left: Activity + Departments -->
+          <!-- Left Column -->
           <div class="column-left">
-
             <div class="content-card">
               <div class="card-header">
                 <h3>Recent Activity</h3>
@@ -406,10 +382,9 @@
                 <div v-if="departments.length === 0" class="empty-placeholder">No department data</div>
               </div>
             </div>
-
           </div>
 
-          <!-- Right: Approvals -->
+          <!-- Right Column -->
           <div class="column-right">
             <div class="content-card">
               <div class="card-header">
@@ -441,7 +416,6 @@
                     </button>
                   </div>
                 </div>
-
                 <div v-if="pendingApprovals.length === 0" class="empty-approvals">
                   <div class="empty-check">
                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24"
@@ -454,16 +428,14 @@
               </div>
             </div>
           </div>
-
         </div>
       </div>
-
     </div>
   </div>
 </template>
 
 <script>
-import { useAuthStore }     from '@/stores/auth'
+import { useAuthStore } from '@/stores/auth'
 import { useBusinessStore } from '@/stores/business'
 import axios from 'axios'
 import { useDeviceDetection } from '@/utils/deviceDetection'
@@ -473,7 +445,7 @@ export default {
 
   setup() {
     const { isMobile, breakpoint } = useDeviceDetection()
-    const authStore     = useAuthStore()
+    const authStore = useAuthStore()
     const businessStore = useBusinessStore()
     return { authStore, businessStore }
   },
@@ -481,37 +453,41 @@ export default {
   data() {
     const now = new Date()
     return {
-      // ── Businesses ────────────────────────────────────────────────────────
-      businesses:        [],
+      // Businesses
+      businesses: [],
       loadingBusinesses: false,
       activeBusiness: null,
 
-      // ── Switcher UI ───────────────────────────────────────────────────────
-      switcherOpen:   false,
+      // Switcher
+      switcherOpen: false,
       switcherSearch: '',
-      switchToast:    null,
-      _toastTimer:    null,
+      switchToast: null,
+      _toastTimer: null,
 
-      // ── Dashboard data ────────────────────────────────────────────────────
+      // Dashboard Data
       stats: {
-        totalEmployees: 0, newEmployees:   0,
-        activeToday:    0, attendanceRate: 0,
-        onLeave:        0, pendingLeaves:  0,
-        monthlyPayroll: 0, payrollChange:  0,
+        totalEmployees: 0,
+        newEmployees: 0,
+        activeToday: 0,
+        attendanceRate: 0,
+        onLeave: 0,
+        pendingLeaves: 0,
+        monthlyPayroll: 0,
       },
-      recentActivity:   [],
+      recentActivity: [],
       pendingApprovals: [],
-      departments:      [],
-      loading:    false,
-      error:      null,
+      departments: [],
+
+      loading: false,
+      error: null,
       retryCount: 0,
 
-      // ── Date display ──────────────────────────────────────────────────────
-      currentDay:       now.toLocaleDateString('en-US', { weekday: 'long' }),
-      currentDateNum:   now.getDate(),
+      // Date Info
+      currentDay: now.toLocaleDateString('en-US', { weekday: 'long' }),
+      currentDateNum: now.getDate(),
       currentMonthYear: now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-      currentMonth:     now.toLocaleString('default', { month: 'long' }),
-      currentYear:      now.getFullYear(),
+      currentMonth: now.toLocaleString('default', { month: 'long' }),
+      currentYear: now.getFullYear(),
     }
   },
 
@@ -519,6 +495,7 @@ export default {
     selectedBusinessId() {
       return this.activeBusiness?.id ?? ''
     },
+
     filteredBusinesses() {
       const q = this.switcherSearch.trim().toLowerCase()
       if (!q) return this.businesses
@@ -527,10 +504,28 @@ export default {
         (b.legal_name || '').toLowerCase().includes(q)
       )
     },
+
+    // Dynamic Currency
+    businessCurrency() {
+      return this.activeBusiness?.currency_code || 'ZMW'
+    },
+
+    currencySymbol() {
+      const symbols = {
+        'ZMW': 'K',
+        'USD': '$',
+        'EUR': '€',
+        'GBP': '£',
+        'ZAR': 'R',
+        'BWP': 'P',
+        'MWK': 'MK',
+      }
+      return symbols[this.businessCurrency] || this.businessCurrency + ' '
+    }
   },
 
   mounted() {
-    const stored = this.businessStore.getCurrentBusiness
+    const stored = this.businessStore.getCurrentBusiness || this.businessStore.currentBusiness
     if (stored) this.activeBusiness = stored
 
     document.addEventListener('mousedown', this._onClickOutside)
@@ -543,17 +538,16 @@ export default {
   },
 
   methods: {
-
     async initializeComponent() {
       if (!this.authStore.isAuthenticated || !this.authStore.isAdmin) return
       await this.fetchBusinesses()
-      this.fetchDashboardData()
+      await this.fetchDashboardData()
     },
 
     async fetchBusinesses() {
       this.loadingBusinesses = true
       try {
-        const res       = await axios.get('/api/admin/businesses')
+        const res = await axios.get('/api/admin/businesses')
         this.businesses = res.data.data || res.data.businesses || []
 
         if (this.activeBusiness) {
@@ -587,12 +581,12 @@ export default {
 
     selectBusiness(biz) {
       this.closeSwitcher()
-
       if (biz?.id === this.activeBusiness?.id) return
-      if (!biz && !this.activeBusiness)        return
+      if (!biz && !this.activeBusiness) return
 
       this.activeBusiness = biz
 
+      // Sync with Pinia store
       try {
         if (typeof this.businessStore.switchBusiness === 'function') {
           this.businessStore.switchBusiness(biz?.id ?? null)
@@ -606,7 +600,6 @@ export default {
       }
 
       this.showToast(biz ? `Switched to ${biz.name}` : 'Showing all businesses')
-
       this.retryCount = 0
       this.fetchDashboardData()
     },
@@ -623,41 +616,45 @@ export default {
     },
 
     bizColor(id) {
-      const palette = ['#3b82f6','#10b981','#f59e0b','#2563eb','#ef4444','#06b6d4','#f97316','#84cc16']
+      const palette = ['#3b82f6', '#10b981', '#f59e0b', '#2563eb', '#ef4444', '#06b6d4', '#f97316', '#84cc16']
       return palette[id % palette.length]
     },
 
     async fetchDashboardData() {
       this.loading = true
-      this.error   = null
+      this.error = null
+
       try {
         const params = { business_id: this.selectedBusinessId || undefined }
-        const today  = new Date().toISOString().split('T')[0]
+        const today = new Date().toISOString().split('T')[0]
 
         const [statsRes, attRes, leaveRes, auditRes] = await Promise.all([
-          axios.get('/api/admin/stats',                { params }),
-          axios.get('/api/admin/attendance/status',    { params: { ...params, date: today } }),
+          axios.get('/api/admin/stats', { params }),
+          axios.get('/api/admin/attendance/status', { params: { ...params, date: today } }),
           axios.get('/api/admin/leaves/current-month', { params }),
-          axios.get('/api/admin/audit-logs',           { params: { ...params, limit: 5 } }),
+          axios.get('/api/admin/audit-logs', { params: { ...params, limit: 5 } }),
         ])
 
-        const statsData           = statsRes.data.stats || statsRes.data || {}
+        const statsData = statsRes.data.stats || statsRes.data || {}
         this.stats.totalEmployees = statsData.total_employees || 0
-        this.stats.newEmployees   = 0
+        this.stats.newEmployees = statsData.new_employees || 0
+        this.stats.monthlyPayroll = statsData.current_month_payroll_amount || 0
 
-        const attSummary          = (attRes.data || {}).summary || {}
-        this.stats.activeToday    = attSummary.present_count || 0
+        // Attendance
+        const attSummary = (attRes.data || {}).summary || {}
+        this.stats.activeToday = attSummary.present_count || 0
         this.stats.attendanceRate = this.stats.totalEmployees > 0
           ? Math.round((this.stats.activeToday / this.stats.totalEmployees) * 100)
           : 0
 
-        const leaveData           = leaveRes.data || {}
-        this.stats.onLeave        = leaveData.on_leave_count || 0
-        this.stats.pendingLeaves  = leaveData.pending_count  || 0
+        // Leaves
+        const leaveData = leaveRes.data || {}
+        this.stats.onLeave = leaveData.on_leave_count || 0
+        this.stats.pendingLeaves = leaveData.pending_count || 0
 
         this.pendingApprovals = Array.isArray(leaveData.pending_leaves)
           ? leaveData.pending_leaves.slice(0, 5).map(l => ({
-              id:   l.id,
+              id: l.id,
               name: l.employee?.first_name
                 ? `${l.employee.first_name} ${l.employee.last_name}`
                 : `Employee #${l.employee_id}`,
@@ -666,16 +663,16 @@ export default {
             }))
           : []
 
-        this.stats.monthlyPayroll = statsData.current_month_payroll_amount || 0
-
-        const auditData     = auditRes.data.data || auditRes.data || []
+        // Recent Activity
+        const auditData = auditRes.data.data || auditRes.data || []
         this.recentActivity = auditData.slice(0, 5).map(log => ({
-          id:    log.id,
-          text:  log.description || log.action || 'Activity',
-          time:  this.formatRelativeTime(log.created_at),
+          id: log.id,
+          text: log.description || log.action || 'Activity',
+          time: this.formatRelativeTime(log.created_at),
           color: this.getActivityColor(log.action),
         }))
 
+        // Department Snapshot
         const attList = (attRes.data || {}).data || []
         const deptMap = {}
         attList.forEach(att => {
@@ -684,10 +681,10 @@ export default {
           deptMap[d].employees++
           if (['present', 'completed'].includes(att.status)) deptMap[d].present++
         })
+
         this.departments = Object.values(deptMap).map(d => ({
           ...d,
-          attendancePct: d.employees > 0
-            ? Math.round((d.present / d.employees) * 100) : 0,
+          attendancePct: d.employees > 0 ? Math.round((d.present / d.employees) * 100) : 0,
         }))
 
       } catch (err) {
@@ -701,39 +698,51 @@ export default {
     formatLeaveType(type) {
       return (type || 'Leave').replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
     },
+
     formatDateRange(start, end) {
       const fmt = d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       return `${fmt(start)} – ${fmt(end)}`
     },
+
     getActivityColor(action) {
       if (!action) return '#94a3b8'
-      if (action.includes('delete') || action.includes('reject'))                           return '#ef4444'
+      if (action.includes('delete') || action.includes('reject')) return '#ef4444'
       if (action.includes('create') || action.includes('add') || action.includes('approve')) return '#10b981'
-      if (action.includes('update') || action.includes('edit'))                             return '#3b82f6'
+      if (action.includes('update') || action.includes('edit')) return '#3b82f6'
       return '#2563eb'
     },
+
     formatRelativeTime(ts) {
       const diff = Date.now() - new Date(ts)
       const mins = Math.floor(diff / 60000)
-      if (mins < 60)  return `${mins}m ago`
+      if (mins < 60) return `${mins}m ago`
       const hrs = Math.floor(mins / 60)
-      if (hrs  < 24)  return `${hrs}h ago`
+      if (hrs < 24) return `${hrs}h ago`
       return `${Math.floor(hrs / 24)}d ago`
     },
+
     formatNumber(num) {
       return new Intl.NumberFormat('en-US').format(num || 0)
     },
+
     retryFetch() {
       this.retryCount++
       if (this.retryCount <= 3) this.fetchDashboardData()
       else this.error = 'Failed to load data after retries.'
     },
+
     refreshData() {
       this.retryCount = 0
       this.fetchDashboardData()
     },
-    processPayroll()     { this.navigateToName('PayrollProcessing') },
-    navigateToName(name) { this.$router.push({ name }) },
+
+    processPayroll() {
+      this.navigateToName('PayrollProcessing')
+    },
+
+    navigateToName(name) {
+      this.$router.push({ name })
+    },
 
     async approve(id) {
       if (!confirm('Approve this request?')) return
@@ -741,16 +750,22 @@ export default {
         await axios.post(`/api/manager/leaves/${id}/approve`)
         this.pendingApprovals = this.pendingApprovals.filter(a => a.id !== id)
         this.stats.pendingLeaves--
-      } catch { alert('Action failed') }
+      } catch {
+        alert('Action failed')
+      }
     },
+
     async reject(id) {
       if (!confirm('Reject this request?')) return
       try {
         await axios.post(`/api/manager/leaves/${id}/reject`)
         this.pendingApprovals = this.pendingApprovals.filter(a => a.id !== id)
         this.stats.pendingLeaves--
-      } catch { alert('Action failed') }
+      } catch {
+        alert('Action failed')
+      }
     },
+
     handleApiError(err) {
       if (err.response?.status === 401) {
         this.authStore.clearAuth()
@@ -763,6 +778,19 @@ export default {
 </script>
 
 <style scoped>
+/* All your existing styles from the original component */
+.admin-dashboard {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #1e293b;
+}
+.dashboard-main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 3rem;
+}
+
 /* ── Base ─────────────────────────────────────────────── */
 .admin-dashboard {
   min-height: 100vh;

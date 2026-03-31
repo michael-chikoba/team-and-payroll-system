@@ -61,6 +61,10 @@ class PayrollCalculationService
      * The caller (PayrollController) is responsible for deleting any
      * existing payslips before calling this method if a clean
      * recalculation is required (i.e. after a revert-to-pending).
+     *
+     * NOTE: Overtime is intentionally NOT auto-calculated or included.
+     * Overtime hours, rate, and pay are always stored as zero.
+     * Overtime must be added manually via adjustments if required.
      */
     public function createPayslipWithAdjustments(
         Employee $employee,
@@ -111,7 +115,7 @@ class PayrollCalculationService
 
                 $calculationData['breakdown']['adjustments']         = $adjustments;
                 $calculationData['breakdown']['adjustments_applied'] = [
-                    'total_bonuses'              => $bonuses,
+                    'total_bonuses'               => $bonuses,
                     'total_additional_deductions' => $additionalDeductions,
                     'net_effect'                  => $bonuses - $additionalDeductions,
                 ];
@@ -120,28 +124,21 @@ class PayrollCalculationService
             // 6. Map dynamic statutory breakdown → legacy DB columns ────────
             $statutory = collect($calculationData['deductions']['statutory_breakdown']);
 
-            // FIXED: Use safeSum with float casting
             $napsaAmount = $statutory
                 ->where('type', 'levy')
                 ->filter(fn ($i) => stripos($i['name'] ?? '', 'NAPSA') !== false)
-                ->sum(function($item) {
-                    return (float) ($item['amount'] ?? 0);
-                });
+                ->sum(fn ($item) => (float) ($item['amount'] ?? 0));
 
             $nhimaAmount = $statutory
                 ->where('type', 'health')
                 ->filter(fn ($i) => stripos($i['name'] ?? '', 'NHIMA') !== false
                                  || stripos($i['name'] ?? '', 'NHIF')  !== false)
-                ->sum(function($item) {
-                    return (float) ($item['amount'] ?? 0);
-                });
+                ->sum(fn ($item) => (float) ($item['amount'] ?? 0));
 
             $pensionAmount = $statutory
                 ->where('type', 'pension')
                 ->filter(fn ($i) => stripos($i['name'] ?? '', 'NAPSA') === false)
-                ->sum(function($item) {
-                    return (float) ($item['amount'] ?? 0);
-                });
+                ->sum(fn ($item) => (float) ($item['amount'] ?? 0));
 
             Log::debug('Creating payslip record', [
                 'employee_id'    => $employee->id,
@@ -157,6 +154,7 @@ class PayrollCalculationService
                 'nhima'          => $nhimaAmount,
                 'pension'        => $pensionAmount,
                 'net_pay'        => $calculationData['net_pay'],
+                'overtime_note'  => 'Overtime is disabled — always stored as 0',
             ]);
 
             return Payslip::create([
@@ -169,9 +167,9 @@ class PayrollCalculationService
                 'house_allowance'     => $calculationData['allowances']['housing'],
                 'transport_allowance' => $calculationData['allowances']['transport'],
                 'other_allowances'    => $calculationData['allowances']['lunch'],
-                'overtime_hours'      => $calculationData['overtime_hours'],
-                'overtime_rate'       => $calculationData['overtime_rate'],
-                'overtime_pay'        => $calculationData['overtime_pay'],
+                'overtime_hours'      => 0,   // Overtime disabled — not auto-calculated
+                'overtime_rate'       => 0,   // Overtime disabled — not auto-calculated
+                'overtime_pay'        => 0,   // Overtime disabled — not auto-calculated
                 'bonuses'             => $calculationData['bonuses'],
                 'gross_salary'        => $calculationData['gross_salary'],
                 'napsa'               => $napsaAmount,
@@ -204,11 +202,8 @@ class PayrollCalculationService
     /**
      * Delete ALL payslip rows for a given employee in a given payroll period.
      *
-     * Returns the number of rows deleted.  If the payroll has no remaining
+     * Returns the number of rows deleted. If the payroll has no remaining
      * payslips after deletion the caller should reset the payroll to 'draft'.
-     *
-     * This is the canonical place to perform the deletion so that both the
-     * controller AND any future artisan commands / jobs use the same logic.
      */
     public function deletePayslipsForEmployee(Employee $employee, Payroll $payroll): int
     {
@@ -217,16 +212,16 @@ class PayrollCalculationService
             ->delete();
 
         Log::info('PayrollCalculationService: Payslips deleted for revert', [
-            'employee_id' => $employee->id,
-            'payroll_id'  => $payroll->id,
-            'rows_deleted'=> $deleted,
+            'employee_id'  => $employee->id,
+            'payroll_id'   => $payroll->id,
+            'rows_deleted' => $deleted,
         ]);
 
         return (int) $deleted;
     }
 
     // =========================================================================
-    // PAYROLL TOTALS - FIXED
+    // PAYROLL TOTALS
     // =========================================================================
 
     /**
@@ -234,52 +229,53 @@ class PayrollCalculationService
      * Should be called after any create / delete of payslip rows.
      */
     public function updatePayrollTotals(Payroll $payroll): void
-{
-    try {
-        $payslips = $payroll->payslips()->get();
+    {
+        try {
+            $payslips = $payroll->payslips()->get();
 
-        $totalGross = $payslips->sum(function ($payslip) {
-            $value = $payslip->getForcedDecrypted('gross_salary');
-            return is_numeric($value) ? (float) $value : 0.0;
-        });
+            $totalGross = $payslips->sum(function ($payslip) {
+                $value = $payslip->getForcedDecrypted('gross_salary');
+                return is_numeric($value) ? (float) $value : 0.0;
+            });
 
-        $totalNet = $payslips->sum(function ($payslip) {
-            $value = $payslip->getForcedDecrypted('net_pay');
-            return is_numeric($value) ? (float) $value : 0.0;
-        });
+            $totalNet = $payslips->sum(function ($payslip) {
+                $value = $payslip->getForcedDecrypted('net_pay');
+                return is_numeric($value) ? (float) $value : 0.0;
+            });
 
-        $employeeCount = $payslips->count();
+            $employeeCount = $payslips->count();
 
-        Log::debug('PayrollCalculationService: Updating payroll totals', [
-            'payroll_id'             => $payroll->id,
-            'total_gross_calculated' => $totalGross,
-            'total_net_calculated'   => $totalNet,
-            'employee_count'         => $employeeCount,
-            'payslips_count'         => $payslips->count(),
-        ]);
+            Log::debug('PayrollCalculationService: Updating payroll totals', [
+                'payroll_id'             => $payroll->id,
+                'total_gross_calculated' => $totalGross,
+                'total_net_calculated'   => $totalNet,
+                'employee_count'         => $employeeCount,
+                'payslips_count'         => $payslips->count(),
+            ]);
 
-        $payroll->update([
-            'total_gross'    => $totalGross,
-            'total_net'      => $totalNet,
-            'employee_count' => $employeeCount,
-        ]);
+            $payroll->update([
+                'total_gross'    => $totalGross,
+                'total_net'      => $totalNet,
+                'employee_count' => $employeeCount,
+            ]);
 
-        Log::info('PayrollCalculationService: Payroll totals updated', [
-            'payroll_id'     => $payroll->id,
-            'total_gross'    => $totalGross,
-            'total_net'      => $totalNet,
-            'employee_count' => $employeeCount,
-        ]);
+            Log::info('PayrollCalculationService: Payroll totals updated', [
+                'payroll_id'     => $payroll->id,
+                'total_gross'    => $totalGross,
+                'total_net'      => $totalNet,
+                'employee_count' => $employeeCount,
+            ]);
 
-    } catch (\Exception $e) {
-        Log::error('PayrollCalculationService: Failed to update payroll totals', [
-            'payroll_id' => $payroll->id,
-            'error'      => $e->getMessage(),
-            'trace'      => $e->getTraceAsString(),
-        ]);
-        throw $e;
+        } catch (\Exception $e) {
+            Log::error('PayrollCalculationService: Failed to update payroll totals', [
+                'payroll_id' => $payroll->id,
+                'error'      => $e->getMessage(),
+                'trace'      => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
-}
+
     // =========================================================================
     // TAX CONFIG RESOLUTION
     // =========================================================================
@@ -317,12 +313,12 @@ class PayrollCalculationService
 
         if (!$config) {
             Log::error('PayrollCalculationService: No active tax configuration found', [
-                'employee_id'  => $employee->id,
-                'employee_name'=> ($employee->user->first_name ?? 'Unknown'),
-                'business_id'  => $businessId,
-                'business_name'=> $employee->business->name ?? 'Unknown',
-                'country_code' => $countryCode ?? 'Not set',
-                'hint'         => 'Check tax_configurations table: ensure is_active=1 for this country/business combination',
+                'employee_id'   => $employee->id,
+                'employee_name' => ($employee->user->first_name ?? 'Unknown'),
+                'business_id'   => $businessId,
+                'business_name' => $employee->business->name ?? 'Unknown',
+                'country_code'  => $countryCode ?? 'Not set',
+                'hint'          => 'Check tax_configurations table: ensure is_active=1 for this country/business combination',
             ]);
         }
 
@@ -386,9 +382,12 @@ class PayrollCalculationService
      * Flow:
      *   basic_salary
      *   + allowances (housing % from config, transport/lunch from employee)
-     *   + overtime
      *   + bonuses                       ← included before deductions
      *   = gross_salary
+     *
+     *   NOTE: Overtime is intentionally excluded from gross salary.
+     *         Overtime hours/rate/pay are always zero in auto-calculation.
+     *         Overtime must be added manually if required.
      *
      *   gross_salary - pension deductions → taxable_income → PAYE
      *
@@ -403,7 +402,7 @@ class PayrollCalculationService
         float             $bonuses = 0.0
     ): array {
         try {
-            // 1. Basic salary - USE THE ACCESSOR METHOD TO GET DECRYPTED VALUE
+            // 1. Basic salary ───────────────────────────────────────────────
             $basicSalary = $employee->base_salary_value ?? (float) $employee->base_salary;
 
             if ($basicSalary <= 0) {
@@ -416,23 +415,34 @@ class PayrollCalculationService
             $allowances = $taxConfig->calculateAllowances($employee);
 
             Log::debug('PayrollCalculationService: Allowances calculated', [
-                'employee_id'     => $employee->id,
-                'basic_salary'    => $basicSalary,
-                'housing'         => $allowances['housing'],
-                'transport'       => $allowances['transport'],
-                'lunch'           => $allowances['lunch'],
-                'total'           => $allowances['total'],
-                'housing_rate'    => $taxConfig->config_data['housingAllowanceRate'] ?? 25.0,
+                'employee_id'  => $employee->id,
+                'basic_salary' => $basicSalary,
+                'housing'      => $allowances['housing'],
+                'transport'    => $allowances['transport'],
+                'lunch'        => $allowances['lunch'],
+                'total'        => $allowances['total'],
+                'housing_rate' => $taxConfig->config_data['housingAllowanceRate'] ?? 25.0,
             ]);
 
-            // 3. Overtime ───────────────────────────────────────────────────
-            $overtimeData = $this->calculateOvertimeData($employee, $payroll);
+            // 3. Overtime — DISABLED ─────────────────────────────────────────
+            // Overtime is not auto-calculated. It is always zero.
+            // To include overtime, it must be passed in manually via adjustments.
+            $overtimeData = [
+                'hours' => 0,
+                'rate'  => 0,
+                'pay'   => 0,
+            ];
 
-            // 4. Gross salary (bonuses included) ────────────────────────────
+            Log::debug('PayrollCalculationService: Overtime skipped (disabled)', [
+                'employee_id'   => $employee->id,
+                'overtime_note' => 'Auto overtime calculation is disabled. Overtime is always 0.',
+            ]);
+
+            // 4. Gross salary (overtime excluded, bonuses included) ──────────
             $grossSalary = $basicSalary
                          + $allowances['total']
-                         + $overtimeData['pay']
                          + $bonuses;
+            // NOTE: $overtimeData['pay'] is intentionally NOT added here.
 
             // 5. Deductions ─────────────────────────────────────────────────
             $deductions = $this->calculateDeductions($basicSalary, $grossSalary, $taxConfig, $employee);
@@ -450,10 +460,11 @@ class PayrollCalculationService
                 'employee_country_code'  => $employee->getCountryCode(),
                 'currency'               => $taxConfig->getCurrency(),
                 'encryption_notice'      => 'Employee salary fields are encrypted in database',
+                'overtime_notice'        => 'Auto overtime calculation is disabled. Overtime is always 0.',
                 'earnings_breakdown'     => [
                     'basic_salary' => $basicSalary,
                     'allowances'   => $allowances,
-                    'overtime'     => $overtimeData,
+                    'overtime'     => $overtimeData, // always zeros
                     'bonuses'      => $bonuses,
                     'gross_total'  => $grossSalary,
                 ],
@@ -471,9 +482,9 @@ class PayrollCalculationService
                 // Flat DB fields
                 'basic_salary'   => $basicSalary,
                 'allowances'     => $allowances,
-                'overtime_hours' => $overtimeData['hours'],
-                'overtime_rate'  => $overtimeData['rate'],
-                'overtime_pay'   => $overtimeData['pay'],
+                'overtime_hours' => 0,   // always zero — overtime disabled
+                'overtime_rate'  => 0,   // always zero — overtime disabled
+                'overtime_pay'   => 0,   // always zero — overtime disabled
                 'bonuses'        => $bonuses,
                 'gross_salary'   => $grossSalary,
                 'deductions'     => $deductions,
@@ -487,7 +498,7 @@ class PayrollCalculationService
                     'house_allowance'     => $allowances['housing'],
                     'transport_allowance' => $allowances['transport'],
                     'lunch_allowance'     => $allowances['lunch'],
-                    'overtime_pay'        => $overtimeData['pay'],
+                    'overtime_pay'        => 0,   // always zero — overtime disabled
                     'bonuses'             => $bonuses,
                     'gross_salary'        => $grossSalary,
                 ],
@@ -571,18 +582,25 @@ class PayrollCalculationService
     }
 
     // =========================================================================
-    // OVERTIME
+    // OVERTIME — DISABLED
     // =========================================================================
 
     /**
-     * Hourly rate  = base_salary / 173.33  (40 h/wk × 52 wks / 12 months)
-     * Overtime rate = hourly rate × 1.5
+     * Overtime auto-calculation is disabled.
+     *
+     * This method is intentionally kept but never called during payslip
+     * generation. Overtime must be entered manually via adjustments.
+     *
+     * Formula (for reference only):
+     *   Hourly rate  = base_salary / 173.33  (40 h/wk × 52 wks / 12 months)
+     *   Overtime rate = hourly rate × 1.5
+     *
+     * @deprecated Not called — overtime is always zero in auto-calculation.
      */
     private function calculateOvertimeData(Employee $employee, Payroll $payroll): array
     {
-        // Use the base_salary_value accessor to get the decrypted value
         $basicSalary = $employee->base_salary_value ?? (float) $employee->base_salary;
-        
+
         $overtimeHours = $this->attendanceService->getOvertimeHours(
             $employee->id,
             $payroll->start_date,

@@ -1,19 +1,24 @@
-// src/stores/loading.js
-import { defineStore } from 'pinia';
+// src/plugins/loadingInterceptor.js
+// Global loading overlay is navigation-only (see App.vue router guards).
+// This interceptor is kept for any future per-request needs but does NOT
+// touch the loading overlay.
 
-export const useLoadingStore = defineStore('loading', {
-  state: () => ({
-    loadingCount: 0,
-  }),
-  getters: {
-    isLoading: (state) => state.loadingCount > 0,
-  },
-  actions: {
-    show() {
-      this.loadingCount++;
-    },
-    hide() {
-      if (this.loadingCount > 0) this.loadingCount--;
-    },
-  },
-});
+export function setupLoadingInterceptor() {
+  return (axiosInstance) => {
+    // ── Request interceptor ─────────────────────────────────────────────
+    // Reserved for auth headers, request logging, etc.
+    axiosInstance.interceptors.request.use(
+      (config) => config,
+      (error) => Promise.reject(error)
+    )
+
+    // ── Response interceptor ────────────────────────────────────────────
+    // Reserved for global error handling, token refresh, etc.
+    axiosInstance.interceptors.response.use(
+      (response) => response,
+      (error) => Promise.reject(error)
+    )
+
+    return axiosInstance
+  }
+}

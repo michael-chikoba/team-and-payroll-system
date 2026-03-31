@@ -36,6 +36,13 @@
             <p>Generate, view and distribute employee payslips</p>
             <div class="header-badges">
               <span class="badge-role">Admin View</span>
+              <span v-if="currentBusiness" class="currency-badge">
+                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="12" y1="1" x2="12" y2="23"/>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+                {{ getCurrencySymbol(currentCurrency) }} {{ currentCurrency }}
+              </span>
               <span v-if="getFilterDisplayText !== 'All Records'" class="badge-filter">{{ getFilterDisplayText }}</span>
             </div>
           </div>
@@ -71,7 +78,9 @@
             <label>Business</label>
             <select v-model="filters.business_id" @change="handleBusinessChange" class="filter-select">
               <option value="">All Businesses</option>
-              <option v-for="b in businesses" :key="b.id" :value="b.id">{{ b.name }}</option>
+              <option v-for="b in businesses" :key="b.id" :value="b.id">
+                {{ b.name }} ({{ getCurrencySymbol(b.currency_code) }}{{ b.currency_code }})
+              </option>
             </select>
           </div>
           <div class="filter-group">
@@ -160,11 +169,11 @@
             </div>
             <div class="amount-cell">
               <span class="amt-lbl">Gross</span>
-              <span class="amt-val">K{{ formatNumber(payslip.gross_salary) }}</span>
+              <span class="amt-val">{{ formatCurrency(payslip.gross_salary) }}</span>
             </div>
             <div class="amount-cell">
               <span class="amt-lbl">Net Pay</span>
-              <span class="amt-val net-green">K{{ formatNumber(payslip.net_pay) }}</span>
+              <span class="amt-val net-green">{{ formatCurrency(payslip.net_pay) }}</span>
             </div>
           </div>
 
@@ -172,8 +181,10 @@
             <button @click="viewPayslip(payslip)" class="card-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View
             </button>
-            <button @click="downloadPayslip(payslip)" class="card-btn download">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>PDF
+            <button @click="downloadPayslip(payslip)" class="card-btn download" :disabled="downloadingId === payslip.id">
+              <svg v-if="downloadingId !== payslip.id" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span v-if="downloadingId === payslip.id" class="btn-spinner"></span>
+              {{ downloadingId === payslip.id ? '…' : 'PDF' }}
             </button>
             <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="card-btn send">
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Send
@@ -216,15 +227,16 @@
             <span class="period-sep">→</span>
             <span>{{ formatDate(payslip.pay_period_end) }}</span>
           </div>
-          <div class="text-right mono text-muted">K{{ formatNumber(payslip.gross_salary) }}</div>
-          <div class="text-right mono text-success fw-700">K{{ formatNumber(payslip.net_pay) }}</div>
+          <div class="text-right mono text-muted">{{ formatCurrency(payslip.gross_salary) }}</div>
+          <div class="text-right mono text-success fw-700">{{ formatCurrency(payslip.net_pay) }}</div>
           <div><span :class="['status-badge', statusClass(payslip.status)]"><span class="dot"></span>{{ formatStatus(payslip.status) }}</span></div>
           <div class="row-actions" @click.stop>
             <button @click="viewPayslip(payslip)" class="icon-btn" title="View">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
-            <button @click="downloadPayslip(payslip)" class="icon-btn dl" title="Download">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <button @click="downloadPayslip(payslip)" class="icon-btn dl" :disabled="downloadingId === payslip.id" title="Download">
+              <span v-if="downloadingId === payslip.id" class="btn-spinner sm"></span>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </button>
             <button v-if="!payslip.is_sent" @click="sendPayslip(payslip)" class="icon-btn send" title="Send">
               <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -286,23 +298,23 @@
               <div class="detail-col">
                 <h5 class="detail-heading"><span class="col-dot green"></span>Earnings</h5>
                 <div class="line-items">
-                  <div class="line-item"><span>Basic Salary</span><span>K{{ formatNumber(selectedPayslip.basic_salary) }}</span></div>
-                  <div v-if="selectedPayslip.house_allowance > 0"     class="line-item"><span>Housing Allowance</span><span>K{{ formatNumber(selectedPayslip.house_allowance) }}</span></div>
-                  <div v-if="selectedPayslip.transport_allowance > 0" class="line-item"><span>Transport Allowance</span><span>K{{ formatNumber(selectedPayslip.transport_allowance) }}</span></div>
-                  <div v-if="selectedPayslip.lunch_allowance > 0"     class="line-item"><span>Lunch/Other Allowance</span><span>K{{ formatNumber(selectedPayslip.lunch_allowance) }}</span></div>
-                  <div v-if="selectedPayslip.overtime_pay > 0"        class="line-item"><span>Overtime Pay</span><span>K{{ formatNumber(selectedPayslip.overtime_pay) }}</span></div>
-                  <div v-if="selectedPayslip.bonuses > 0"             class="line-item"><span>Bonuses</span><span>K{{ formatNumber(selectedPayslip.bonuses) }}</span></div>
+                  <div class="line-item"><span>Basic Salary</span><span>{{ formatCurrency(selectedPayslip.basic_salary) }}</span></div>
+                  <div v-if="selectedPayslip.house_allowance > 0"     class="line-item"><span>Housing Allowance</span><span>{{ formatCurrency(selectedPayslip.house_allowance) }}</span></div>
+                  <div v-if="selectedPayslip.transport_allowance > 0" class="line-item"><span>Transport Allowance</span><span>{{ formatCurrency(selectedPayslip.transport_allowance) }}</span></div>
+                  <div v-if="selectedPayslip.lunch_allowance > 0"     class="line-item"><span>Lunch/Other Allowance</span><span>{{ formatCurrency(selectedPayslip.lunch_allowance) }}</span></div>
+                  <div v-if="selectedPayslip.overtime_pay > 0"        class="line-item"><span>Overtime Pay</span><span>{{ formatCurrency(selectedPayslip.overtime_pay) }}</span></div>
+                  <div v-if="selectedPayslip.bonuses > 0"             class="line-item"><span>Bonuses</span><span>{{ formatCurrency(selectedPayslip.bonuses) }}</span></div>
                 </div>
-                <div class="line-total"><span>Gross Earnings</span><span class="text-success">K{{ formatNumber(selectedPayslip.gross_salary) }}</span></div>
+                <div class="line-total"><span>Gross Earnings</span><span class="text-success">{{ formatCurrency(selectedPayslip.gross_salary) }}</span></div>
               </div>
               <div class="detail-col">
                 <h5 class="detail-heading"><span class="col-dot red"></span>Deductions</h5>
                 <div class="line-items">
                   <div v-for="(item, i) in getDynamicDeductions(selectedPayslip)" :key="i" class="line-item">
-                    <span>{{ item.name }}</span><span>K{{ formatNumber(item.amount) }}</span>
+                    <span>{{ item.name }}</span><span>{{ formatCurrency(item.amount) }}</span>
                   </div>
                 </div>
-                <div class="line-total"><span>Total Deductions</span><span class="text-danger">K{{ formatNumber(selectedPayslip.total_deductions) }}</span></div>
+                <div class="line-total"><span>Total Deductions</span><span class="text-danger">{{ formatCurrency(selectedPayslip.total_deductions) }}</span></div>
               </div>
             </div>
 
@@ -310,18 +322,19 @@
             <div class="net-pay-card">
               <div>
                 <div class="np-label">NET PAYABLE</div>
-                <div class="np-amount">K{{ formatNumber(selectedPayslip.net_pay) }}</div>
+                <div class="np-amount">{{ formatCurrency(selectedPayslip.net_pay) }}</div>
                 <div class="np-words">{{ convertToWords(selectedPayslip.net_pay) }}</div>
               </div>
-              <div class="np-bg">ZMW</div>
+              <div class="np-bg">{{ getCurrencySymbol(currentCurrency) }}{{ currentCurrency }}</div>
             </div>
           </div>
 
           <div class="modal-footer">
             <button @click="selectedPayslip = null" class="btn-secondary">Close</button>
-            <button @click="downloadPayslip(selectedPayslip)" class="btn-primary">
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Download PDF
+            <button @click="downloadPayslip(selectedPayslip)" class="btn-primary" :disabled="downloadingId === selectedPayslip?.id">
+              <span v-if="downloadingId === selectedPayslip?.id" class="btn-spinner"></span>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              {{ downloadingId === selectedPayslip?.id ? 'Generating…' : 'Download PDF' }}
             </button>
           </div>
         </div>
@@ -368,6 +381,10 @@
             <div class="form-group">
               <label>Basic Salary</label>
               <input type="number" v-model.number="generateForm.basic_salary" class="filter-select full-w" step="0.01" />
+            </div>
+            <div class="info-notice" v-if="currentBusiness">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Payslip will be generated in <strong>{{ getCurrencySymbol(currentCurrency) }}{{ currentCurrency }}</strong> currency
             </div>
           </div>
           <div class="modal-footer">
@@ -424,6 +441,7 @@
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
               Will generate payslips for <strong>{{ availableEmployees.length }}</strong> employees
               <span v-if="filters.business_id">in selected business</span>.
+              <span v-if="currentBusiness"> Currency: <strong>{{ getCurrencySymbol(currentCurrency) }}{{ currentCurrency }}</strong></span>
             </div>
           </div>
           <div class="modal-footer">
@@ -442,8 +460,9 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue';
 import axios from 'axios';
-import jsPDF from 'jspdf';
+import { useBusinessStore } from '@/stores/business';
 
+const businessStore = useBusinessStore();
 const loading           = ref(false);
 const error             = ref(null);
 const payslips          = ref([]);
@@ -457,6 +476,24 @@ const viewMode          = ref('grid');
 const headerCardRef     = ref(null);
 const showStickyBar     = ref(false);
 
+// ─── NEW: Track which payslip ID is currently downloading ─────────────────────
+const downloadingId     = ref(null);
+
+// Currency symbols for African currencies
+const currencySymbols = {
+  'NGN': '₦', 'GHS': '₵', 'XOF': 'CFA', 'GMD': 'D', 'LRD': 'L$',
+  'SLL': 'Le', 'MRU': 'UM', 'CVE': '$',
+  'KES': 'KSh', 'UGX': 'USh', 'TZS': 'TSh', 'RWF': 'FRw',
+  'BIF': 'FBu', 'ETB': 'Br', 'SOS': 'S', 'DJF': 'Fdj',
+  'ERN': 'Nfk', 'SCR': '₨', 'COM': 'CF', 'MGA': 'Ar', 'MUR': '₨',
+  'ZAR': 'R', 'ZMW': 'K', 'BWP': 'P', 'NAD': 'N$',
+  'SZL': 'L', 'LSL': 'L', 'MWK': 'MK', 'MZN': 'MT',
+  'AOA': 'Kz', 'ZWL': 'ZiG',
+  'XAF': 'FCFA', 'CDF': 'FC', 'STN': 'Db',
+  'EGP': 'E£', 'MAD': 'DH', 'DZD': 'DA', 'TND': 'DT',
+  'LYD': 'LD', 'SDG': '£S'
+};
+
 const filters = reactive({
   pay_period: 'current', department: '', status: '',
   custom_month: '', business_id: '', start_date: '', end_date: ''
@@ -469,24 +506,14 @@ const bulkForm = reactive({
   pay_period_start: '', pay_period_end: '', payment_date: '', department: '', employee_ids: []
 });
 
-// ── Sticky bar scroll logic ───────────────────────────
-const handleScroll = () => {
-  if (!headerCardRef.value) return;
-  const rect = headerCardRef.value.getBoundingClientRect();
-  // Show sticky bar once the header card has scrolled out of view (bottom edge above viewport)
-  showStickyBar.value = rect.bottom < 0;
-};
-
-onMounted(() => {
-  initializeDates();
-  fetchBusinesses();
-  fetchEmployees();
-  fetchPayslips();
-  window.addEventListener('scroll', handleScroll, { passive: true });
-});
-
-onUnmounted(() => {
-  window.removeEventListener('scroll', handleScroll);
+// ── Computed ───────────────────────────────────────────
+const currentBusiness = computed(() => businessStore.currentBusiness);
+const currentCurrency = computed(() => {
+  if (filters.business_id) {
+    const selectedBiz = businesses.value.find(b => b.id === filters.business_id);
+    if (selectedBiz) return selectedBiz.currency_code || 'ZMW';
+  }
+  return currentBusiness.value?.currency_code || 'ZMW';
 });
 
 const getFilterDisplayText = computed(() => {
@@ -502,6 +529,40 @@ const availableEmployees = computed(() =>
   employees.value.filter(e => !bulkForm.department || e.department === bulkForm.department)
 );
 
+// ── Currency Helper ───────────────────────────────────
+const getCurrencySymbol = (currencyCode) => {
+  return currencySymbols[currencyCode] || currencyCode || '$';
+};
+
+const formatCurrency = (amount) => {
+  if (amount === null || amount === undefined) return '—';
+  return new Intl.NumberFormat('en-ZM', {
+    style: 'currency',
+    currency: currentCurrency.value,
+    minimumFractionDigits: 2
+  }).format(amount || 0).replace(/[A-Z]{3}/g, getCurrencySymbol(currentCurrency.value));
+};
+
+// ── Lifecycle ─────────────────────────────────────────
+const handleScroll = () => {
+  if (!headerCardRef.value) return;
+  const rect = headerCardRef.value.getBoundingClientRect();
+  showStickyBar.value = rect.bottom < 0;
+};
+
+onMounted(() => {
+  initializeDates();
+  fetchBusinesses();
+  fetchEmployees();
+  fetchPayslips();
+  window.addEventListener('scroll', handleScroll, { passive: true });
+});
+
+onUnmounted(() => {
+  window.removeEventListener('scroll', handleScroll);
+});
+
+// ── Data Fetching ─────────────────────────────────────
 const initializeDates = () => {
   const now = new Date();
   const first = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
@@ -510,9 +571,14 @@ const initializeDates = () => {
   Object.assign(generateForm, { pay_period_start: first, pay_period_end: last, payment_date: today });
   Object.assign(bulkForm,     { pay_period_start: first, pay_period_end: last, payment_date: today });
 };
+
 const fetchBusinesses = async () => {
-  try { const r = await axios.get('/api/admin/businesses'); businesses.value = r.data.data || r.data.businesses || r.data || []; } catch {}
+  try {
+    const r = await axios.get('/api/admin/businesses');
+    businesses.value = r.data.data || r.data.businesses || r.data || [];
+  } catch {}
 };
+
 const fetchEmployees = async () => {
   try {
     const params = filters.business_id ? { business_id: filters.business_id } : {};
@@ -520,6 +586,7 @@ const fetchEmployees = async () => {
     employees.value = r.data.data || r.data.employees || [];
   } catch {}
 };
+
 const fetchPayslips = async () => {
   loading.value = true; error.value = null;
   try {
@@ -539,6 +606,7 @@ const fetchPayslips = async () => {
   } catch { error.value = 'Failed to load payslips.'; }
   finally { loading.value = false; }
 };
+
 const handleBusinessChange = () => { fetchEmployees(); fetchPayslips(); };
 const handlePeriodChange   = () => {
   if (filters.pay_period !== 'custom') filters.custom_month = '';
@@ -546,6 +614,7 @@ const handlePeriodChange   = () => {
   fetchPayslips();
 };
 
+// ── Helper Functions ──────────────────────────────────
 const getEmployeeName = (emp) => {
   if (!emp) return 'Unknown';
   if (emp.user?.first_name) return `${emp.user.first_name} ${emp.user.last_name||''}`.trim();
@@ -553,6 +622,7 @@ const getEmployeeName = (emp) => {
   if (emp.first_name)       return `${emp.first_name} ${emp.last_name||''}`.trim();
   return emp.name || 'Unknown';
 };
+
 const getDynamicDeductions = (p) => {
   const list = [];
   if (p.paye > 0) list.push({ name:'PAYE Tax', amount:p.paye });
@@ -566,17 +636,26 @@ const getDynamicDeductions = (p) => {
   if (p.other_deductions > 0) list.push({ name:'Other Deductions', amount:p.other_deductions });
   return list;
 };
+
 const onEmployeeSelected = (id) => {
   const emp = employees.value.find(e => e.id == id);
   if (emp) generateForm.basic_salary = emp.base_salary;
 };
+
+// ── Actions ───────────────────────────────────────────
 const viewPayslip = (p) => { selectedPayslip.value = p; };
+
 const generatePayslip = async () => {
   submitting.value = true;
-  try { await axios.post('/api/admin/payslips', { ...generateForm, generate_pdf: true }); await fetchPayslips(); closeModals(); }
+  try {
+    await axios.post('/api/admin/payslips', { ...generateForm, generate_pdf: true, currency: currentCurrency.value });
+    await fetchPayslips();
+    closeModals();
+  }
   catch (err) { alert(err.response?.data?.message || 'Generation failed'); }
   finally { submitting.value = false; }
 };
+
 const bulkGeneratePayslips = async () => {
   submitting.value = true;
   try {
@@ -584,31 +663,115 @@ const bulkGeneratePayslips = async () => {
     if (!ids.length) { alert('No employees found.'); submitting.value = false; return; }
     for (const id of ids) {
       const emp = employees.value.find(e => e.id == id);
-      await axios.post('/api/admin/payslips', { employee_id:id, pay_period_start:bulkForm.pay_period_start, pay_period_end:bulkForm.pay_period_end, payment_date:bulkForm.payment_date, basic_salary:emp.base_salary, generate_pdf:true });
+      await axios.post('/api/admin/payslips', {
+        employee_id: id,
+        pay_period_start: bulkForm.pay_period_start,
+        pay_period_end: bulkForm.pay_period_end,
+        payment_date: bulkForm.payment_date,
+        basic_salary: emp.base_salary,
+        generate_pdf: true,
+        currency: currentCurrency.value
+      });
     }
-    await fetchPayslips(); closeModals();
+    await fetchPayslips();
+    closeModals();
   } catch { alert('Some payslips may have failed.'); }
   finally { submitting.value = false; }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: downloadPayslip
+//
+// ROOT CAUSE OF THE OLD BUG:
+//   The old version had two failure points that both silently fell back to the
+//   client-side jsPDF skeleton:
+//   1. `if (!p.pdf_available && !p.pdf_path) { generateClientPdf(p); return; }`
+//      → skipped the server entirely if the DB flag wasn't set
+//   2. `catch { generateClientPdf(p); }`
+//      → swallowed any server error and produced the skeleton PDF
+//
+// THE FIX:
+//   - Always call the server endpoint — PayslipController::download() always
+//     regenerates the PDF before serving, so the DB flag is irrelevant here.
+//   - Check the response Content-Type to detect JSON error responses that axios
+//     receives as 200 blobs (some proxy setups).
+//   - Never fall back to generateClientPdf() automatically — fail loudly instead
+//     so the real server error is surfaced to the user.
+// ─────────────────────────────────────────────────────────────────────────────
 const downloadPayslip = async (p) => {
+  // Prevent double-clicks
+  if (downloadingId.value === p.id) return;
+  downloadingId.value = p.id;
+
   try {
-    if (!p.pdf_available && !p.pdf_path) { generateClientPdf(p); return; }
-    const r = await axios.get(`/api/admin/payslips/${p.id}/download`, { responseType:'blob' });
-    const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([r.data]));
-    link.download = `payslip_${p.employee_id}.pdf`; link.click();
-  } catch { generateClientPdf(p); }
+    // ALWAYS call the server — it regenerates the PDF fresh every time.
+    // Do NOT check p.pdf_available first; the server handles missing PDFs.
+    const response = await axios.get(`/api/admin/payslips/${p.id}/download`, {
+      responseType: 'blob',
+    });
+
+    // Guard: some proxy/server configs return JSON errors with a 200 status
+    // and blob response type — we need to detect and surface that.
+    const contentType = response.headers['content-type'] || '';
+    if (!contentType.includes('application/pdf')) {
+      // Try to read the error message from the blob
+      const errorText = await response.data.text();
+      let errorMsg = 'PDF generation failed on the server.';
+      try {
+        const parsed = JSON.parse(errorText);
+        errorMsg = parsed.message || errorMsg;
+      } catch {
+        // Not JSON — use raw text if it's short
+        if (errorText.length < 200) errorMsg = errorText;
+      }
+      alert(`Download failed: ${errorMsg}`);
+      return;
+    }
+
+    // Build a clean filename
+    const empName = getEmployeeName(p).replace(/\s+/g, '_');
+    const period  = p.pay_period_start
+      ? new Date(p.pay_period_start).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit' }).replace(/\//g, '-')
+      : 'payslip';
+    const filename = `Payslip_${empName}_${period}.pdf`;
+
+    // Trigger browser download
+    const blobUrl = URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link    = document.createElement('a');
+    link.href     = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+
+  } catch (err) {
+    // Surface the real error — never silently fall back to skeleton PDF
+    console.error('[PayslipView] Download failed for payslip', p.id, err);
+
+    const status  = err.response?.status;
+    const message = err.response?.data?.message; // may be undefined for blob responses
+
+    if (status === 401) {
+      alert('Session expired. Please refresh the page and log in again.');
+    } else if (status === 403) {
+      alert('You do not have permission to download this payslip.');
+    } else if (status === 404) {
+      alert('Payslip PDF could not be found. Please try regenerating it.');
+    } else if (status === 500) {
+      alert(`Server error while generating PDF. Please contact support.\n\n${message || ''}`);
+    } else if (message) {
+      alert(`Download failed: ${message}`);
+    } else {
+      alert('Download failed. Please check the browser console for details and try again.');
+    }
+    // ← NO generateClientPdf() fallback here intentionally.
+    //   The skeleton jsPDF output has caused confusion; we surface the real error instead.
+  } finally {
+    downloadingId.value = null;
+  }
 };
-const generateClientPdf = (p) => {
-  const doc = new jsPDF();
-  doc.setFontSize(18); doc.text('PAYSLIP', 105, 20, { align:'center' });
-  doc.setFontSize(12); doc.text(p.business_name || 'Castle Holdings Ltd', 20, 40);
-  doc.setFontSize(10); doc.text(`Period: ${formatDate(p.pay_period_start)} to ${formatDate(p.pay_period_end)}`, 20, 50);
-  doc.text(`Employee: ${getEmployeeName(p)}`, 20, 60);
-  let y = 80; doc.text('Basic: K' + formatNumber(p.basic_salary), 120, y, { align:'right' });
-  getDynamicDeductions(p).forEach(d => { y+=7; doc.text(d.name,30,y); doc.text('K'+formatNumber(d.amount),120,y,{align:'right'}); });
-  y+=15; doc.setFontSize(14); doc.text(`Net Pay: K${formatNumber(p.net_pay)}`,120,y,{align:'right'});
-  doc.save(`payslip_${p.id}.pdf`);
-};
+
 const sendPayslip = async (p) => {
   if (!confirm('Send email notification?')) return;
   try { await axios.post(`/api/admin/payslips/${p.id}/send`); }
@@ -623,12 +786,12 @@ const formatDate     = (d, type='full') => {
   return type==='month' ? dt.toLocaleDateString('en-US',{month:'long',year:'numeric'}) : dt.toLocaleDateString('en-GB');
 };
 const formatStatus   = (s) => s ? s.charAt(0).toUpperCase()+s.slice(1) : 'Unknown';
-const convertToWords = (n) => `${formatNumber(n)} Kwacha`;
+const convertToWords = (n) => `${formatNumber(n)} ${currentCurrency.value}`;
 const statusClass    = (s) => ({paid:'status-success',generated:'status-info',draft:'status-warning'}[s]||'status-neutral');
 const getInitials    = (name) => { const p=(name||'').split(' ').filter(Boolean); return ((p[0]?.[0]||'')+(p.length>1?p[p.length-1][0]:'')).toUpperCase(); };
-const AVATAR_COLORS  = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#06b6d4','#f97316','#6366f1'];
 const getAvatarColor = () => '#3b82f6';
 
+// ── Watchers ──────────────────────────────────────────
 watch(()=>filters.pay_period,  handlePeriodChange);
 watch(()=>filters.department,  fetchPayslips);
 watch(()=>filters.status,      fetchPayslips);
@@ -677,28 +840,12 @@ watch(()=>filters.end_date,    ()=>{ if(filters.pay_period==='date_range'&&filte
   font-weight: 700;
   color: #334155;
 }
-.sticky-title svg {
-  color: #64748b;
-  flex-shrink: 0;
-}
-.sticky-actions {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-}
+.sticky-title svg { color: #64748b; flex-shrink: 0; }
+.sticky-actions { display: flex; align-items: center; gap: .5rem; }
 
-/* Sticky bar transition */
-.sticky-fade-enter-active {
-  transition: opacity .2s ease, transform .2s ease;
-}
-.sticky-fade-leave-active {
-  transition: opacity .15s ease, transform .15s ease;
-}
-.sticky-fade-enter-from,
-.sticky-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-100%);
-}
+.sticky-fade-enter-active { transition: opacity .2s ease, transform .2s ease; }
+.sticky-fade-leave-active { transition: opacity .15s ease, transform .15s ease; }
+.sticky-fade-enter-from,.sticky-fade-leave-to { opacity: 0; transform: translateY(-100%); }
 
 /* ── Header ──────────────────────────────────────── */
 .dashboard-header-card{
@@ -706,33 +853,16 @@ watch(()=>filters.end_date,    ()=>{ if(filters.pay_period==='date_range'&&filte
   padding:1.5rem 1.75rem;margin-bottom:1.25rem;
   box-shadow:0 2px 4px -1px rgba(0,0,0,.05);border:1px solid #e2e8f0;
 }
-.header-accent{
-  position:absolute;top:0;left:0;right:0;height:3px;
-  background:#e2e8f0;
-}
+.header-accent{position:absolute;top:0;left:0;right:0;height:3px;background:#e2e8f0;}
 .header-inner{display:flex;justify-content:space-between;align-items:center;gap:1.5rem;flex-wrap:wrap;}
 .header-left{display:flex;align-items:center;gap:1rem;}
-.header-avatar{
-  width:52px;height:52px;border-radius:14px;flex-shrink:0;
-  background:#f1f5f9;
-  border:1px solid #e2e8f0;
-  display:flex;align-items:center;justify-content:center;
-  color:#64748b;
-}
+.header-avatar{width:52px;height:52px;border-radius:14px;flex-shrink:0;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#64748b;}
 .header-text h1{margin:0;font-size:1.375rem;font-weight:700;color:#1e293b;line-height:1.2;}
 .header-text p{margin:0;color:#64748b;font-size:.875rem;}
 .header-badges{display:flex;align-items:center;gap:.4rem;margin-top:.2rem;flex-wrap:wrap;}
-.badge-role{
-  background:#f1f5f9;border:1px solid #e2e8f0;
-  padding:.1rem .55rem;border-radius:6px;
-  font-size:.68rem;font-weight:700;color:#475569;
-}
-.badge-filter{
-  background:#f1f5f9;border:1px solid #e2e8f0;
-  padding:.1rem .55rem;border-radius:6px;
-  font-size:.68rem;font-weight:700;color:#475569;
-  max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
+.badge-role{background:#f1f5f9;border:1px solid #e2e8f0;padding:.1rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;color:#475569;}
+.currency-badge{background:#fef3c7;border:1px solid #fde68a;padding:.1rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;color:#92400e;display:inline-flex;align-items:center;gap:.25rem;}
+.badge-filter{background:#f1f5f9;border:1px solid #e2e8f0;padding:.1rem .55rem;border-radius:6px;font-size:.68rem;font-weight:700;color:#475569;max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .header-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
 
 /* Layout toggle */
@@ -742,18 +872,17 @@ watch(()=>filters.end_date,    ()=>{ if(filters.pay_period==='date_range'&&filte
 .layout-btn.active{background:white;color:#334155;box-shadow:0 1px 3px rgba(0,0,0,.1);}
 
 /* Buttons */
-.btn-primary{
-  display:inline-flex;align-items:center;gap:.4rem;
-  background:#334155;
-  color:white;border:none;padding:.5rem 1.2rem;border-radius:8px;
-  font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;
-}
+.btn-primary{display:inline-flex;align-items:center;gap:.4rem;background:#334155;color:white;border:none;padding:.5rem 1.2rem;border-radius:8px;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;}
 .btn-primary:hover:not(:disabled){background:#1e293b;transform:translateY(-1px);}
 .btn-primary:disabled{opacity:.55;cursor:not-allowed;transform:none;}
 .btn-outline{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .9rem;background:white;border:1px solid #e2e8f0;color:#475569;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;}
 .btn-outline:hover{background:#f8fafc;border-color:#cbd5e1;}
 .btn-secondary{padding:.5rem 1.2rem;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;border-radius:8px;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;}
 .btn-secondary:hover{background:#e2e8f0;}
+
+/* Loading spinner for buttons */
+.btn-spinner{display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;}
+.btn-spinner.sm{width:11px;height:11px;border-color:rgba(71,85,105,.3);border-top-color:#475569;}
 
 /* Section card */
 .section-card{background:white;border-radius:16px;padding:1.5rem;box-shadow:0 2px 4px -1px rgba(0,0,0,.05);border:1px solid #e2e8f0;}
@@ -774,13 +903,7 @@ input.filter-select{min-width:138px;appearance:auto;}
 .payslip-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:1.125rem;display:flex;flex-direction:column;gap:.875rem;transition:transform .18s,box-shadow .18s;}
 .payslip-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px -6px rgba(0,0,0,.1);border-color:#cbd5e1;}
 .card-head{display:flex;align-items:flex-start;gap:.75rem;}
-.card-avatar{
-  width:42px;height:42px;border-radius:10px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  color:white;font-weight:700;font-size:.82rem;
-  background:#3b82f6 !important;
-  box-shadow:none;
-}
+.card-avatar{width:42px;height:42px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:.82rem;background:#3b82f6 !important;}
 .card-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:.15rem;}
 .card-name{font-size:.9rem;font-weight:700;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .card-sub{display:flex;align-items:center;gap:.4rem;}
@@ -795,9 +918,9 @@ input.filter-select{min-width:138px;appearance:auto;}
 .small-val{font-size:.65rem;font-family:inherit;}
 .card-actions{display:flex;gap:.4rem;}
 .card-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:.3rem;padding:.4rem .5rem;border:1px solid #e2e8f0;background:white;color:#64748b;border-radius:7px;font-size:.7rem;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;}
-.card-btn:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
-.card-btn.download:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
-.card-btn.send:hover{background:#f0fdf4;color:#059669;border-color:#bbf7d0;}
+.card-btn:hover:not(:disabled){background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
+.card-btn:disabled{opacity:.6;cursor:not-allowed;}
+.card-btn.send:hover:not(:disabled){background:#f0fdf4;color:#059669;border-color:#bbf7d0;}
 
 /* Table */
 .table-wrap{border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;}
@@ -808,12 +931,7 @@ input.filter-select{min-width:138px;appearance:auto;}
 .list-row:last-child{border-bottom:none;}
 .list-row:hover{background:#f8fafc;}
 .emp-cell{display:flex;align-items:center;gap:.65rem;}
-.emp-av{
-  width:34px;height:34px;border-radius:8px;
-  display:flex;align-items:center;justify-content:center;
-  color:white;font-weight:700;font-size:.7rem;flex-shrink:0;
-  background:#3b82f6 !important;
-}
+.emp-av{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:.7rem;flex-shrink:0;background:#3b82f6 !important;}
 .emp-name{font-size:.83rem;font-weight:700;color:#1e293b;}
 .mono-id{font-family:'SFMono-Regular',Consolas,monospace;font-size:.7rem;color:#94a3b8;}
 .biz-chip-sm{font-size:.7rem;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;padding:.1rem .4rem;border-radius:4px;font-weight:600;}
@@ -828,9 +946,9 @@ input.filter-select{min-width:138px;appearance:auto;}
 .mono{font-family:'SFMono-Regular',Consolas,monospace;font-size:.78rem;}
 .row-actions{display:flex;justify-content:flex-end;gap:.3rem;}
 .icon-btn{width:30px;height:30px;border-radius:6px;border:1px solid #e2e8f0;background:white;color:#64748b;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;}
-.icon-btn:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
-.icon-btn.dl:hover{background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
-.icon-btn.send:hover{background:#f0fdf4;color:#059669;border-color:#bbf7d0;}
+.icon-btn:hover:not(:disabled){background:#f1f5f9;color:#334155;border-color:#cbd5e1;}
+.icon-btn:disabled{opacity:.6;cursor:not-allowed;}
+.icon-btn.send:hover:not(:disabled){background:#f0fdf4;color:#059669;border-color:#bbf7d0;}
 
 /* Status badges */
 .status-badge{display:inline-flex;align-items:center;gap:5px;padding:.22rem .6rem;border-radius:9999px;font-size:.68rem;font-weight:700;white-space:nowrap;}
@@ -851,29 +969,13 @@ input.filter-select{min-width:138px;appearance:auto;}
 .modal-box{background:white;width:100%;max-width:480px;max-height:92vh;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,.15);display:flex;flex-direction:column;overflow:hidden;border:1px solid #e2e8f0;animation:slideUp .22s ease-out;}
 .modal-box.large{max-width:760px;}
 @keyframes slideUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:none;}}
-.modal-header{
-  padding:1.375rem 1.625rem;
-  background:#f8fafc;
-  border-bottom:1px solid #e2e8f0;
-  display:flex;justify-content:space-between;align-items:center;flex-shrink:0;
-}
+.modal-header{padding:1.375rem 1.625rem;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
 .mh-left{display:flex;align-items:center;gap:.875rem;}
-.mh-avatar{
-  width:46px;height:46px;border-radius:11px;flex-shrink:0;
-  background:#f1f5f9;
-  border:1px solid #e2e8f0;
-  display:flex;align-items:center;justify-content:center;
-  color:#475569;font-weight:900;font-size:.82rem;letter-spacing:.04em;
-}
+.mh-avatar{width:46px;height:46px;border-radius:11px;flex-shrink:0;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#475569;font-weight:900;font-size:.82rem;letter-spacing:.04em;}
 .mh-avatar.icon-av{font-size:0;}
 .mh-name{margin:0;font-size:1.05rem;font-weight:700;color:#1e293b;}
 .mh-sub{margin:.15rem 0 0;font-size:.8rem;color:#64748b;}
-.mh-close{
-  width:34px;height:34px;border-radius:50%;
-  background:white;border:1px solid #e2e8f0;
-  color:#475569;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;transition:all .2s;
-}
+.mh-close{width:34px;height:34px;border-radius:50%;background:white;border:1px solid #e2e8f0;color:#475569;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;}
 .mh-close:hover{background:#fee2e2;color:#dc2626;border-color:#fca5a5;}
 .modal-body{padding:1.375rem 1.625rem;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:1.25rem;}
 .form-body{gap:0;}
@@ -906,12 +1008,7 @@ input.filter-select{min-width:138px;appearance:auto;}
 .line-total{display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #e2e8f0;padding-top:.55rem;margin-top:.35rem;font-size:.875rem;}
 
 /* Net Pay Card */
-.net-pay-card{
-  background:#1e293b;
-  color:white;padding:1.5rem 1.75rem;border-radius:12px;
-  display:flex;justify-content:space-between;align-items:center;
-  position:relative;overflow:hidden;
-}
+.net-pay-card{background:#1e293b;color:white;padding:1.5rem 1.75rem;border-radius:12px;display:flex;justify-content:space-between;align-items:center;position:relative;overflow:hidden;}
 .np-label{font-size:.62rem;opacity:.75;letter-spacing:.14em;font-weight:700;margin-bottom:.35rem;}
 .np-amount{font-size:2.25rem;font-weight:800;line-height:1.1;}
 .np-words{font-size:.78rem;opacity:.65;margin-top:.25rem;font-style:italic;}
@@ -922,12 +1019,7 @@ input.filter-select{min-width:138px;appearance:auto;}
 .form-group label{font-size:.68rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:.875rem;}
 .hint{font-size:.72rem;color:#94a3b8;margin-top:.15rem;}
-.info-notice{
-  display:flex;align-items:center;gap:.5rem;
-  padding:.7rem .875rem;
-  background:#f8fafc;border:1px solid #e2e8f0;
-  border-radius:8px;font-size:.8rem;color:#475569;margin-bottom:.5rem;
-}
+.info-notice{display:flex;align-items:center;gap:.5rem;padding:.7rem .875rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:.8rem;color:#475569;margin-bottom:.5rem;}
 .info-notice svg{stroke:#475569 !important;}
 .info-notice strong{color:#334155;font-weight:700;}
 

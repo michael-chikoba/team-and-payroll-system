@@ -221,18 +221,59 @@
                     <label>Currency <span class="required">*</span></label>
                     <select v-model="settings.currency" class="form-control" @change="onSettingChange">
                       <option disabled value="">Select Currency</option>
-                      <optgroup label="Major International">
-                        <option value="USD">USD — US Dollar</option>
-                        <option value="EUR">EUR — Euro</option>
-                        <option value="GBP">GBP — British Pound</option>
-                      </optgroup>
-                      <optgroup label="African Currencies">
-                        <option value="ZMW">ZMW — Zambian Kwacha</option>
-                        <option value="ZAR">ZAR — South African Rand</option>
+                      <optgroup label="West African Currencies">
                         <option value="NGN">NGN — Nigerian Naira</option>
+                        <option value="GHS">GHS — Ghanaian Cedi</option>
+                        <option value="XOF">XOF — West African CFA Franc (Benin, Burkina Faso, Côte d'Ivoire, Guinea-Bissau, Mali, Niger, Senegal, Togo)</option>
+                        <option value="GMD">GMD — Gambian Dalasi</option>
+                        <option value="LRD">LRD — Liberian Dollar</option>
+                        <option value="SLL">SLL — Sierra Leonean Leone</option>
+                        <option value="MRU">MRU — Mauritanian Ouguiya</option>
+                        <option value="CVE">CVE — Cape Verdean Escudo</option>
+                      </optgroup>
+                      <optgroup label="East African Currencies">
                         <option value="KES">KES — Kenyan Shilling</option>
+                        <option value="UGX">UGX — Ugandan Shilling</option>
+                        <option value="TZS">TZS — Tanzanian Shilling</option>
+                        <option value="RWF">RWF — Rwandan Franc</option>
+                        <option value="BIF">BIF — Burundian Franc</option>
+                        <option value="ETB">ETB — Ethiopian Birr</option>
+                        <option value="SOS">SOS — Somali Shilling</option>
+                        <option value="DJF">DJF — Djiboutian Franc</option>
+                        <option value="ERN">ERN — Eritrean Nakfa</option>
+                        <option value="SCR">SCR — Seychellois Rupee</option>
+                        <option value="COM">COM — Comorian Franc</option>
+                        <option value="MGA">MGA — Malagasy Ariary</option>
+                        <option value="MUR">MUR — Mauritian Rupee</option>
+                      </optgroup>
+                      <optgroup label="Southern African Currencies">
+                        <option value="ZAR">ZAR — South African Rand</option>
+                        <option value="ZMW">ZMW — Zambian Kwacha</option>
+                        <option value="BWP">BWP — Botswana Pula</option>
+                        <option value="NAD">NAD — Namibian Dollar</option>
+                        <option value="SZL">SZL — Swazi Lilangeni</option>
+                        <option value="LSL">LSL — Lesotho Loti</option>
+                        <option value="MWK">MWK — Malawian Kwacha</option>
+                        <option value="MZN">MZN — Mozambican Metical</option>
+                        <option value="AOA">AOA — Angolan Kwanza</option>
+                        <option value="ZWL">ZWL — Zimbabwean Gold</option>
+                      </optgroup>
+                      <optgroup label="Central African Currencies">
+                        <option value="XAF">XAF — Central African CFA Franc (Cameroon, Central African Republic, Chad, Republic of Congo, Equatorial Guinea, Gabon)</option>
+                        <option value="CDF">CDF — Congolese Franc</option>
+                        <option value="STN">STN — São Tomé and Príncipe Dobra</option>
+                      </optgroup>
+                      <optgroup label="North African Currencies">
+                        <option value="EGP">EGP — Egyptian Pound</option>
+                        <option value="MAD">MAD — Moroccan Dirham</option>
+                        <option value="DZD">DZD — Algerian Dinar</option>
+                        <option value="TND">TND — Tunisian Dinar</option>
+                        <option value="LYD">LYD — Libyan Dinar</option>
+                        <option value="SDG">SDG — Sudanese Pound</option>
+                        <option value="MRU">MRU — Mauritanian Ouguiya</option>
                       </optgroup>
                     </select>
+                    <small class="field-hint">All African currencies are supported for transactions and reporting</small>
                   </div>
                   <div class="form-group">
                     <label>Date Format</label>

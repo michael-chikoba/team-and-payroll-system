@@ -17,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class PayslipController extends Controller
@@ -30,8 +31,12 @@ class PayslipController extends Controller
         $this->encryption = $encryption;
     }
 
+    // =========================================================================
+    // LIST ENDPOINTS
+    // =========================================================================
+
     /**
-     * List payslips for employees - encrypted fields auto-handled by trait
+     * Employee's own payslips.
      */
     public function index(Request $request): JsonResponse
     {
@@ -55,35 +60,36 @@ class PayslipController extends Controller
         if ($request->has('month')) {
             $query->whereMonth('pay_period_start', $request->month);
         }
+
+        $payslips = $query->get();
+
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $payslips = $payslips->filter(
+                fn($p) => $p->status === $request->status
+            )->values();
         }
 
-        $payslips  = $query->get();
-        $formatted = $payslips->map(fn($p) => $this->formatPayslipForList($p));
-
-        return response()->json(['data' => $formatted]);
+        return response()->json([
+            'data' => $payslips->map(fn($p) => $this->formatPayslipForList($p)),
+        ]);
     }
 
     /**
-     * List all payslips for admin with filters - encrypted fields auto-handled by trait
+     * Admin payslip listing with filters.
      */
     public function adminIndex(Request $request): JsonResponse
     {
         $query = Payslip::with(['employee.user', 'employee.business']);
 
-        // Filter by Business
         if ($request->has('business_id')) {
             $query->byBusiness($request->business_id);
         } elseif ($request->user()->current_business_id) {
             $query->byBusiness($request->user()->current_business_id);
         }
 
-        // Filter by Pay Period
         if ($request->has('pay_period')) {
             $period = $request->pay_period;
             $now    = now();
-
             if ($period === 'current') {
                 $query->whereMonth('pay_period_start', $now->month)
                     ->whereYear('pay_period_start', $now->year);
@@ -94,12 +100,10 @@ class PayslipController extends Controller
             }
         }
 
-        // Custom Date Range Filter
         if ($request->has('start') && $request->has('end')) {
             try {
                 $startDate = Carbon::parse($request->start)->startOfDay();
                 $endDate   = Carbon::parse($request->end)->endOfDay();
-
                 $query->where(function ($q) use ($startDate, $endDate) {
                     $q->whereBetween('pay_period_start', [$startDate, $endDate])
                         ->orWhereBetween('pay_period_end', [$startDate, $endDate])
@@ -120,19 +124,24 @@ class PayslipController extends Controller
         if ($request->has('department')) {
             $query->byDepartment($request->department);
         }
+
+        $payslips = $query->orderBy('created_at', 'desc')->get();
+
         if ($request->has('status')) {
-            $query->byStatus($request->status);
+            $payslips = $payslips->filter(
+                fn($p) => $p->status === $request->status
+            )->values();
         }
 
-        $payslips  = $query->orderBy('created_at', 'desc')->get();
-        $formatted = $payslips->map(fn($p) => $this->formatPayslipForList($p));
-
-        return response()->json(['data' => $formatted]);
+        return response()->json([
+            'data' => $payslips->map(fn($p) => $this->formatPayslipForList($p)),
+        ]);
     }
 
-    /**
-     * Create a new payslip - encrypted fields auto-handled by HasEncryptedFields trait
-     */
+    // =========================================================================
+    // CREATE
+    // =========================================================================
+
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -154,9 +163,7 @@ class PayslipController extends Controller
             ], 422);
         }
 
-        // Load Employee with relationships needed for tax calculations
         $employee = Employee::with(['country', 'business'])->find($request->employee_id);
-
         if (!$employee) {
             return response()->json(['message' => 'Employee not found'], 404);
         }
@@ -171,79 +178,58 @@ class PayslipController extends Controller
             'country_code'  => $countryCode,
         ]);
 
-        // Resolve Tax Configuration (business-specific → country-specific → global)
         $taxConfig = TaxConfiguration::getForBusinessAndCountry($businessId, $countryCode);
-
         if (!$taxConfig) {
             return $this->buildTaxConfigErrorResponse($employee, $businessId, $countryCode);
         }
 
         $this->logTaxConfigUsage($employee, $taxConfig, 'manual_payslip_creation');
 
-        // Run payroll calculation via TaxConfiguration service methods
         $overtimeHours = (float) ($request->overtime_hours ?? 0);
-        $overtimeRate  = (float) ($request->overtime_rate ?? 0);
+        $overtimeRate  = (float) ($request->overtime_rate  ?? 0);
         $overtimePay   = $overtimeHours * $overtimeRate;
-        $bonuses       = (float) ($request->bonuses ?? 0);
+        $bonuses       = (float) ($request->bonuses        ?? 0);
 
         $calculation = $taxConfig->calculatePayroll($employee, $overtimePay, $bonuses);
 
-        // Map statutory deductions to legacy columns (backward compat)
         $legacyDeductions = $this->mapStatutoryToLegacyColumns(
             $calculation['deductions']['statutory']
         );
 
-        // ──────────────────────────────────────────────────────────────────────
-        // Payslip::create() will pass all financial fields through the
-        // HasEncryptedFields trait automatically — no manual encryption needed.
-        // The trait intercepts setAttribute() for every field listed in
-        // getEncryptedFields() and encrypts before persisting.
-        // ──────────────────────────────────────────────────────────────────────
         $payslip = Payslip::create([
             'employee_id' => $employee->id,
             'payroll_id'  => null,
-
-            // Dates
             'pay_period_start' => Carbon::parse($request->pay_period_start)->startOfDay(),
             'pay_period_end'   => Carbon::parse($request->pay_period_end)->startOfDay(),
             'payment_date'     => Carbon::parse($request->payment_date)->startOfDay(),
-
-            // Encrypted financial fields (trait handles encryption transparently)
-            'basic_salary'     => $calculation['basic_salary'],
-            'gross_salary'     => $calculation['gross_salary'],
-            'net_pay'          => $calculation['net_salary'],
-            'total_deductions' => $calculation['deductions']['total_deductions'],
-            'tax_deductions'   => $calculation['deductions']['paye_tax'],
-            'house_allowance'  => $calculation['allowances']['housing'],
+            'basic_salary'        => $calculation['basic_salary'],
+            'gross_salary'        => $calculation['gross_salary'],
+            'gross_pay'           => $calculation['gross_salary'],
+            'net_pay'             => $calculation['net_salary'],
+            'total_deductions'    => $calculation['deductions']['total_deductions'],
+            'tax_deductions'      => $calculation['deductions']['paye_tax'],
+            'house_allowance'     => $calculation['allowances']['housing'],
             'transport_allowance' => $calculation['allowances']['transport'],
-            'other_allowances' => $calculation['allowances']['lunch'],
-            'overtime_rate'    => $overtimeRate,
-            'overtime_pay'     => $calculation['overtime_pay'],
-            'gross_pay'        => $calculation['gross_salary'],
-
-            // These are also in getEncryptedFields()
-            'napsa'            => $legacyDeductions['napsa'],
-            'nhima'            => $legacyDeductions['nhima'],
-            'pension'          => $legacyDeductions['pension'],
-            'paye'             => $calculation['deductions']['paye_tax'],
-            'other_deductions' => 0.0,
-
-            // Plain (unencrypted) fields
-            'overtime_hours'   => $overtimeHours,
-            'bonuses'          => $bonuses,
-            'status'           => 'generated',
-
-            // Breakdown JSON — stores decrypted values for audit / PDF rendering.
-            // These are never queried for payroll maths; they exist for display only.
+            'other_allowances'    => $calculation['allowances']['lunch'],
+            'overtime_rate'       => $overtimeRate,
+            'overtime_pay'        => $calculation['overtime_pay'],
+            'napsa'               => $legacyDeductions['napsa'],
+            'nhima'               => $legacyDeductions['nhima'],
+            'pension'             => $legacyDeductions['pension'],
+            'paye'                => $calculation['deductions']['paye_tax'],
+            'other_deductions'    => 0.0,
+            'status'              => 'generated',
+            'overtime_hours'      => $overtimeHours,
+            'bonuses'             => $bonuses,
             'breakdown' => [
-                'calculation_method'    => 'Dynamic Tax Configuration',
-                'tax_config_id'         => $taxConfig->id,
-                'tax_config_type'       => $this->getTaxConfigType($taxConfig),
-                'tax_config_country'    => $taxConfig->country_code ?? 'global',
-                'tax_config_business_id'=> $taxConfig->business_id ?? 'all',
-                'employee_country_code' => $countryCode,
-                'currency'              => $taxConfig->getCurrency(),
-                'earnings_breakdown'    => [
+                'calculation_method'     => 'Dynamic Tax Configuration',
+                'tax_config_id'          => $taxConfig->id,
+                'tax_config_type'        => $this->getTaxConfigType($taxConfig),
+                'tax_config_country'     => $taxConfig->country_code    ?? 'global',
+                'tax_config_business_id' => $taxConfig->business_id     ?? 'all',
+                'employee_country_code'  => $countryCode,
+                'currency'               => $taxConfig->getCurrency(),
+                'earnings_breakdown' => [
                     'basic_salary' => $calculation['basic_salary'],
                     'allowances'   => $calculation['allowances'],
                     'overtime'     => [
@@ -251,18 +237,18 @@ class PayslipController extends Controller
                         'hours' => $overtimeHours,
                         'rate'  => $overtimeRate,
                     ],
-                    'bonuses'    => $calculation['bonuses'],
-                    'gross_total'=> $calculation['gross_salary'],
+                    'bonuses'     => $calculation['bonuses'],
+                    'gross_total' => $calculation['gross_salary'],
                 ],
                 'deductions_breakdown' => [
-                    'paye'               => $calculation['deductions']['paye_tax'],
-                    'statutory_breakdown'=> $calculation['deductions']['statutory'],
-                    'statutory_total'    => $calculation['deductions']['total_statutory'],
-                    'other_deductions'   => 0.0,
-                    'total_deductions'   => $calculation['deductions']['total_deductions'],
+                    'paye'                => $calculation['deductions']['paye_tax'],
+                    'statutory_breakdown' => $calculation['deductions']['statutory'],
+                    'statutory_total'     => $calculation['deductions']['total_statutory'],
+                    'other_deductions'    => 0.0,
+                    'total_deductions'    => $calculation['deductions']['total_deductions'],
                 ],
-                'employer_costs'   => $calculation['employer_costs'],
-                'net_calculation'  => [
+                'employer_costs'  => $calculation['employer_costs'],
+                'net_calculation' => [
                     'gross'      => $calculation['gross_salary'],
                     'deductions' => $calculation['deductions']['total_deductions'],
                     'net'        => $calculation['net_salary'],
@@ -273,21 +259,20 @@ class PayslipController extends Controller
         $payslip->load('employee.user');
 
         Log::info('Payslip created successfully', [
-            'payslip_id'  => $payslip->id,
-            'employee_id' => $employee->id,
-            'gross_salary'=> $calculation['gross_salary'],
-            'net_pay'     => $calculation['net_salary'],
+            'payslip_id'   => $payslip->id,
+            'employee_id'  => $employee->id,
+            'gross_salary' => $calculation['gross_salary'],
+            'net_pay'      => $calculation['net_salary'],
         ]);
 
         try {
             event(new PayslipGenerated($payslip));
         } catch (\Exception $e) {
-            Log::warning('Failed to dispatch PayslipGenerated event:', [
+            Log::warning('Failed to dispatch PayslipGenerated event', [
                 'error' => $e->getMessage(),
             ]);
         }
 
-        // Generate PDF if requested (default true)
         if ($request->boolean('generate_pdf', true)) {
             try {
                 $this->payslipGenerator->generatePdf($payslip);
@@ -303,84 +288,35 @@ class PayslipController extends Controller
         ], 201);
     }
 
-    /**
-     * Show single payslip details - trait auto-decrypts financial fields
-     */
+    // =========================================================================
+    // SHOW
+    // =========================================================================
+
     public function show(Payslip $payslip): JsonResponse
     {
         $user = request()->user();
-
         if (!$user->isAdmin() && $payslip->employee->user_id !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $payslip->load(['employee.user', 'employee.business']);
 
-        // toDetailedArray() accesses encrypted fields as properties;
-        // the trait decrypts them transparently via getAttribute().
         return response()->json(['data' => $payslip->toDetailedArray()]);
     }
 
-    /**
-     * Format payslip for list response.
-     *
-     * FIX: was calling $payslip->usesDynamicTaxConfig() — this method does not
-     * exist. The model defines a getUsesDynamicTaxConfigAttribute() accessor,
-     * which Laravel exposes as the snake_case property uses_dynamic_tax_config.
-     * All other financial field accesses also go through the trait's accessor,
-     * so casting to float is sufficient — no manual decryption required here.
-     */
-    private function formatPayslipForList(Payslip $payslip): array
-    {
-        $period = 'N/A';
-        if ($payslip->pay_period_start) {
-            $period = $payslip->pay_period_start->format('M Y');
-        } elseif ($payslip->created_at) {
-            $period = $payslip->created_at->format('M Y');
-        }
+    // =========================================================================
+    // PDF ACTIONS
+    // =========================================================================
 
-        return [
-            'id'              => $payslip->id,
-            'employee_id'     => $payslip->employee->employee_id ?? 'N/A',
-            'employee_name'   => $payslip->employee->full_name ?? 'N/A',
-            'department'      => $payslip->employee->department ?? 'N/A',
-            'business_name'   => $payslip->employee->business->name ?? 'N/A',
-            'period'          => $period,
-            'pay_period_start'=> $payslip->pay_period_start?->format('Y-m-d'),
-            'pay_period_end'  => $payslip->pay_period_end?->format('Y-m-d'),
-            'payment_date'    => $payslip->payment_date?->format('Y-m-d'),
-
-            // Trait decrypts these transparently when accessed as properties
-            'basic_salary'    => (float) $payslip->basic_salary,
-            'gross_salary'    => (float) $payslip->gross_salary,
-            'net_pay'         => (float) $payslip->net_pay,
-            'total_deductions'=> (float) $payslip->total_deductions,
-
-            'currency'        => $payslip->currency,
-            'status'          => $payslip->status ?? 'generated',
-            'is_sent'         => $payslip->is_sent ?? false,
-            'pdf_available'   => !empty($payslip->pdf_path),
-            'pdf_path'        => $payslip->pdf_path,
-
-            // FIX: was usesDynamicTaxConfig() — must be property access, not method call.
-            // getUsesDynamicTaxConfigAttribute() → accessed as uses_dynamic_tax_config
-            'uses_dynamic_config' => $payslip->uses_dynamic_tax_config,
-        ];
-    }
-
-    /**
-     * Generate PDF for a single payslip
-     */
     public function generatePdf(Payslip $payslip): JsonResponse
     {
         try {
             $payslip->load(['employee.user', 'employee.business']);
-            $path = $this->payslipGenerator->generatePdf($payslip);
+            $this->payslipGenerator->generatePdf($payslip);
 
             return response()->json([
-                'message'      => 'PDF generated successfully',
-                'pdf_available'=> true,
-                'path'         => $path,
+                'message'       => 'PDF generated successfully',
+                'pdf_available' => true,
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -390,8 +326,99 @@ class PayslipController extends Controller
     }
 
     /**
-     * Bulk generate payslips via Payroll Run
+     * Download the PDF for a payslip.
+     *
+     * ALWAYS force-regenerates the PDF before serving it so that:
+     *   1. Stale/broken cached PDFs are never served.
+     *   2. Admin, manager, and employee all get identical full-fidelity output
+     *      from the same PayslipGeneratorService::generatePdf() call.
+     *
+     * FIX NOTE (frontend issue that caused admin broken PDFs):
+     *   The old Vue component's downloadPayslip() had a silent catch block that
+     *   fell back to a client-side jsPDF skeleton on ANY server error. That
+     *   skeleton is what produced the "Basic + Net Pay only" PDF seen by admins.
+     *   This backend method was always correct — the problem was purely frontend.
+     *   The frontend fix (PayslipView.vue) removes the jsPDF fallback entirely and
+     *   surfaces the real error instead. This backend fix adds an explicit
+     *   Content-Type header so the frontend can reliably detect PDF vs JSON error.
+     *
+     * Template path: resources/views/pdf/payslip-template.blade.php
+     * Called via:    PDF::loadView('pdf.payslip-template', ...) in PayslipGeneratorService
      */
+    public function download(Payslip $payslip)
+    {
+        $user = request()->user();
+
+        if (!$user->isAdmin() && $payslip->employee->user_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $payslip->load(['employee.user', 'employee.business']);
+
+        // ── ALWAYS regenerate to guarantee full content ────────────────────
+        // Fixes stale/broken PDFs cached from a previous failed generation.
+        try {
+            $this->payslipGenerator->generatePdf($payslip);
+
+            Log::info('PDF regenerated on download', [
+                'payslip_id' => $payslip->id,
+                'user_id'    => $user->id,
+                'is_admin'   => $user->isAdmin(),
+                'user_role'  => $user->role ?? 'unknown',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('PDF regeneration failed during download', [
+                'payslip_id' => $payslip->id,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'PDF could not be generated: ' . $e->getMessage(),
+            ], 500);
+        }
+
+        // ── Read fresh path from DB after generation ───────────────────────
+        // Never trust the in-memory model after generatePdf() — it uses a
+        // raw DB::table() update that bypasses Eloquent's dirty tracking.
+        $pdfPath = DB::table('payslips')
+            ->where('id', $payslip->id)
+            ->value('pdf_path');
+
+        Log::info('Payslip download', [
+            'payslip_id' => $payslip->id,
+            'pdf_path'   => $pdfPath,
+            'exists'     => $pdfPath ? Storage::exists($pdfPath) : false,
+        ]);
+
+        if (empty($pdfPath) || !Storage::exists($pdfPath)) {
+            return response()->json(['message' => 'PDF not found after generation.'], 404);
+        }
+
+        $employee = $payslip->employee;
+        $name     = str_replace(
+            ' ', '_',
+            ($employee->user->first_name ?? 'unknown') . '_' . ($employee->user->last_name ?? '')
+        );
+        $period   = $payslip->pay_period_start
+            ? $payslip->pay_period_start->format('Y-m')
+            : 'payslip';
+        $filename = "Payslip_{$name}_{$period}.pdf";
+
+        // ── FIX: Explicit Content-Type header ─────────────────────────────
+        // The Vue frontend checks response.headers['content-type'] to detect
+        // whether it received a real PDF or a JSON error response. Without
+        // this explicit header, some Laravel/proxy configurations may omit it,
+        // causing the frontend to treat a PDF blob as an error.
+        return Storage::download($pdfPath, $filename, [
+            'Content-Type'        => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
+    }
+
+    // =========================================================================
+    // BULK ACTIONS
+    // =========================================================================
+
     public function generate(GeneratePayslipRequest $request): JsonResponse
     {
         $validated = $request->validated();
@@ -408,9 +435,6 @@ class PayslipController extends Controller
         return response()->json(['message' => 'Payslip generation started']);
     }
 
-    /**
-     * Bulk download as ZIP
-     */
     public function bulkDownload(Request $request): JsonResponse
     {
         $request->validate(['payroll_id' => 'required|exists:payrolls,id']);
@@ -424,9 +448,6 @@ class PayslipController extends Controller
         }
     }
 
-    /**
-     * Send email notification for a payslip
-     */
     public function sendNotifications(Payslip $payslip): JsonResponse
     {
         if (!$payslip->pdf_path) {
@@ -441,49 +462,57 @@ class PayslipController extends Controller
         return response()->json(['message' => 'Payslip notification sent']);
     }
 
-    /**
-     * Download PDF file
-     */
-    public function download(Payslip $payslip)
+    // =========================================================================
+    // PRIVATE FORMATTERS
+    // =========================================================================
+
+    private function formatPayslipForList(Payslip $payslip): array
     {
-        $user = request()->user();
-
-        if (!$user->isAdmin() && $payslip->employee->user_id !== $user->id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        $period = 'N/A';
+        if ($payslip->pay_period_start) {
+            $period = $payslip->pay_period_start->format('M Y');
+        } elseif ($payslip->created_at) {
+            $period = $payslip->created_at->format('M Y');
         }
 
-        if (empty($payslip->pdf_path) || !Storage::exists($payslip->pdf_path)) {
-            try {
-                $this->payslipGenerator->generatePdf($payslip);
-                $payslip->refresh();
-            } catch (\Exception $e) {
-                return response()->json([
-                    'message' => 'PDF not found and could not be generated.',
-                ], 404);
-            }
-        }
+        // Read raw path directly from DB attributes — bypasses encryption and
+        // Eloquent model hooks — so this is reliable for all roles.
+        $rawPdfPath = $payslip->attributes['pdf_path'] ?? null;
 
-        $employee = $payslip->employee;
-        $name     = str_replace(
-            ' ', '_',
-            ($employee->user->first_name ?? 'unknown') . '_' . ($employee->user->last_name ?? '')
-        );
-        $period   = $payslip->pay_period_start
-            ? $payslip->pay_period_start->format('Y-m')
-            : 'payslip';
-        $filename = "Payslip_{$name}_{$period}.pdf";
+        // FIX: Check that the file actually exists on disk, not just that the
+        // DB column is non-empty. A non-empty path pointing to a deleted/missing
+        // file would cause the Vue download to fail unexpectedly.
+        $pdfAvailable = !empty($rawPdfPath) && Storage::exists($rawPdfPath);
 
-        return Storage::download($payslip->pdf_path, $filename);
+        return [
+            'id'               => $payslip->id,
+            'employee_id'      => $payslip->employee->employee_id ?? 'N/A',
+            'employee_name'    => $payslip->employee->full_name   ?? 'N/A',
+            'department'       => $payslip->employee->department  ?? 'N/A',
+            'business_name'    => $payslip->employee->business->name ?? 'N/A',
+            'period'           => $period,
+            'pay_period_start' => $payslip->pay_period_start?->format('Y-m-d'),
+            'pay_period_end'   => $payslip->pay_period_end?->format('Y-m-d'),
+            'payment_date'     => $payslip->payment_date?->format('Y-m-d'),
+            'basic_salary'     => (float) ($payslip->basic_salary     ?? 0),
+            'gross_salary'     => (float) ($payslip->gross_salary     ?? 0),
+            'net_pay'          => (float) ($payslip->net_pay          ?? 0),
+            'total_deductions' => (float) ($payslip->total_deductions ?? 0),
+            'currency'         => $payslip->currency,
+            'status'           => $payslip->status ?? 'generated',
+            'is_sent'          => (bool) ($payslip->is_sent ?? false),
+            // NOTE: The Vue download function no longer relies on this flag to
+            // decide whether to call the server — it always calls the server.
+            // This flag is kept for UI purposes only (e.g., showing a "PDF ready" indicator).
+            'pdf_available'    => $pdfAvailable,
+            'uses_dynamic_config' => $payslip->uses_dynamic_tax_config,
+        ];
     }
 
     // =========================================================================
     // PRIVATE HELPERS
     // =========================================================================
 
-    /**
-     * Map statutory deductions array to legacy DB columns (NAPSA / NHIMA / Pension).
-     * These columns are encrypted by the trait; values passed here are plain floats.
-     */
     private function mapStatutoryToLegacyColumns(array $statutory): array
     {
         $col = collect($statutory);
@@ -492,22 +521,18 @@ class PayslipController extends Controller
             ->filter(fn($i) => stripos($i['name'], 'NAPSA') !== false)
             ->sum('amount');
 
-        $nhima = $col->where('type', 'health')->sum('amount');
-
+        $nhima   = $col->where('type', 'health')->sum('amount');
         $pension = $col->where('type', 'pension')
             ->filter(fn($i) => stripos($i['name'], 'NAPSA') === false)
             ->sum('amount');
 
         return [
-            'napsa'   => round($napsa, 2),
-            'nhima'   => round($nhima, 2),
+            'napsa'   => round($napsa,   2),
+            'nhima'   => round($nhima,   2),
             'pension' => round($pension, 2),
         ];
     }
 
-    /**
-     * Determine the human-readable type of a TaxConfiguration record.
-     */
     private function getTaxConfigType(TaxConfiguration $taxConfig): string
     {
         if ($taxConfig->business_id && $taxConfig->country_code) {
@@ -519,9 +544,6 @@ class PayslipController extends Controller
         return 'global';
     }
 
-    /**
-     * Log which tax configuration was selected and why.
-     */
     private function logTaxConfigUsage(
         Employee $employee,
         TaxConfiguration $taxConfig,
@@ -539,14 +561,11 @@ class PayslipController extends Controller
             'tax_config_id'          => $taxConfig->id,
             'tax_config_type'        => $this->getTaxConfigType($taxConfig),
             'tax_config_country'     => $taxConfig->country_code ?? 'global',
-            'tax_config_business_id' => $taxConfig->business_id ?? 'all',
+            'tax_config_business_id' => $taxConfig->business_id  ?? 'all',
             'currency'               => $taxConfig->getCurrency(),
         ]);
     }
 
-    /**
-     * Build a descriptive 422 response when no tax configuration can be found.
-     */
     private function buildTaxConfigErrorResponse(
         Employee $employee,
         ?int $businessId,
@@ -559,15 +578,12 @@ class PayslipController extends Controller
             $errorMessage .= ' The employee has no country assigned.';
             $suggestions[] = 'Please assign a country to the employee or their business.';
         }
-
         if ($businessId) {
             $suggestions[] = 'Create a business-specific tax configuration for business ID: ' . $businessId;
         }
-
         if ($countryCode) {
             $suggestions[] = 'Create a country-specific tax configuration for country: ' . $countryCode;
         }
-
         $suggestions[] = 'Create a global tax configuration as a fallback.';
 
         Log::error('No tax configuration found', [

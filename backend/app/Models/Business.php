@@ -414,21 +414,24 @@ class Business extends Model
      * Check if the business is at employee limit (SuperAdmin)
      */
     public function getIsAtEmployeeLimitAttribute(): bool
-    {
-        return $this->current_employee_count >= $this->employee_limit;
+{
+    if (empty($this->employee_limit) || $this->employee_limit <= 0) {
+        return false;
     }
 
+    return $this->current_employee_count >= $this->employee_limit;
+}
     /**
      * Get employee usage percentage (SuperAdmin)
      */
     public function getEmployeeUsagePercentageAttribute(): float
-    {
-        if ($this->employee_limit === 0) {
-            return 0;
-        }
-
-        return round(($this->current_employee_count / $this->employee_limit) * 100, 2);
+{
+    if (empty($this->employee_limit) || $this->employee_limit <= 0) {
+        return 0;
     }
+
+    return round(($this->current_employee_count / $this->employee_limit) * 100, 2);
+}
 
     /**
      * ========================================
@@ -561,17 +564,17 @@ class Business extends Model
     }
 // In App\Models\Business.php
 
-public function canAssignCrossBusinessTasks($businessGroupId = null)
+public function canAssignCrossBusinessTasks($businessGroupId = null): bool
 {
     if ($businessGroupId) {
         return $this->activeBusinessGroups()
             ->where('business_groups.id', $businessGroupId)
-            ->wherePivot('can_assign_tasks', true)
+            ->wherePivot('can_assign_cross_business_tasks', true)
             ->exists();
     }
-    
+
     return $this->activeBusinessGroups()
-        ->wherePivot('can_assign_tasks', true)
+        ->wherePivot('can_assign_cross_business_tasks', true)
         ->exists();
 }
 

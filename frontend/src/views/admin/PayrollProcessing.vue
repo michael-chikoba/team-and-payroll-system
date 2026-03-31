@@ -17,11 +17,27 @@
               <p class="subtitle">Manage and process employee payroll for the selected period</p>
               <div class="role-meta">
                 <span class="role-badge">Admin View</span>
+                <span v-if="activeBusiness" class="currency-badge">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                  </svg>
+                  {{ getCurrencySymbol(currentCurrency) }} {{ currentCurrency }}
+                </span>
               </div>
             </div>
           </div>
 
           <div class="header-actions">
+            <div class="biz-selector-wrap" v-if="authStore.isAdmin">
+              <label class="biz-selector-label">Business</label>
+              <select v-model="selectedBusinessId" @change="onBusinessFilterChange" class="biz-select">
+                <option value="">All Businesses</option>
+                <option v-for="b in businesses" :key="b.id" :value="b.id">
+                  {{ b.name }} ({{ getCurrencySymbol(b.currency_code) }}{{ b.currency_code }})
+                </option>
+              </select>
+            </div>
             <button @click="refreshPayrollData" class="btn-outline" :disabled="loading">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M23 4v6h-6"></path>
@@ -145,13 +161,6 @@
             <div class="filter-group">
               <label>To</label>
               <input type="date" v-model="endDate" class="filter-select date-input"/>
-            </div>
-            <div class="filter-group" v-if="authStore.isAdmin">
-              <label>Business</label>
-              <select v-model="selectedBusinessId" @change="onBusinessFilterChange" class="filter-select">
-                <option value="">All Businesses</option>
-                <option v-for="b in businesses" :key="b.id" :value="b.id">{{ b.name }}</option>
-              </select>
             </div>
             <div class="filter-group">
               <label>Search</label>
@@ -538,7 +547,7 @@
                             </div>
                             <div class="ot-auto-info">
                               <span class="ot-auto-type">Weekend / PH OT</span>
-                              <span class="ot-auto-rate">× 2.5 rate</span>
+                              <span class="ot-auto-rate">× 2.0 rate</span>
                             </div>
                             <div class="ot-auto-values">
                               <span class="ot-hours">{{ emp.adjustments.overtime_auto_data.weekend_ph_hours }}h</span>
@@ -599,13 +608,9 @@
                               <circle cx="12" cy="12" r="5"></circle>
                               <line x1="12" y1="1" x2="12" y2="3"></line>
                               <line x1="12" y1="21" x2="12" y2="23"></line>
-                              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                              <line x1="1" y1="12" x2="3" y2="12"></line>
-                              <line x1="21" y1="12" x2="23" y2="12"></line>
                             </svg>
                             <span>Weekend / Public Holiday OT</span>
-                            <span class="ot-rate-badge weekend">×2.5</span>
+                            <span class="ot-rate-badge weekend">×2.0</span>
                           </div>
                           <div class="ot-manual-field">
                             <label>Hours</label>
@@ -622,7 +627,7 @@
                           <span>{{ formatCurrency(calcWeekdayPay(emp)) }}</span>
                         </div>
                         <div class="ot-summary-line">
-                          <span>Weekend/PH ({{ emp.adjustments.overtime_weekend_ph_hours || 0 }}h × {{ formatCurrency(calcHourlyRate(emp)) }} × 2.5)</span>
+                          <span>Weekend/PH ({{ emp.adjustments.overtime_weekend_ph_hours || 0 }}h × {{ formatCurrency(calcHourlyRate(emp)) }} × 2.0)</span>
                           <span>{{ formatCurrency(calcWeekendPhPay(emp)) }}</span>
                         </div>
                         <div class="ot-summary-total">
@@ -795,7 +800,7 @@
                         </div>
                         <div class="ot-auto-info">
                           <span class="ot-auto-type">Weekend / PH OT</span>
-                          <span class="ot-auto-rate">× 2.5 rate</span>
+                          <span class="ot-auto-rate">× 2.0 rate</span>
                         </div>
                         <div class="ot-auto-values">
                           <span class="ot-hours">{{ currentAdjustments.overtime_auto_data.weekend_ph_hours }}h</span>
@@ -858,7 +863,7 @@
                           <line x1="12" y1="21" x2="12" y2="23"></line>
                         </svg>
                         <span>Weekend / Public Holiday OT</span>
-                        <span class="ot-rate-badge weekend">×2.5</span>
+                        <span class="ot-rate-badge weekend">×2.0</span>
                       </div>
                       <div class="ot-manual-field">
                         <label>Hours</label>
@@ -875,7 +880,7 @@
                       <span>{{ formatCurrency(calcSingleWeekdayPay()) }}</span>
                     </div>
                     <div class="ot-summary-line">
-                      <span>Weekend/PH ({{ currentAdjustments.overtime_weekend_ph_hours || 0 }}h × ×2.5)</span>
+                      <span>Weekend/PH ({{ currentAdjustments.overtime_weekend_ph_hours || 0 }}h × ×2.0)</span>
                       <span>{{ formatCurrency(calcSingleWeekendPhPay()) }}</span>
                     </div>
                     <div class="ot-summary-total">
@@ -945,13 +950,15 @@
 <script>
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { useBusinessStore } from '@/stores/business'
 
 export default {
   name: 'PayrollProcessing',
 
   setup() {
     const authStore = useAuthStore()
-    return { authStore }
+    const businessStore = useBusinessStore()
+    return { authStore, businessStore }
   },
 
   data() {
@@ -972,6 +979,26 @@ export default {
       endDate: '',
       statusUpdating: null,
 
+      // Currency symbols for African currencies
+      currencySymbols: {
+        // West African
+        'NGN': '₦', 'GHS': '₵', 'XOF': 'CFA', 'GMD': 'D', 'LRD': 'L$', 
+        'SLL': 'Le', 'MRU': 'UM', 'CVE': '$',
+        // East African
+        'KES': 'KSh', 'UGX': 'USh', 'TZS': 'TSh', 'RWF': 'FRw', 
+        'BIF': 'FBu', 'ETB': 'Br', 'SOS': 'S', 'DJF': 'Fdj', 
+        'ERN': 'Nfk', 'SCR': '₨', 'COM': 'CF', 'MGA': 'Ar', 'MUR': '₨',
+        // Southern African
+        'ZAR': 'R', 'ZMW': 'K', 'BWP': 'P', 'NAD': 'N$', 
+        'SZL': 'L', 'LSL': 'L', 'MWK': 'MK', 'MZN': 'MT', 
+        'AOA': 'Kz', 'ZWL': 'ZiG',
+        // Central African
+        'XAF': 'FCFA', 'CDF': 'FC', 'STN': 'Db',
+        // North African
+        'EGP': 'E£', 'MAD': 'DH', 'DZD': 'DA', 'TND': 'DT', 
+        'LYD': 'LD', 'SDG': '£S'
+      },
+
       // Revert modal
       showRevertModal: false,
       revertTarget: [],
@@ -986,7 +1013,7 @@ export default {
 
       currentAdjustments: {
         overtime_applicable:     false,
-        overtime_mode:           'manual',   // 'manual' | 'automatic'
+        overtime_mode:           'manual',
         overtime_weekday_hours:  0,
         overtime_weekend_ph_hours: 0,
         overtime_bonus:          0,
@@ -1006,6 +1033,17 @@ export default {
   },
 
   computed: {
+    activeBusiness() {
+      return this.businessStore.currentBusiness
+    },
+    currentCurrency() {
+      // Get currency from selected business or fallback to ZMW
+      if (this.selectedBusinessId) {
+        const selectedBiz = this.businesses.find(b => b.id === this.selectedBusinessId)
+        if (selectedBiz) return selectedBiz.currency_code || 'ZMW'
+      }
+      return this.activeBusiness?.currency_code || 'ZMW'
+    },
     pendingCount() { return this.employees.filter(e => e.payroll_status === 'pending').length },
     paidCount()    { return this.employees.filter(e => e.payroll_status === 'paid').length },
 
@@ -1065,6 +1103,10 @@ export default {
   },
 
   methods: {
+
+    getCurrencySymbol(currencyCode) {
+      return this.currencySymbols[currencyCode] || currencyCode || '$'
+    },
 
     // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -1198,9 +1240,10 @@ export default {
       return h * this.calcHourlyRate(emp) * 1.5
     },
 
+    // Updated: Weekend/PH overtime rate is now 2.0 (changed from 2.5)
     calcWeekendPhPay(emp) {
       const h = parseFloat(emp.adjustments.overtime_weekend_ph_hours) || 0
-      return h * this.calcHourlyRate(emp) * 2.5
+      return h * this.calcHourlyRate(emp) * 2.0
     },
 
     recalcManualOvertime(emp) {
@@ -1209,11 +1252,6 @@ export default {
       this.updateAdjustments(emp)
     },
 
-    /**
-     * Fetch overtime breakdown from backend for a specific employee.
-     * Expects GET /api/admin/payroll/overtime-breakdown?employee_id=&start_date=&end_date=
-     * Returns: { weekday_hours, weekday_pay, weekend_ph_hours, weekend_ph_pay, total_pay }
-     */
     async fetchAutoOvertime(emp) {
       emp.adjustments.overtime_loading = true
       try {
@@ -1232,7 +1270,6 @@ export default {
 
     onOvertimeToggle(emp) {
       if (!emp.adjustments.overtime_applicable) {
-        // Reset overtime when disabled
         emp.adjustments.overtime_bonus            = 0
         emp.adjustments.overtime_weekday_hours    = 0
         emp.adjustments.overtime_weekend_ph_hours = 0
@@ -1243,7 +1280,6 @@ export default {
 
     setOvertimeMode(emp, mode) {
       emp.adjustments.overtime_mode = mode
-      // Reset overtime pay when switching modes
       emp.adjustments.overtime_bonus            = 0
       emp.adjustments.overtime_weekday_hours    = 0
       emp.adjustments.overtime_weekend_ph_hours = 0
@@ -1260,11 +1296,12 @@ export default {
       return h * rate * 1.5
     },
 
+    // Updated: Weekend/PH overtime rate is now 2.0 (changed from 2.5)
     calcSingleWeekendPhPay() {
       const h      = parseFloat(this.currentAdjustments.overtime_weekend_ph_hours) || 0
       const salary = this.adjustedEmployee?.base_salary || 0
       const rate   = salary > 0 ? salary / 173.33 : 0
-      return h * rate * 2.5
+      return h * rate * 2.0
     },
 
     recalcSingleManualOvertime() {
@@ -1350,7 +1387,6 @@ export default {
       const sel = this.employees.filter(e => e.payroll_status === 'pending' && e.selected)
       if (!sel.length) { this.showError('Please select pending employees to preview.'); return }
       this.previewEmployees = JSON.parse(JSON.stringify(sel))
-      // Ensure each has full adjustment defaults
       this.previewEmployees.forEach(emp => {
         emp.adjustments = { ...this.defaultAdjustments(), ...(emp.adjustments || {}) }
       })
@@ -1490,14 +1526,19 @@ export default {
 
     formatCurrency(amount) {
       if (amount === null || amount === undefined) return '—'
-      return new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW', minimumFractionDigits: 2 }).format(amount)
+      return new Intl.NumberFormat('en-ZM', { 
+        style: 'currency', 
+        currency: this.currentCurrency, 
+        minimumFractionDigits: 2 
+      }).format(amount).replace(/[A-Z]{3}/g, this.getCurrencySymbol(this.currentCurrency))
     },
 
     formatCurrencyShort(amount) {
       const n = parseFloat(amount) || 0
-      if (n >= 1_000_000) return `ZMW ${(n / 1_000_000).toFixed(1)}M`
-      if (n >= 1_000)     return `ZMW ${(n / 1_000).toFixed(1)}K`
-      return `ZMW ${n.toFixed(0)}`
+      const symbol = this.getCurrencySymbol(this.currentCurrency)
+      if (n >= 1_000_000) return `${symbol} ${(n / 1_000_000).toFixed(1)}M`
+      if (n >= 1_000)     return `${symbol} ${(n / 1_000).toFixed(1)}K`
+      return `${symbol} ${n.toFixed(0)}`
     },
 
     getInitials(name) {
@@ -1552,14 +1593,12 @@ export default {
   overflow: hidden;
 }
 
-/* Neutral grey accent bar — no color gradient */
 .header-card-accent {
   position: absolute; top: 0; left: 0; right: 0; height: 3px;
   background: #e2e8f0;
 }
 .user-greeting { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; }
 .avatar-section { display: flex; align-items: center; gap: 1rem; }
-/* Avatar: neutral grey, no gradient */
 .avatar {
   width: 44px; height: 44px;
   background: linear-gradient(135deg, #3b82f6, #2563eb);
@@ -1571,15 +1610,51 @@ export default {
 .user-info { display: flex; flex-direction: column; gap: 0.2rem; }
 .greeting  { margin: 0; font-size: 1.25rem; font-weight: 700; color: #1e293b; line-height: 1.2; }
 .subtitle  { margin: 0; color: #64748b; font-size: 0.8rem; }
-.role-meta { margin-top: 0.125rem; }
-/* Role badge: neutral, no blue */
+.role-meta { margin-top: 0.125rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .role-badge {
   background: #f1f5f9; border: 1px solid #e2e8f0;
   padding: 0.125rem 0.6rem; border-radius: 8px;
   font-size: 0.7rem; font-weight: 600; color: #475569;
   display: inline-block;
 }
+.currency-badge {
+  background: #fef3c7; border: 1px solid #fde68a;
+  padding: 0.125rem 0.6rem; border-radius: 8px;
+  font-size: 0.7rem; font-weight: 600; color: #92400e;
+  display: inline-flex; align-items: center; gap: 0.3rem;
+}
 .header-actions { display: flex; gap: 0.5rem; flex-shrink: 0; flex-wrap: wrap; align-items: center; }
+
+/* Business Selector */
+.biz-selector-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.biz-selector-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.biz-select {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  min-width: 180px;
+}
+.biz-select:focus {
+  outline: none;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(148,163,184,0.15);
+}
 
 /* ── Dashboard Content ───────────────────────────── */
 .dashboard-content {
@@ -1595,7 +1670,6 @@ export default {
 }
 
 /* ── Buttons ─────────────────────────────────────── */
-/* Primary button: dark slate, no purple gradient */
 .btn-primary {
   display: inline-flex; align-items: center; gap: 0.4rem;
   background: #334155; color: white;
@@ -1675,7 +1749,7 @@ export default {
 }
 h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 
-/* ── Metrics — no colored accents ───────────────── */
+/* ── Metrics ───────────────────────────────── */
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; }
 .metric-card {
   padding: 1.25rem; background: #f8fafc; border-radius: 12px;
@@ -1684,16 +1758,12 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
   transition: transform 0.2s, box-shadow 0.2s; cursor: pointer;
 }
 .metric-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px -4px rgba(0,0,0,0.08); border-color: #cbd5e1; }
-/* Remove the colored top bar entirely */
-.metric-card::before { display: none; }
-/* Neutral icon wrap — overrides inline rgba colors */
 .metric-icon-wrap {
   width: 40px; height: 40px; border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   margin-bottom: 0.75rem;
   background: #f1f5f9 !important;
 }
-/* Neutralise SVG stroke colors set inline on metric icons */
 .metric-icon-wrap svg { stroke: #64748b !important; }
 .metric-value { font-size: 1.8rem; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 0.25rem; }
 .metric-label { font-size: 0.78rem; color: #64748b; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1779,11 +1849,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 
 .col-emp { display: flex; align-items: center; gap: 0.75rem; }
 
-/* ─────────────────────────────────────────────────
-   Employee avatar — single consistent blue #3b82f6
-   !important overrides the inline :style binding
-   from getAvatarColor() in the template.
-───────────────────────────────────────────────── */
 .emp-avatar {
   width: 36px; height: 36px; border-radius: 8px;
   background: #3b82f6 !important;
@@ -1833,7 +1898,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 .modal-container.modal-adj { max-width: 600px; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 
-/* Modal header — neutral, no dark blue gradient */
 .modal-header {
   padding: 1.5rem 1.75rem;
   background: #f8fafc;
@@ -1869,7 +1933,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
   padding: 0.875rem; text-align: center; display: flex;
   flex-direction: column; gap: 0.3rem; align-items: center;
 }
-/* Highlight stat: neutral dark slate instead of blue gradient */
 .modal-stat.highlight {
   background: #1e293b;
   border-color: transparent;
@@ -1886,7 +1949,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 .revert-emp-row:last-child { border-bottom: none; }
 .revert-more { padding: 0.6rem 1rem; font-size: 0.78rem; color: #64748b; font-weight: 600; text-align: center; background: #f8fafc; }
 
-/* Small avatars in revert list — same single blue */
 .emp-avatar-sm {
   width: 34px; height: 34px; border-radius: 8px;
   background: #3b82f6 !important;
@@ -1928,7 +1990,7 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 .single-adj-section:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
 .section-heading { display: flex; align-items: center; gap: 0.4rem; font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; margin-bottom: 0.875rem; }
 
-/* ── Overtime UI — no blue/amber tints ──────────── */
+/* ── Overtime UI ──────────── */
 .overtime-section {
   margin: 0.875rem 0; padding: 0.875rem;
   background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
@@ -1936,12 +1998,10 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 .overtime-toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 .ot-label-wrap { display: flex; align-items: center; gap: 0.4rem; font-size: 0.82rem; font-weight: 600; color: #374151; }
 
-/* Toggle switch */
 .toggle-switch-wrap { display: flex; align-items: center; gap: 0.6rem; }
 .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
 .toggle-track { position: absolute; cursor: pointer; inset: 0; background: #cbd5e1; border-radius: 22px; transition: background 0.2s; }
-.toggle-track:before { display: none; }
 .toggle-switch input:checked + .toggle-track { background: #475569; }
 .toggle-thumb { position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
 .toggle-switch input:checked ~ .toggle-track .toggle-thumb { transform: translateX(18px); }
@@ -1949,20 +2009,16 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 
 .overtime-detail { margin-top: 1rem; }
 
-/* Mode tabs */
 .ot-mode-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.875rem; background: #f1f5f9; border-radius: 8px; padding: 3px; }
 .ot-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem; padding: 0.4rem 0.6rem; font-size: 0.75rem; font-weight: 600; color: #64748b; background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
 .ot-tab.active { background: white; color: #334155; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .ot-tab:hover:not(.active) { color: #334155; }
 
-/* Auto panel */
 .ot-auto-panel { padding: 0.75rem; background: white; border: 1px solid #e2e8f0; border-radius: 8px; }
 .ot-loading { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; font-size: 0.82rem; color: #64748b; }
 .ot-loading .spinner-sm { border-color: #e2e8f0 !important; border-top-color: #64748b !important; width: 16px; height: 16px; }
 
 .ot-auto-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
-
-/* Neutral OT item backgrounds — no blue/yellow tints */
 .ot-auto-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.65rem 0.75rem; border-radius: 8px; }
 .ot-auto-item.weekday { background: #f8fafc; border: 1px solid #e2e8f0; }
 .ot-auto-item.weekend { background: #f8fafc; border: 1px solid #e2e8f0; }
@@ -1987,18 +2043,14 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 .ot-refresh-btn { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.72rem; color: #475569; background: none; border: none; cursor: pointer; font-family: inherit; font-weight: 600; padding: 0; }
 .ot-refresh-btn:hover { text-decoration: underline; }
 
-/* Manual panel */
 .ot-manual-panel { padding: 0.75rem; background: white; border: 1px solid #e2e8f0; border-radius: 8px; }
 .ot-manual-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
-
-/* Neutral manual blocks — no blue/amber tints */
 .ot-manual-block { padding: 0.75rem; border-radius: 8px; }
 .weekday-block { background: #f8fafc; border: 1px solid #e2e8f0; }
 .weekend-block { background: #f8fafc; border: 1px solid #e2e8f0; }
 
 .ot-block-header { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.65rem; font-size: 0.72rem; font-weight: 700; color: #334155; }
 .ot-rate-badge { margin-left: auto; font-size: 0.65rem; font-weight: 800; padding: 0.1rem 0.35rem; border-radius: 4px; }
-/* Rate badges: neutral dark */
 .ot-rate-badge.weekday { background: #475569; color: white; }
 .ot-rate-badge.weekend { background: #64748b; color: white; }
 
@@ -2031,7 +2083,6 @@ h2 { font-size: 1.1rem; font-weight: 600; margin: 0 0 1.25rem; color: #334155; }
 @media (max-width: 768px) {
   .fixed-header { padding: 0.75rem 1rem 0; }
   .dashboard-content { padding: 0 1rem 2rem; }
-  
   .user-greeting { flex-direction: column; align-items: flex-start; gap: 1rem; }
   .header-actions { width: 100%; flex-wrap: wrap; }
   .metrics-grid   { grid-template-columns: repeat(2, 1fr); }

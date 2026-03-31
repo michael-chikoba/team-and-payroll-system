@@ -48,8 +48,8 @@ use App\Http\Controllers\Api\BusinessGroupInvitationController;
 use App\Http\Controllers\Api\GroupTicketController;
 use App\Http\Controllers\Api\GroupTaskController;
 use App\Http\Controllers\Api\ScheduleReportController;
-
-
+use App\Http\Controllers\Api\PushNotificationController;
+use App\Http\Controllers\Api\AdminPermissionController;
 
 // Public routes (no authentication required)
 Route::post('/demo-requests', [PublicController::class, 'storeDemoRequest']);
@@ -74,13 +74,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/admin/contact-requests/{id}', [PublicController::class, 'updateContactRequest']);
     Route::delete('/admin/contact-requests/{id}', [PublicController::class, 'deleteContactRequest']);
 });
+
 /*
 |--------------------------------------------------------------------------
 | Public Routes (No Authentication Required)
 |--------------------------------------------------------------------------
 */
-// ADD THIS ROUTE - It must be public (no auth middleware)
-// Simple version
 Route::get('/sanctum/csrf-cookie', function () {
     return response()->noContent();
 });
@@ -94,6 +93,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/slack-integration/{slackIntegration}/test', [SlackIntegrationController::class, 'test']);
     Route::get('/slack-integration/{slackIntegration}/logs', [SlackIntegrationController::class, 'logs']);
 });
+
 //public login routes
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/register', [AuthController::class, 'register']);
@@ -109,7 +109,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Auth routes
     Route::post('/logout', [AuthController::class, 'logout']);
-        Route::get('/debug-token', [AuthController::class, 'debugToken']); // ADD THIS
+    Route::get('/debug-token', [AuthController::class, 'debugToken']);
     Route::get('/user', [AuthController::class, 'user']);
     Route::post('/refresh-token', [AuthController::class, 'refreshToken']);
     Route::get('/auth/login-history', [AuthController::class, 'loginHistory']);
@@ -117,13 +117,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // Dashboard (Available to all authenticated users)
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
-      /*
+    /*
     |--------------------------------------------------------------------------
     | Shared Resources (Accessible by ID)
     |--------------------------------------------------------------------------
-    | These must be placed carefully to avoid conflicting with specific routes.
     */
     Route::get('/leaves/{leave}', [LeaveController::class, 'show'])->whereNumber('leave');
+    
     /*
     |--------------------------------------------------------------------------
     | Notification Routes (Available to ALL authenticated users)
@@ -135,86 +135,60 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/{id}/read', [NotificationController::class, 'markAsRead']);
         Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
         Route::delete('/{id}', [NotificationController::class, 'destroy']);
-       Route::get('/business-group-invitations', [BusinessGroupInvitationController::class, 'index']);
-
+        Route::get('/business-group-invitations', [BusinessGroupInvitationController::class, 'index']);
     });
-    Route::middleware(['auth:sanctum'])->group(function () {
     
-    // Notification Channel Management
-    Route::prefix('notification-channels')->group(function () {
-        Route::get('/', [NotificationChannelController::class, 'index']);
-        Route::post('/', [NotificationChannelController::class, 'store']);
-        Route::put('/{channel}', [NotificationChannelController::class, 'update']);
-        Route::delete('/{channel}', [NotificationChannelController::class, 'destroy']);
-        
-        // Helper endpoints
-        Route::get('/available-chat-groups', [NotificationChannelController::class, 'getAvailableChatGroups']);
-        Route::get('/available-events', [NotificationChannelController::class, 'getAvailableEvents']);
-        
-        // Test and logs
-        Route::post('/{channel}/test', [NotificationChannelController::class, 'test']);
-        Route::get('/{channel}/logs', [NotificationChannelController::class, 'getLogs']);
+    Route::middleware(['auth:sanctum'])->group(function () {
+        // Notification Channel Management
+        Route::prefix('notification-channels')->group(function () {
+            Route::get('/', [NotificationChannelController::class, 'index']);
+            Route::post('/', [NotificationChannelController::class, 'store']);
+            Route::put('/{channel}', [NotificationChannelController::class, 'update']);
+            Route::delete('/{channel}', [NotificationChannelController::class, 'destroy']);
+            Route::get('/available-chat-groups', [NotificationChannelController::class, 'getAvailableChatGroups']);
+            Route::get('/available-events', [NotificationChannelController::class, 'getAvailableEvents']);
+            Route::post('/{channel}/test', [NotificationChannelController::class, 'test']);
+            Route::get('/{channel}/logs', [NotificationChannelController::class, 'getLogs']);
+        });
     });
-});
 
     /*
     |--------------------------------------------------------------------------
     | Ticket Management Routes (Available to all authenticated users)
     |--------------------------------------------------------------------------
     */
-    
-  Route::prefix('tickets')->group(function () {
-    // Ticket types and metadata
-    Route::get('/types', [TicketController::class, 'getTicketTypes']);
-    Route::get('/types/{type}/categories', [TicketController::class, 'getCategories']);
-    
-    // Departments for ticket assignment
-    Route::get('/departments', [TicketController::class, 'getDepartments']);
-    Route::get('/assigned-to-me', [TicketController::class, 'assignedTickets']);
-    // Assignable users and approvers
-    Route::get('/assignable-users', [TicketController::class, 'getAssignableUsers']);
-    Route::get('/approvers', [TicketController::class, 'getApprovers']);
-    
-    // Statistics and counts
-    Route::get('/statistics', [TicketController::class, 'statistics']);
-    Route::get('/count', [TicketController::class, 'count']);
-    
-    // User-specific tickets
-    Route::get('/my-tickets', [TicketController::class, 'myTickets']);
-   // Route::get('/assigned-to-me', [TicketController::class, 'assignedToMe']);
-    
-    // CRUD operations
-    Route::get('/', [TicketController::class, 'index']);
-    Route::post('/', [TicketController::class, 'store']);
-    Route::get('/{ticket}', [TicketController::class, 'show']);
-    Route::put('/{ticket}', [TicketController::class, 'update']);
-    Route::delete('/{ticket}', [TicketController::class, 'destroy']);
-    
-    // Ticket actions - FIXED ROUTES
-    Route::post('/{ticket}/update-status', [TicketController::class, 'updateStatus']);
-    Route::patch('/{ticket}/priority', [TicketController::class, 'updatePriority']); // ✅ FIXED: Changed from /update-priority to /priority
-    Route::post('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
-    Route::post('/{ticket}/assign', [TicketController::class, 'assignTicket']);
-    
-    // Comments and attachments
-    Route::get('/{ticket}/comments', [TicketController::class, 'getComments']);
-    Route::post('/{ticket}/comments', [TicketController::class, 'addComment']);
-    Route::put('/{ticket}/comments/{comment}', [TicketController::class, 'updateComment']);
-    Route::delete('/{ticket}/comments/{comment}', [TicketController::class, 'deleteComment']);
-    
-    Route::get('/{ticket}/attachments', [TicketController::class, 'getAttachments']);
-    Route::post('/{ticket}/attachments', [TicketController::class, 'uploadAttachment']);
-    Route::delete('/{ticket}/attachments/{attachment}', [TicketController::class, 'deleteAttachment']);
-    Route::get('/attachments/{attachment}/download', [TicketController::class, 'downloadAttachment'])->name('tickets.attachments.download');
-    
-    // Activity history
-    Route::get('/{ticket}/activities', [TicketController::class, 'getActivityHistory']);
-    
-    // Convenience routes (optional)
-    Route::post('/{ticket}/resolve', [TicketController::class, 'resolve']);
-    Route::post('/{ticket}/close', [TicketController::class, 'close']);
-    Route::post('/{ticket}/reopen', [TicketController::class, 'reopen']);
-});
+    Route::prefix('tickets')->group(function () {
+        Route::get('/types', [TicketController::class, 'getTicketTypes']);
+        Route::get('/types/{type}/categories', [TicketController::class, 'getCategories']);
+        Route::get('/departments', [TicketController::class, 'getDepartments']);
+        Route::get('/assigned-to-me', [TicketController::class, 'assignedTickets']);
+        Route::get('/assignable-users', [TicketController::class, 'getAssignableUsers']);
+        Route::get('/approvers', [TicketController::class, 'getApprovers']);
+        Route::get('/statistics', [TicketController::class, 'statistics']);
+        Route::get('/count', [TicketController::class, 'count']);
+        Route::get('/my-tickets', [TicketController::class, 'myTickets']);
+        Route::get('/', [TicketController::class, 'index']);
+        Route::post('/', [TicketController::class, 'store']);
+        Route::get('/{ticket}', [TicketController::class, 'show']);
+        Route::put('/{ticket}', [TicketController::class, 'update']);
+        Route::delete('/{ticket}', [TicketController::class, 'destroy']);
+        Route::post('/{ticket}/update-status', [TicketController::class, 'updateStatus']);
+        Route::patch('/{ticket}/priority', [TicketController::class, 'updatePriority']);
+        Route::post('/{ticket}/reassign', [TicketController::class, 'reassignTicket']);
+        Route::post('/{ticket}/assign', [TicketController::class, 'assignTicket']);
+        Route::get('/{ticket}/comments', [TicketController::class, 'getComments']);
+        Route::post('/{ticket}/comments', [TicketController::class, 'addComment']);
+        Route::put('/{ticket}/comments/{comment}', [TicketController::class, 'updateComment']);
+        Route::delete('/{ticket}/comments/{comment}', [TicketController::class, 'deleteComment']);
+        Route::get('/{ticket}/attachments', [TicketController::class, 'getAttachments']);
+        Route::post('/{ticket}/attachments', [TicketController::class, 'uploadAttachment']);
+        Route::delete('/{ticket}/attachments/{attachment}', [TicketController::class, 'deleteAttachment']);
+        Route::get('/attachments/{attachment}/download', [TicketController::class, 'downloadAttachment'])->name('tickets.attachments.download');
+        Route::get('/{ticket}/activities', [TicketController::class, 'getActivityHistory']);
+        Route::post('/{ticket}/resolve', [TicketController::class, 'resolve']);
+        Route::post('/{ticket}/close', [TicketController::class, 'close']);
+        Route::post('/{ticket}/reopen', [TicketController::class, 'reopen']);
+    });
 
     /*
     |--------------------------------------------------------------------------
@@ -235,7 +209,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::middleware(['role:employee'])->prefix('employee')->group(function () {
-      
         // Attendance Routes - Employee Personal
         Route::prefix('attendance')->group(function () {
             Route::get('today-status', [AttendanceController::class, 'todayStatus']);
@@ -270,14 +243,17 @@ Route::middleware(['auth:sanctum'])->group(function () {
       
         Route::post('initialize-leave-balances', [EmployeeController::class, 'initializeLeaveBalances']);
     });
-   
+
+    Route::middleware(['auth:sanctum'])->group(function () {
+        Route::get('/payslips/{payslip}/download', [PayslipController::class, 'download']);
+    });
+    
     /*
     |--------------------------------------------------------------------------
     | Manager Routes - FIXED ORDER
     |--------------------------------------------------------------------------
     */
     Route::middleware(['role:manager'])->prefix('manager')->group(function () {
-        
         // Employee Management
         Route::get('employees', [ManagerController::class, 'employees']);
         Route::get('employees/{employee}', [ManagerController::class, 'employeeDetails']);
@@ -324,7 +300,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('pending', [LeaveController::class, 'pendingLeaves']);
             Route::post('{leave}/approve', [LeaveController::class, 'approve']);
             Route::post('{leave}/reject', [LeaveController::class, 'reject']);
-            // ADDED: Missing route for current-month leaves (fixes 404 for managers)
             Route::get('current-month', [LeaveController::class, 'currentMonthLeaves']);
         });
       
@@ -350,34 +325,33 @@ Route::middleware(['auth:sanctum'])->group(function () {
         
         // Leave Management
         Route::get('/leaves/current-month', [LeaveController::class, 'currentMonthLeaves']);
-         Route::post('/leaves/{leave}/approve', [LeaveController::class, 'approve']);  // ADD THIS LINE
-    Route::post('/leaves/{leave}/reject', [LeaveController::class, 'reject']);    // ADD THIS LINE
+        Route::post('/leaves/{leave}/approve', [LeaveController::class, 'approve']);
+        Route::post('/leaves/{leave}/reject', [LeaveController::class, 'reject']);
         
         // Admin's Personal Attendance
         Route::prefix('attendance')->group(function () {
-    // ── Specific named routes FIRST ──
-    Route::get('status',           [AttendanceController::class, 'getAttendanceStatus']);
-    Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
-    Route::get('countries',        [AttendanceController::class, 'getCountries']);
-    Route::get('businesses',       [AttendanceController::class, 'getBusinesses']);
-    Route::get('today-status',     [AttendanceController::class, 'todayStatus']);
-    Route::get('stats',            [AttendanceController::class, 'summary']);
-    Route::get('monthly-stats',    [AttendanceController::class, 'monthlyStats']);
-    Route::get('monthly-breakdown',[AttendanceController::class, 'monthlyBreakdown']);
-    Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
-    Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
-    Route::get('history',          [AttendanceController::class, 'adminHistory']);
+            // Specific named routes FIRST
+            Route::get('status', [AttendanceController::class, 'getAttendanceStatus']);
+            Route::get('current-statuses', [AttendanceController::class, 'currentStatuses']);
+            Route::get('countries', [AttendanceController::class, 'getCountries']);
+            Route::get('businesses', [AttendanceController::class, 'getBusinesses']);
+            Route::get('today-status', [AttendanceController::class, 'todayStatus']);
+            Route::get('stats', [AttendanceController::class, 'summary']);
+            Route::get('monthly-stats', [AttendanceController::class, 'monthlyStats']);
+            Route::get('monthly-breakdown', [AttendanceController::class, 'monthlyBreakdown']);
+            Route::get('overtime-summary', [AttendanceController::class, 'overtimeSummary']);
+            Route::get('detailed-history', [AttendanceController::class, 'detailedHistory']);
+            Route::get('history', [AttendanceController::class, 'adminHistory']);
 
-    // ── Parameterized routes LAST ──
-    Route::get('{employee}/history',      [AttendanceController::class, 'employeeHistory']);
-    Route::post('{employee}/mark-present',[AttendanceController::class, 'markPresent']);
-    Route::post('{employee}/clock-out',   [AttendanceController::class, 'managerClockOut']);
-    
-    // ... actions
-    Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
-    Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
-
+            // Parameterized routes LAST
+            Route::get('{employee}/history', [AttendanceController::class, 'employeeHistory']);
+            Route::post('{employee}/mark-present', [AttendanceController::class, 'markPresent']);
+            Route::post('{employee}/clock-out', [AttendanceController::class, 'managerClockOut']);
             
+            // Bulk actions
+            Route::post('bulk-mark-present', [AttendanceController::class, 'bulkMarkPresent']);
+            Route::post('recalculate-hours', [AttendanceController::class, 'recalculateHours']);
+
             // Personal actions
             Route::get('history', [AttendanceController::class, 'adminHistory']);
             Route::get('/', [AttendanceController::class, 'history']);
@@ -387,10 +361,18 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::post('force-reset', [AttendanceController::class, 'forceReset']);
         });
         
-        // Employee Management
+        // Employee Management with Lifecycle Actions
+        Route::get('employees-archived', [EmployeeController::class, 'archived']);
         Route::apiResource('employees', EmployeeController::class);
+        Route::post('employees/{employee}/suspend', [EmployeeController::class, 'suspend']);
+        Route::post('employees/{employee}/archive', [EmployeeController::class, 'archive']);
+        Route::post('employees/{employee}/reinstate', [EmployeeController::class, 'reinstate']);
         Route::get('managers', [EmployeeController::class, 'managers']);
-        Route::get('/departments', [EmployeeController::class, 'departments']);
+        Route::get('departments', [EmployeeController::class, 'departments']);
+        Route::get('employees/search', [EmployeeController::class, 'search']);
+        Route::get('employees/team', [EmployeeController::class, 'teamEmployees']);
+        Route::get('employees/health', [EmployeeController::class, 'health']);
+        Route::get('users/search', [EmployeeController::class, 'searchUsers']);
         
         // Report Generation
         Route::post('generate/attendance', [ReportController::class, 'generateAttendanceReport']);
@@ -417,10 +399,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::get('/', [PayslipController::class, 'adminIndex']);
             Route::post('/', [PayslipController::class, 'store']);
             Route::get('/{payslip}', [PayslipController::class, 'show']);
+            Route::get('/{payslip}/download', [PayslipController::class, 'download']);
             Route::post('/generate', [PayslipController::class, 'generate']);
             Route::post('/bulk-download', [PayslipController::class, 'bulkDownload']);
             Route::post('/{payslip}/generate-pdf', [PayslipController::class, 'generatePdf']);
-            Route::get('/{payslip}/download', [PayslipController::class, 'download']);
             Route::post('/{payslip}/send', [PayslipController::class, 'sendNotifications']);
         });
       
@@ -478,24 +460,32 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::post('/{country}/toggle-status', [CountryController::class, 'toggleStatus']);
             Route::get('/{country}/statistics', [CountryController::class, 'statistics']);
         });
-         Route::get('users/search', [EmployeeController::class, 'searchUsers']);
-    
-      // Business Management Routes
-Route::prefix('businesses')->group(function () {
-    Route::get('/', [BusinessController::class, 'index']);
-    Route::post('/', [BusinessController::class, 'store']);
-    Route::get('/current', [BusinessController::class, 'getCurrentBusiness']); // NEW ROUTE
-    Route::get('/{business}', [BusinessController::class, 'show']);
-    Route::put('/{business}', [BusinessController::class, 'update']);
-    Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']); // ENHANCED
-    Route::delete('/{business}', [BusinessController::class, 'destroy']);
-    
-    // Admin management routes
-    Route::post('/{business}/admins', [BusinessController::class, 'addAdmin']);
-    Route::delete('/{business}/admins/{adminUser}', [BusinessController::class, 'removeAdmin']);
-    Route::put('/{business}/admins/{adminUser}/primary', [BusinessController::class, 'updatePrimaryAdmin']);
-    Route::get('/{business}/stats', [BusinessController::class, 'getStats']); // NEW ROUTE
-});
+      
+        // Business Management Routes
+        Route::prefix('businesses')->group(function () {
+            Route::get('/', [BusinessController::class, 'index']);
+            Route::post('/', [BusinessController::class, 'store']);
+            Route::get('/current', [BusinessController::class, 'getCurrentBusiness']);
+            Route::get('/{business}', [BusinessController::class, 'show']);
+            Route::put('/{business}', [BusinessController::class, 'update']);
+            Route::post('/{business}/switch', [BusinessController::class, 'switchBusiness']);
+            Route::delete('/{business}', [BusinessController::class, 'destroy']);
+            Route::post('/{business}/admins', [BusinessController::class, 'addAdmin']);
+            Route::delete('/{business}/admins/{adminUser}', [BusinessController::class, 'removeAdmin']);
+            Route::put('/{business}/admins/{adminUser}/primary', [BusinessController::class, 'updatePrimaryAdmin']);
+            Route::get('/{business}/stats', [BusinessController::class, 'getStats']);
+        });
+        
+        // Admin Permission Management
+        Route::get('/my-permissions', [AdminPermissionController::class, 'myPermissions']);
+        Route::prefix('admin-permissions')->group(function () {
+            Route::get('/', [AdminPermissionController::class, 'index']);
+            Route::get('/{userId}', [AdminPermissionController::class, 'show']);
+            Route::put('/{userId}', [AdminPermissionController::class, 'update']);
+            Route::patch('/{userId}/role', [AdminPermissionController::class, 'updateRole']);
+            Route::post('/{userId}/suspend', [AdminPermissionController::class, 'suspend']);
+            Route::post('/{userId}/unsuspend', [AdminPermissionController::class, 'unsuspend']);
+        });
     });
 });
 
@@ -510,12 +500,12 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/tasks/employees/simple', [TaskController::class, 'getSimpleEmployees'])->middleware('role:manager,admin,employee');
     
     // Task CRUD - ALL authenticated users can access
-    Route::get('/tasks', [TaskController::class, 'index']); // All can view their tasks
-    Route::post('/tasks', [TaskController::class, 'store']); // All can create tasks (employees can only assign to themselves)
-    Route::patch('/tasks/{task}/status', [TaskController::class, 'updateStatus']); // All can update status
-    Route::get('/tasks/{task}', [TaskController::class, 'show']); // All can view tasks they're involved with
-    Route::put('/tasks/{task}', [TaskController::class, 'update']); // All can update their own tasks
-    Route::delete('/tasks/{task}', [TaskController::class, 'destroy']); // All can delete their own tasks
+    Route::get('/tasks', [TaskController::class, 'index']);
+    Route::post('/tasks', [TaskController::class, 'store']);
+    Route::patch('/tasks/{task}/status', [TaskController::class, 'updateStatus']);
+    Route::get('/tasks/{task}', [TaskController::class, 'show']);
+    Route::put('/tasks/{task}', [TaskController::class, 'update']);
+    Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
     
     // Task comments - all authenticated users
     Route::post('/tasks/{task}/comments', [TaskCommentController::class, 'store']);
@@ -634,198 +624,109 @@ Route::middleware('auth:sanctum')->group(function () {
     // CHAT GROUPS & CHANNELS
     // ==========================================
     
-    // List all groups/channels/DMs
     Route::get('/chat/groups', [ChatController::class, 'index']);
-    
-    // Create new group/channel
     Route::post('/chat/groups', [ChatController::class, 'store']);
-    
-    // Get group details
     Route::get('/chat/groups/{id}/details', [ChatController::class, 'show']);
-    
-    // Update group/channel
     Route::put('/chat/groups/{id}', [ChatController::class, 'update']);
-    
-    // Archive/Unarchive
     Route::post('/chat/groups/{id}/toggle-archive', [ChatController::class, 'toggleArchive']);
-    
-    // Toggle favorite
     Route::post('/chat/groups/{id}/toggle-favorite', [ChatController::class, 'toggleFavorite']);
-    
-    // Mark as read
     Route::post('/chat/groups/{id}/read', [ChatController::class, 'markAsRead']);
-    
-    // Toggle mute
     Route::post('/chat/groups/{id}/toggle-mute', [ChatController::class, 'toggleMute']);
-    
     
     // ==========================================
     // CHANNEL SPECIFIC
     // ==========================================
     
-    // Browse public channels
     Route::get('/chat/channels/browse', [ChatController::class, 'getBrowsableChannels']);
-    
-    // Join public channel
     Route::post('/chat/channels/{id}/join', [ChatController::class, 'joinChannel']);
-    
-    // Leave channel/group
     Route::post('/chat/groups/{id}/leave', [ChatController::class, 'leaveGroup']);
-    
     
     // ==========================================
     // MEMBERS MANAGEMENT
     // ==========================================
     
-    // Add members
     Route::post('/chat/groups/{id}/add-members', [ChatController::class, 'addMembers']);
-    
-    // Remove member
     Route::delete('/chat/groups/{groupId}/members/{userId}', [ChatController::class, 'removeMember']);
-    
-    // Update member role
     Route::put('/chat/groups/{groupId}/members/{userId}/role', [ChatController::class, 'updateMemberRole']);
-    
-    // Get available users
     Route::get('/chat/available-users', [ChatController::class, 'getAvailableUsers']);
-    
     
     // ==========================================
     // DIRECT MESSAGES
     // ==========================================
     
-    // Get or create direct message
     Route::post('/chat/direct-messages', [ChatController::class, 'getOrCreateDirectMessage']);
-    
     
     // ==========================================
     // MESSAGES
     // ==========================================
     
-    // Get messages in a group/channel
     Route::get('/chat/groups/{groupId}/messages', [ChatMessageController::class, 'index']);
-    
-    // Send message
     Route::post('/chat/groups/{groupId}/messages', [ChatMessageController::class, 'store']);
-    
-    // Edit message
     Route::put('/chat/groups/{groupId}/messages/{messageId}', [ChatMessageController::class, 'update']);
-    
-    // Delete message
     Route::delete('/chat/groups/{groupId}/messages/{messageId}', [ChatMessageController::class, 'destroy']);
-    
-    // Search messages
     Route::get('/chat/groups/{groupId}/messages/search', [ChatMessageController::class, 'search']);
-    
-    // Pin/Unpin message
     Route::post('/chat/groups/{groupId}/messages/{messageId}/toggle-pin', [ChatMessageController::class, 'togglePin']);
-    
-    // Get pinned messages
     Route::get('/chat/groups/{groupId}/pinned-messages', [ChatMessageController::class, 'getPinnedMessages']);
-    
     
     // ==========================================
     // REACTIONS
     // ==========================================
     
-    // Add/remove reaction
     Route::post('/chat/messages/{messageId}/reactions', [ChatReactionController::class, 'toggle']);
-    
-    // Get reactions for a message
     Route::get('/chat/messages/{messageId}/reactions', [ChatReactionController::class, 'index']);
-    
     
     // ==========================================
     // THREADS
     // ==========================================
     
-    // Get thread replies
     Route::get('/chat/threads/{threadId}/replies', [ChatThreadController::class, 'getReplies']);
-    
-    // Reply to thread
     Route::post('/chat/threads/{threadId}/reply', [ChatThreadController::class, 'reply']);
-    
-    // Create thread from message
     Route::post('/chat/messages/{messageId}/create-thread', [ChatThreadController::class, 'createFromMessage']);
-    
     
     // ==========================================
     // BOOKMARKS
     // ==========================================
     
-    // Bookmark message
     Route::post('/chat/messages/{messageId}/bookmark', [ChatMessageController::class, 'bookmark']);
-    
-    // Remove bookmark
     Route::delete('/chat/messages/{messageId}/bookmark', [ChatMessageController::class, 'removeBookmark']);
-    
-    // Get user's bookmarks
     Route::get('/chat/bookmarks', [ChatMessageController::class, 'getBookmarks']);
-    
     
     // ==========================================
     // FILES
     // ==========================================
     
-    // Get files in a group/channel
     Route::get('/chat/groups/{groupId}/files', [ChatMessageController::class, 'getFiles']);
-    
     
     // ==========================================
     // MENTIONS
     // ==========================================
     
-    // Get user's mentions
     Route::get('/chat/mentions', [ChatMessageController::class, 'getMentions']);
-    
-    // Mark mention as read
     Route::post('/chat/mentions/{mentionId}/read', [ChatMessageController::class, 'markMentionAsRead']);
-    
     
     // ==========================================
     // TYPING INDICATORS
     // ==========================================
     
-    // Update typing status
     Route::post('/chat/groups/{groupId}/typing', [ChatController::class, 'updateTypingStatus']);
-    
-    // Get who's typing
     Route::get('/chat/groups/{groupId}/typing', [ChatController::class, 'getTypingUsers']);
-    
     
     // ==========================================
     // INVITATIONS
-  //  --------------------------------------------------------------------------
-    // Send invitation
+    // ==========================================
+    
     Route::post('/chat/groups/{groupId}/invite', [ChatController::class, 'inviteUser']);
-    
-    // Accept invitation
     Route::post('/chat/invitations/{invitationId}/accept', [ChatController::class, 'acceptInvitation']);
-    
-    // Decline invitation
     Route::post('/chat/invitations/{invitationId}/decline', [ChatController::class, 'declineInvitation']);
-    
-    // Get pending invitations
     Route::get('/chat/invitations', [ChatController::class, 'getPendingInvitations']);
 });
 
 Route::middleware('auth:sanctum')->prefix('chat/groups/{groupId}')->group(function () {
-    // List all integrations for a channel
     Route::get('/integrations', [ChatIntegrationController::class, 'index']);
-    
-    // Create new integration
     Route::post('/integrations', [ChatIntegrationController::class, 'store']);
-    
-    // Update integration
     Route::patch('/integrations/{id}', [ChatIntegrationController::class, 'update']);
-    
-    // Delete integration
     Route::delete('/integrations/{id}', [ChatIntegrationController::class, 'destroy']);
-    
-    // Regenerate API key
     Route::post('/integrations/{id}/regenerate-key', [ChatIntegrationController::class, 'regenerateApiKey']);
-    
-    // Get integration logs
     Route::get('/integrations/{id}/logs', [ChatIntegrationController::class, 'logs']);
 });
 
@@ -833,19 +734,13 @@ Route::middleware('auth:sanctum')->prefix('chat/groups/{groupId}')->group(functi
 |--------------------------------------------------------------------------
 | Webhook Routes (Public - No Authentication)
 |--------------------------------------------------------------------------
-| These routes are used by external applications
 */
-
 Route::prefix('webhooks/chat')->group(function () {
-    // Send message to channel (requires API key in header)
     Route::post('/message', [ChatWebhookController::class, 'sendMessage']);
-    
-    // Get integration info (verify API key)
     Route::get('/info', [ChatWebhookController::class, 'getInfo']);
 });
 
 // Task Report Routes
-// Option 2: Apply middleware to entire prefix
 Route::prefix('tasks/reports')->middleware(['auth:sanctum'])->group(function () {
     Route::get('/filters', [TaskReportController::class, 'getFilters']);
     Route::post('/generate', [TaskReportController::class, 'generateReport']);
@@ -862,14 +757,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
 Route::post('/attendance/check-idle-sessions', [ActivityTrackingController::class, 'checkIdleSessions'])
     ->middleware(['auth:sanctum', 'role:admin']);
 
-    /*
+/*
 |--------------------------------------------------------------------------
 | Super Admin Routes
 |--------------------------------------------------------------------------
-| These routes are only accessible by users with is_superadmin = true
-| They provide system-wide access to all businesses and advanced controls
 */
-
 Route::middleware(['auth:sanctum', 'superadmin'])->prefix('superadmin')->group(function () {
     
     // Business Management
@@ -880,13 +772,9 @@ Route::middleware(['auth:sanctum', 'superadmin'])->prefix('superadmin')->group(f
         Route::get('/{business}', [SuperAdminBusinessController::class, 'show']);
         Route::put('/{business}', [SuperAdminBusinessController::class, 'update']);
         Route::delete('/{business}', [SuperAdminBusinessController::class, 'destroy']);
-        
-        // Business Actions
         Route::post('/{business}/suspend', [SuperAdminBusinessController::class, 'suspend']);
         Route::post('/{business}/activate', [SuperAdminBusinessController::class, 'activate']);
         Route::post('/{business}/update-limit', [SuperAdminBusinessController::class, 'updateEmployeeLimit']);
-        
-        // History & Logs
         Route::get('/{business}/activity-logs', [SuperAdminBusinessController::class, 'getActivityLogs']);
         Route::get('/{business}/limit-history', [SuperAdminBusinessController::class, 'getLimitHistory']);
     });
@@ -931,19 +819,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/{businessGroup}', [BusinessGroupController::class, 'show']);
         Route::put('/{businessGroup}', [BusinessGroupController::class, 'update']);
         Route::delete('/{businessGroup}', [BusinessGroupController::class, 'destroy']);
-        
-        // Group Members
         Route::get('/{businessGroup}/members', [BusinessGroupController::class, 'getMembers']);
         Route::post('/{businessGroup}/leave', [BusinessGroupController::class, 'leave']);
-        
-        // Group Settings
         Route::put('/{businessGroup}/settings', [BusinessGroupController::class, 'updateSettings']);
-        
-        // Group Statistics
         Route::get('/{businessGroup}/stats', [BusinessGroupController::class, 'getStats']);
         Route::get('/{businessGroup}/activity', [BusinessGroupController::class, 'getActivity']);
-        
-        // Group Resources
         Route::get('/{businessGroup}/employees', [BusinessGroupController::class, 'getGroupEmployees']);
         Route::get('/{businessGroup}/users', [BusinessGroupController::class, 'getGroupUsers']);
         Route::get('/{businessGroup}/businesses', [BusinessGroupController::class, 'getGroupBusinesses']);
@@ -989,8 +869,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 });
 
-use App\Http\Controllers\Api\PushNotificationController;
-
 // Push notification routes
 Route::middleware(['auth:sanctum'])->prefix('push')->group(function () {
     Route::post('/subscribe', [PushNotificationController::class, 'subscribe']);
@@ -1006,43 +884,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Employee routes
     Route::post('/schedule-reports', [ScheduleReportController::class, 'store']);
     Route::get('/my-reports', [ScheduleReportController::class, 'myReports']);
-    
-    // IMPORTANT: Specific routes MUST come BEFORE generic parameterized routes
-    // Change 'downloadFile' to 'download' to match the registered route
     Route::get('/schedule-reports/{id}/download', [ScheduleReportController::class, 'download']);
-    
-    // Manager routes - authorization handled in controller
     Route::get('/schedule-reports', [ScheduleReportController::class, 'index']);
     Route::put('/schedule-reports/{id}/review', [ScheduleReportController::class, 'review']);
-    
-    // Shared route - this should be LAST
     Route::get('/schedule-reports/{id}', [ScheduleReportController::class, 'show']);
-});
-
-
-use App\Http\Controllers\Api\AdminPermissionController;
-
-
-// Owner-level admin management
-Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(function () {
-// Any authenticated admin can fetch their own restrictions
-Route::get('/my-permissions', [AdminPermissionController::class, 'myPermissions']);
-
-    Route::prefix('admin-permissions')->group(function () {
-        // List all admins + their permissions for a business
-        Route::get('/',                    [AdminPermissionController::class, 'index']);
-
-        // Get single admin's permissions
-        Route::get('/{userId}',            [AdminPermissionController::class, 'show']);
-
-        // Update restriction flags
-        Route::put('/{userId}',            [AdminPermissionController::class, 'update']);
-
-        // Change role
-        Route::patch('/{userId}/role',     [AdminPermissionController::class, 'updateRole']);
-
-        // Suspend / unsuspend
-        Route::post('/{userId}/suspend',   [AdminPermissionController::class, 'suspend']);
-        Route::post('/{userId}/unsuspend', [AdminPermissionController::class, 'unsuspend']);
-    });
 });

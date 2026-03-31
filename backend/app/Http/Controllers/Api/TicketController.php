@@ -777,170 +777,200 @@ private function assignUserToTicket(Ticket $ticket, $userId, $role = 'assignee')
      * Update ticket status with workflow validation
      * UPDATED: Now allows any admin from the same business to approve
      */
-    public function updateStatus(Request $request, Ticket $ticket)
-    {
-        $user = Auth::user();
+  public function updateStatus(Request $request, Ticket $ticket)
+{
+    $user = Auth::user();
+    
+    // Check permissions
+    $canUpdate = false;
+    
+    if ($user->hasRole('admin')) {
+        $adminEmployee = $user->employee;
+        $ticketUserEmployee = $ticket->user->employee;
         
-        // Check permissions - UPDATED LOGIC
-        $canUpdate = false;
-        
-        if ($user->hasRole('admin')) {
-            // Any admin from the same business can update tickets
-            $adminEmployee = $user->employee;
-            $ticketUserEmployee = $ticket->user->employee;
-            
-            if ($adminEmployee && $ticketUserEmployee && 
-                $adminEmployee->business_id === $ticketUserEmployee->business_id) {
-                $canUpdate = true;
-            }
-        } elseif ($ticket->assignedUsers()->where('user_id', $user->id)->exists()) {
-            // Assigned users can update tickets assigned to them
+        if ($adminEmployee && $ticketUserEmployee && 
+            $adminEmployee->business_id === $ticketUserEmployee->business_id) {
             $canUpdate = true;
         }
-        
-        if (!$canUpdate) {
-            return response()->json(['message' => 'Unauthorized to update this ticket'], 403);
-        }
-
-        // Get available statuses based on current status
-        $availableStatuses = $this->getAvailableStatuses($ticket->status);
-        
-        $validator = Validator::make($request->all(), [
-            'status' => 'required|in:' . implode(',', $availableStatuses),
-            'comments' => 'nullable|string|max:1000',
-            'send_email' => 'nullable|boolean',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        $oldStatus = $ticket->status;
-        
-        $updates = [
-            'status' => $request->status,
-        ];
-
-        if ($request->filled('comments')) {
-            $updates['comments'] = $request->comments;
-        }
-
-        // Handle status-specific updates
-        if ($request->status === 'resolved') {
-            $updates['resolved_at'] = now();
-        } elseif ($request->status === 'closed') {
-            $updates['closed_at'] = now();
-        } elseif ($request->status === 'approved') {
-            $updates['approved_at'] = now();
-            $updates['approved_by'] = $user->id;
-            // Update the approver_id to the admin who actually approved it
-            $updates['approver_id'] = $user->id;
-        } elseif ($request->status === 'rejected') {
-            $updates['rejected_at'] = now();
-            $updates['rejected_by'] = $user->id;
-        } elseif ($request->status === 'in_progress') {
-            $updates['started_at'] = now();
-        }
-
-        Log::info('Updating ticket status', [
-            'ticket_id' => $ticket->id,
-            'old_status' => $oldStatus,
-            'new_status' => $request->status,
-            'updates' => $updates,
-            'user_id' => $user->id,
-            'is_original_approver' => $ticket->approver_id === $user->id,
-        ]);
-
-        try {
-            $ticket->update($updates);
-            $ticket->refresh();
-            
-            // Log activity
-            $actionDescription = "Status changed from {$oldStatus} to {$request->status}";
-            if ($request->status === 'approved' && $ticket->approver_id !== $user->id) {
-                $actionDescription .= " (approved by alternate admin)";
-            }
-            $this->logActivity($ticket, 'status_updated', $actionDescription, $user);
-// ✨ NEW: Send notifications for important status changes
-        if ($request->status === 'approved') {
-            $this->notificationService->notifyTicketApproved($ticket);
-        } elseif (in_array($request->status, ['resolved', 'closed', 'in_progress'])) {
-            $this->notificationService->notifyStatusChanged($ticket, $oldStatus, $request->status);
-        }
-            // Send notification if requested
-            if ($request->filled('send_email') && $request->send_email && $ticket->user_id !== $user->id) {
-                try {
-                    Mail::to($ticket->user->email)
-                        ->send(new TicketStatusUpdate($ticket, $oldStatus, $request->status));
-                } catch (\Exception $e) {
-                    Log::error('Failed to send status update email', [
-                        'ticket_id' => $ticket->id,
-                        'error' => $e->getMessage()
-                    ]);
-                }
-            }
-// ✨ SEND NOTIFICATION ON STATUS CHANGE
-        if ($oldStatus !== $request->status && $ticket->user_id !== $user->id) {
-            $statusMessages = [
-                'approved' => 'Your ticket has been approved',
-                'in_progress' => 'Your ticket is now being worked on',
-                'resolved' => 'Your ticket has been resolved',
-                'rejected' => 'Your ticket has been rejected',
-                'closed' => 'Your ticket has been closed'
-            ];
-            
-            UserNotification::create([
-                'user_id' => $ticket->user_id,
-                'type' => 'ticket_created',
-                'title' => 'Ticket Status Updated',
-                'message' => "{$statusMessages[$request->status]}: {$ticket->title}",
-                'action' => "/tickets/{$ticket->id}",
-                'data' => [
-                    'ticket_id' => $ticket->id,
-                    'ticket_title' => $ticket->title,
-                    'old_status' => $oldStatus,
-                    'new_status' => $request->status,
-                    'updated_by' => $user->name
-                ]
-            ]);
-        }
-            return response()->json([
-                'success' => true,
-                'message' => 'Ticket status updated successfully',
-                'ticket' => $ticket->load(['user', 'approver', 'assignedUsers']),
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Failed to update ticket status', [
-                'ticket_id' => $ticket->id,
-                'error' => $e->getMessage(),
-                'query' => $e->getPrevious() ? $e->getPrevious()->getMessage() : null,
-            ]);
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update ticket status: ' . $e->getMessage(),
-            ], 500);
-        }
+    } elseif ($ticket->assignedUsers()->where('user_id', $user->id)->exists()) {
+        $canUpdate = true;
+    }
+    
+    if (!$canUpdate) {
+        return response()->json(['message' => 'Unauthorized to update this ticket'], 403);
     }
 
+    // Delegate to model's type-aware workflow
+    $availableStatuses = array_keys($ticket->getAvailableStatuses());
+
+    if (empty($availableStatuses)) {
+        return response()->json([
+            'message' => "No transitions available from current status: '{$ticket->status}'"
+        ], 422);
+    }
+
+    $validator = Validator::make($request->all(), [
+        'status'     => 'required|in:' . implode(',', $availableStatuses),
+        'comments'   => 'nullable|string|max:1000',
+        'send_email' => 'nullable|boolean',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json(['errors' => $validator->errors()], 422);
+    }
+
+    $oldStatus = $ticket->status;
+
+    $updates = [
+        'status' => $request->status,
+    ];
+
+    if ($request->filled('comments')) {
+        $updates['comments'] = $request->comments;
+    }
+
+    // Status-specific timestamp updates
+    switch ($request->status) {
+        case 'approved':
+            $updates['approved_at'] = now();
+            $updates['approved_by'] = $user->id;
+            $updates['approver_id'] = $user->id;
+            break;
+        case 'in_progress':
+            if (!$ticket->started_at) {
+                $updates['started_at'] = now();
+            }
+            break;
+        case 'resolved':
+            if (!$ticket->resolved_at) {
+                $updates['resolved_at'] = now();
+            }
+            break;
+        case 'closed':
+            $updates['closed_at'] = now();
+            if (!$ticket->resolved_at) {
+                $updates['resolved_at'] = now();
+            }
+            break;
+        case 'rejected':
+            $updates['rejected_at'] = now();
+            $updates['rejected_by'] = $user->id;
+            break;
+        case 'reopened':
+            // Clear resolution timestamps so SLA tracking resets
+            $updates['resolved_at']      = null;
+            $updates['closed_at']        = null;
+            $updates['started_at']       = null;
+            $updates['first_response_at'] = null;
+            break;
+    }
+
+    Log::info('Updating ticket status', [
+        'ticket_id'           => $ticket->id,
+        'old_status'          => $oldStatus,
+        'new_status'          => $request->status,
+        'updated_by'          => $user->id,
+        'is_original_approver' => $ticket->approver_id === $user->id,
+    ]);
+
+    try {
+        $ticket->update($updates);
+        $ticket->refresh();
+
+        // Activity log
+        $actionDescription = "Status changed from {$oldStatus} to {$request->status}";
+        if ($request->status === 'approved' && $ticket->approver_id !== $user->id) {
+            $actionDescription .= ' (approved by alternate admin)';
+        }
+        $this->logActivity($ticket, 'status_updated', $actionDescription, $user);
+
+        // Notification service hooks
+        if ($request->status === 'approved') {
+            $this->notificationService->notifyTicketApproved($ticket);
+        } elseif (in_array($request->status, ['resolved', 'closed', 'in_progress', 'reopened'])) {
+            $this->notificationService->notifyStatusChanged($ticket, $oldStatus, $request->status);
+        }
+
+        // Email notification to ticket owner
+        if ($request->filled('send_email') && $request->send_email && $ticket->user_id !== $user->id) {
+            try {
+                Mail::to($ticket->user->email)
+                    ->send(new TicketStatusUpdate($ticket, $oldStatus, $request->status));
+            } catch (\Exception $e) {
+                Log::error('Failed to send status update email', [
+                    'ticket_id' => $ticket->id,
+                    'error'     => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // In-app notification to ticket owner
+        if ($oldStatus !== $request->status && $ticket->user_id !== $user->id) {
+            $statusMessages = [
+                'approved'    => 'Your ticket has been approved',
+                'in_progress' => 'Your ticket is now being worked on',
+                'resolved'    => 'Your ticket has been resolved',
+                'rejected'    => 'Your ticket has been rejected',
+                'closed'      => 'Your ticket has been closed',
+                'reopened'    => 'Your ticket has been reopened',
+                'on_hold'     => 'Your ticket has been placed on hold',
+                'in_review'   => 'Your ticket is under review',
+            ];
+
+            $message = $statusMessages[$request->status] ?? "Your ticket status changed to {$request->status}";
+
+            UserNotification::create([
+                'user_id' => $ticket->user_id,
+                'type'    => 'ticket_status_updated',
+                'title'   => 'Ticket Status Updated',
+                'message' => "{$message}: {$ticket->title}",
+                'action'  => "/tickets/{$ticket->id}",
+                'data'    => [
+                    'ticket_id'   => $ticket->id,
+                    'ticket_title' => $ticket->title,
+                    'old_status'  => $oldStatus,
+                    'new_status'  => $request->status,
+                    'updated_by'  => $user->name,
+                ],
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ticket status updated successfully',
+            'ticket'  => $ticket->load(['user', 'approver', 'assignedUsers']),
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Failed to update ticket status', [
+            'ticket_id' => $ticket->id,
+            'error'     => $e->getMessage(),
+            'previous'  => $e->getPrevious()?->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to update ticket status: ' . $e->getMessage(),
+        ], 500);
+    }
+}
     /**
      * Get available statuses based on current status
      */
     private function getAvailableStatuses($currentStatus)
-    {
-        $statusTransitions = [
-            'pending' => ['approved', 'rejected', 'in_progress'],
-            'in_progress' => ['resolved', 'closed', 'reopened'],
-            'resolved' => ['closed', 'reopened'],
-            'closed' => ['reopened'],
-            'reopened' => ['in_progress', 'resolved', 'closed'],
-            'approved' => ['in_progress', 'rejected'],
-            'rejected' => ['reopened'],
-        ];
-        
-        return $statusTransitions[$currentStatus] ?? [];
-    }
+{
+    $statusTransitions = [
+        'pending'     => ['approved', 'rejected', 'in_progress'],
+        'approved'    => ['in_progress', 'rejected'],
+        'in_progress' => ['resolved', 'closed'],           // removed 'reopened'
+        'resolved'    => ['closed', 'reopened'],
+        'closed'      => ['reopened'],
+        'reopened'    => ['in_progress', 'resolved', 'closed'],
+        'rejected'    => ['reopened'],
+    ];
+
+    return $statusTransitions[$currentStatus] ?? [];
+}
 
     /**
      * Assign ticket to users

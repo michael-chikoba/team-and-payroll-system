@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Models\User;
 use App\Models\LoginAudit;
+use App\Models\Employee;
 use App\Services\EncryptionService;
 use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
@@ -58,6 +59,58 @@ class AuthController extends Controller
 
             return $decrypted === $email;
         });
+    }
+
+    /**
+     * Check if a user's employee record allows login
+     */
+    private function canUserLogin(User $user): array
+    {
+        // If user has no employee record, allow login (e.g., for super admins)
+        if (!$user->employee) {
+            return ['allowed' => true];
+        }
+
+        $employee = $user->employee;
+
+        // Check if employee is archived
+        if ($employee->isArchived()) {
+            return [
+                'allowed' => false,
+                'message' => 'Your account has been archived. Please contact your administrator.',
+                'status' => 'archived'
+            ];
+        }
+
+        // Check if employee is suspended
+        if ($employee->isSuspended()) {
+            $reason = $employee->suspension_reason ?? 'No reason provided';
+            return [
+                'allowed' => false,
+                'message' => "Your account has been suspended. Reason: {$reason}. Please contact your administrator.",
+                'status' => 'suspended'
+            ];
+        }
+
+        // Check if employee is inactive
+        if (!$employee->isActive()) {
+            return [
+                'allowed' => false,
+                'message' => 'Your account is inactive. Please contact your administrator.',
+                'status' => 'inactive'
+            ];
+        }
+
+        // Check if user's account_status is active
+        if ($user->account_status !== 'active') {
+            return [
+                'allowed' => false,
+                'message' => 'Your account status does not allow login. Please contact your administrator.',
+                'status' => $user->account_status
+            ];
+        }
+
+        return ['allowed' => true];
     }
 
     public function register(RegisterRequest $request): JsonResponse
@@ -146,6 +199,31 @@ class AuthController extends Controller
                 ]);
             }
 
+            // Check if user can login based on employee status
+            $loginCheck = $this->canUserLogin($user);
+            
+            if (!$loginCheck['allowed']) {
+                $this->logLoginAttempt(
+                    $user->id,
+                    $user->email,
+                    $ip,
+                    $userAgent,
+                    'failed',
+                    $loginCheck['message']
+                );
+
+                Log::warning('Login denied due to account status', [
+                    'user_id' => $user->id,
+                    'email'   => $user->email,
+                    'status'  => $loginCheck['status'] ?? 'unknown',
+                    'message' => $loginCheck['message'],
+                ]);
+
+                throw ValidationException::withMessages([
+                    'email' => [$loginCheck['message']],
+                ]);
+            }
+
             $tokenResult = $user->createAuthToken('auth-token');
 
             $loginAudit = $this->logLoginAttempt(
@@ -159,8 +237,13 @@ class AuthController extends Controller
             Log::info('✅ Login successful', [
                 'user_id'          => $user->id,
                 'email'            => $user->email,
+                'role'             => $user->role,
+                'employee_status'  => $user->employee?->status,
                 'token_expires_at' => $tokenResult->accessToken->expires_at,
             ]);
+
+            // Load employee relationship for response
+            $user->load('employee');
 
             return response()->json([
                 'user'       => $user->makeHidden(['password', 'remember_token']),
@@ -251,6 +334,18 @@ class AuthController extends Controller
                 ], 401);
             }
 
+            // Check if user can still login before refreshing token
+            $loginCheck = $this->canUserLogin($user);
+            
+            if (!$loginCheck['allowed']) {
+                // Revoke all tokens to force logout
+                $user->revokeAllTokens();
+                
+                return response()->json([
+                    'message' => $loginCheck['message'],
+                ], 401);
+            }
+
             $newToken = $user->refreshAuthToken();
 
             if (!$newToken) {
@@ -330,6 +425,22 @@ class AuthController extends Controller
             $user = $this->findUserByEmail($request->email);
 
             if ($user) {
+                // Check if user can request password reset based on status
+                $loginCheck = $this->canUserLogin($user);
+                
+                if (!$loginCheck['allowed']) {
+                    Log::warning('Password reset requested for disabled account', [
+                        'user_id' => $user->id,
+                        'email'   => $user->email,
+                        'status'  => $loginCheck['status'] ?? 'unknown',
+                    ]);
+                    
+                    // Still return success message for security (don't reveal account status)
+                    return response()->json([
+                        'message' => 'If the email exists, a password reset link has been sent.',
+                    ]);
+                }
+
                 Log::info('Password reset initiated', [
                     'user_id' => $user->id,
                     'email'   => $user->email,
@@ -380,6 +491,22 @@ class AuthController extends Controller
             $user = $this->findUserByEmail($request->email);
 
             if ($user) {
+                // Check if user can reset password based on status
+                $loginCheck = $this->canUserLogin($user);
+                
+                if (!$loginCheck['allowed']) {
+                    Log::warning('Password reset attempted for disabled account', [
+                        'user_id' => $user->id,
+                        'email'   => $user->email,
+                        'status'  => $loginCheck['status'] ?? 'unknown',
+                    ]);
+                    
+                    // Return generic message for security
+                    return response()->json([
+                        'message' => 'Password has been reset successfully.',
+                    ]);
+                }
+
                 Log::info('Password reset completed successfully', [
                     'user_id' => $user->id,
                     'email'   => $user->email,
@@ -421,6 +548,9 @@ class AuthController extends Controller
         }
 
         $token = $user->currentAccessToken();
+        
+        // Check account status for debugging
+        $loginCheck = $this->canUserLogin($user);
 
         $sessionData = DB::table('sessions')
             ->where('user_id', $user->id)
@@ -432,6 +562,12 @@ class AuthController extends Controller
                 'id'    => $user->id,
                 'email' => $user->email,
                 'role'  => $user->role,
+            ],
+            'account_status' => [
+                'can_login'          => $loginCheck['allowed'],
+                'message'            => $loginCheck['allowed'] ? null : $loginCheck['message'],
+                'employee_status'    => $user->employee?->status,
+                'user_account_status' => $user->account_status,
             ],
             'token'   => [
                 'id'         => $token?->id,
