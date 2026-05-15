@@ -54,7 +54,7 @@ export default [
           title: 'My Schedules'
         }
       },
-       {
+      {
         path: 'shifts',
         name: 'myshifts',
         component: () => import('../../views/employee/MyShift.vue'),
@@ -64,7 +64,7 @@ export default [
           title: 'My Shift'
         }
       },
-        {
+      {
         path: 'Tickets',
         name: 'mytickets',
         component: () => import('../../views/Tickets.vue'),
@@ -73,9 +73,17 @@ export default [
           roles: ['employee', 'manager', 'admin'],
           title: 'My Tickets'
         }
+      },
+      {
+        path: 'learning',
+        name: 'LearningCatalog',
+        component: () => import('../../views/common/LearningCatalog.vue'),
+        meta: { 
+          requiresAuth: true,
+          roles: ['employee', 'manager', 'admin'],
+          title: 'Learning Catalog'
+        }
       }
-      
     ]
   }
 ]
-      

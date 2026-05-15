@@ -85,7 +85,7 @@ import {
   CalculatorIcon, ChartBarIcon, ClipboardDocumentCheckIcon, GlobeAltIcon, Cog6ToothIcon,
   BuildingOfficeIcon, BuildingLibraryIcon, ChatBubbleLeftRightIcon, PresentationChartLineIcon,
   ListBulletIcon, RocketLaunchIcon, DocumentChartBarIcon, BoltIcon, CalendarIcon,
-  FolderOpenIcon, ShieldCheckIcon,
+  FolderOpenIcon, ShieldCheckIcon, AcademicCapIcon, BookOpenIcon,
 } from '@heroicons/vue/24/outline'
 
 const icons = {
@@ -103,7 +103,8 @@ const icons = {
   ListBulletIcon: markRaw(ListBulletIcon), RocketLaunchIcon: markRaw(RocketLaunchIcon),
   DocumentChartBarIcon: markRaw(DocumentChartBarIcon), BoltIcon: markRaw(BoltIcon),
   CalendarIcon: markRaw(CalendarIcon), FolderOpenIcon: markRaw(FolderOpenIcon),
-  ShieldCheckIcon: markRaw(ShieldCheckIcon),
+  ShieldCheckIcon: markRaw(ShieldCheckIcon), AcademicCapIcon: markRaw(AcademicCapIcon),
+  BookOpenIcon: markRaw(BookOpenIcon),
 }
 
 export default {
@@ -210,6 +211,18 @@ export default {
             { to: '/admin/tax', icon: icons.CalculatorIcon, label: 'Tax Configuration' },
           ],
         })
+
+        // Learning Center Group for Admin with multiple sub-pages
+        items.push({
+          type: 'group', key: 'learning-center', icon: icons.AcademicCapIcon, label: 'Learning Center',
+          isActive: isPathActive(['/admin/learning', '/admin/learning/manage', '/admin/learning/reports']),
+          children: [
+            { to: '/admin/learning', icon: icons.BookOpenIcon, label: 'Course Catalog' },
+            { to: '/admin/learning/manage', icon: icons.AcademicCapIcon, label: 'Manage Courses' },
+            { to: '/admin/learning/reports', icon: icons.ChartBarIcon, label: 'Learning Reports' },
+            { to: '/admin/learning/my-progress', icon: icons.ClipboardDocumentListIcon, label: 'My Progress' },
+          ],
+        })
       }
 
       if (props.canAccessRestrictedPages && !isSuspended) {
@@ -231,38 +244,73 @@ export default {
       return items
     })
 
-    const managerNav = [
-      { to: '/manager/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
-      { to: '/manager/schedule', icon: icons.CalendarDaysIcon, label: 'Team Schedule' },
-      { to: '/manager/employees', icon: icons.UsersIcon, label: 'Employees' },
-      { to: '/manager/attendance', icon: icons.ClockIcon, label: 'Attendance' },
-      { to: '/manager/leave-approvals', icon: icons.ClipboardDocumentCheckIcon, label: 'Approvals' },
-      { to: '/manager/tickets', icon: icons.TicketIcon, label: 'Tickets', badge: props.pendingTicketsCount },
-      { to: '/manager/reports', icon: icons.PresentationChartLineIcon, label: 'Reports' },
-      { to: '/manager/productivity', icon: icons.BoltIcon, label: 'Productivity' },
-      { to: '/manager/payslips', icon: icons.BanknotesIcon, label: 'Payslips' },
-      { to: '/manager/tasks', icon: icons.ClipboardDocumentListIcon, label: 'Assign Tasks' },
-      { to: '/manager/shifts', icon: icons.ClockIcon, label: 'Assign Shifts' },
-    ]
+    const managerNav = computed(() => {
+      const currentPath = route.path
+      const isPathActive = (paths) => paths.some(p => currentPath.startsWith(p))
+      
+      const items = [
+        { to: '/manager/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
+        { to: '/manager/schedule', icon: icons.CalendarDaysIcon, label: 'Team Schedule' },
+        { to: '/manager/employees', icon: icons.UsersIcon, label: 'Employees' },
+        { to: '/manager/attendance', icon: icons.ClockIcon, label: 'Attendance' },
+        { to: '/manager/leave-approvals', icon: icons.ClipboardDocumentCheckIcon, label: 'Approvals' },
+        { to: '/manager/tickets', icon: icons.TicketIcon, label: 'Tickets', badge: props.pendingTicketsCount },
+        { to: '/manager/reports', icon: icons.PresentationChartLineIcon, label: 'Reports' },
+        { to: '/manager/productivity', icon: icons.BoltIcon, label: 'Productivity' },
+        { to: '/manager/payslips', icon: icons.BanknotesIcon, label: 'Payslips' },
+        { to: '/manager/tasks', icon: icons.ClipboardDocumentListIcon, label: 'Assign Tasks' },
+        { to: '/manager/shifts', icon: icons.ClockIcon, label: 'Assign Shifts' },
+      ]
+      
+      // Learning Center Group for Manager
+      items.push({
+        type: 'group', key: 'learning-center-manager', icon: icons.AcademicCapIcon, label: 'Learning Center',
+        isActive: isPathActive(['/manager/learning', '/manager/learning/reports']),
+        children: [
+          { to: '/manager/learning', icon: icons.BookOpenIcon, label: 'Course Catalog' },
+          { to: '/manager/learning/reports', icon: icons.ChartBarIcon, label: 'Team Reports' },
+          { to: '/manager/learning/my-progress', icon: icons.ClipboardDocumentListIcon, label: 'My Progress' },
+        ],
+      })
+      
+      return items
+    })
 
-    const employeeNav = [
-      { to: '/employee/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
-      { to: '/employee/attendance', icon: icons.ClockIcon, label: 'Attendance' },
-      { to: '/employee/leaves', icon: icons.CalendarDaysIcon, label: 'Leaves' },
-      { to: '/employee/apply-leave', icon: icons.DocumentTextIcon, label: 'Apply Leave' },
-      { to: '/employee/payslips', icon: icons.BanknotesIcon, label: 'Payslips' },
-      { to: { name: 'TaskBoard' }, icon: icons.FolderOpenIcon, label: 'Tasks' },
-      { to: { name: 'EmployeeSchedules' }, icon: icons.CalendarIcon, label: 'Schedules' },
-      { to: { name: 'myshifts' }, icon: icons.ClockIcon, label: 'My Shifts' },
-      { to: { name: 'mytickets' }, icon: icons.TicketIcon, label: 'Tickets', badge: props.pendingTicketsCount },
-      { to: { name: 'charts' }, icon: icons.ChartBarIcon, label: 'Reports' },
-    ]
+    const employeeNav = computed(() => {
+      const currentPath = route.path
+      const isPathActive = (paths) => paths.some(p => currentPath.startsWith(p))
+      
+      const items = [
+        { to: '/employee/dashboard', icon: icons.HomeIcon, label: 'Dashboard' },
+        { to: '/employee/attendance', icon: icons.ClockIcon, label: 'Attendance' },
+        { to: '/employee/leaves', icon: icons.CalendarDaysIcon, label: 'Leaves' },
+        { to: '/employee/apply-leave', icon: icons.DocumentTextIcon, label: 'Apply Leave' },
+        { to: '/employee/payslips', icon: icons.BanknotesIcon, label: 'Payslips' },
+        { to: { name: 'TaskBoard' }, icon: icons.FolderOpenIcon, label: 'Tasks' },
+        { to: { name: 'EmployeeSchedules' }, icon: icons.CalendarIcon, label: 'Schedules' },
+        { to: { name: 'myshifts' }, icon: icons.ClockIcon, label: 'My Shifts' },
+        { to: { name: 'mytickets' }, icon: icons.TicketIcon, label: 'Tickets', badge: props.pendingTicketsCount },
+        { to: { name: 'charts' }, icon: icons.ChartBarIcon, label: 'Reports' },
+      ]
+      
+      // Learning Center Group for Employee
+      items.push({
+        type: 'group', key: 'learning-center-employee', icon: icons.AcademicCapIcon, label: 'Learning Center',
+        isActive: isPathActive(['/employee/learning']),
+        children: [
+          { to: '/employee/learning', icon: icons.BookOpenIcon, label: 'Course Catalog' },
+          { to: '/employee/learning/my-progress', icon: icons.ClipboardDocumentListIcon, label: 'My Progress' },
+        ],
+      })
+      
+      return items
+    })
 
     const navItems = computed(() => {
       switch (props.role) {
         case 'admin': return adminNav.value
-        case 'manager': return managerNav
-        case 'employee': return employeeNav
+        case 'manager': return managerNav.value
+        case 'employee': return employeeNav.value
         default: return []
       }
     })
@@ -342,4 +390,65 @@ export default {
 .scrollable-nav::-webkit-scrollbar-track { background: transparent; }
 .scrollable-nav::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
 .scrollable-nav::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
+
+/* ── Learning Center specific styles ─────────────────────────── */
+.nav-item .nav-icon,
+.nav-group-item .sub-icon {
+  transition: all 0.2s ease;
+}
+
+.nav-item:hover .nav-icon,
+.nav-group-item:hover .sub-icon {
+  transform: scale(1.05);
+}
+
+/* Active state for Learning Center items */
+.nav-item.router-link-active .nav-icon,
+.nav-group-item.router-link-active .sub-icon {
+  color: var(--primary-color, #4f46e5);
+}
+
+.nav-item.router-link-active .nav-text,
+.nav-group-item.router-link-active .sub-text {
+  font-weight: 600;
+  color: var(--primary-color, #4f46e5);
+}
+
+/* Group active styling */
+.nav-group.is-active .nav-group-button .nav-text {
+  color: var(--primary-color, #4f46e5);
+  font-weight: 600;
+}
+
+/* Learning Center group styling */
+.nav-group[data-key="learning-center"] .nav-group-button .nav-icon,
+.nav-group[data-key="learning-center-manager"] .nav-group-button .nav-icon,
+.nav-group[data-key="learning-center-employee"] .nav-group-button .nav-icon {
+  color: #4f46e5;
+}
+
+/* Badge styling */
+.nav-badge {
+  background: #ef4444;
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.125rem 0.375rem;
+  border-radius: 10px;
+  margin-left: auto;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Super admin badge */
+.super-admin-badge {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  white-space: nowrap;
+}
 </style>

@@ -861,53 +861,64 @@ class EmployeeController extends Controller
         return EmployeeResource::collection($query->get());
     }
 
-    public function profile(Request $request): JsonResponse
-    {
-        $user = $request->user();
-        try {
-            $employee = $user->employee;
-            if ($employee) {
-                $employee->load('manager');
-            }
-
-            Log::info('EMPLOYEE_CONTROLLER: Profile fetched', [
-                'user_id'             => $user->id,
-                'role'                => $user->role,
-                'has_employee_record' => $employee !== null,
-            ]);
-
-            return response()->json([
-                'user' => [
-                    'id'                  => $user->id,
-                    'first_name'          => $user->first_name,
-                    'last_name'           => $user->last_name,
-                    'email'               => $user->email,
-                    'role'                => $user->role,
-                    'account_status'      => $user->account_status,
-                    'current_business_id' => $user->current_business_id,
-                ],
-                'employee' => $employee ? [
-                    'id'                => $employee->id,
-                    'employee_id'       => $employee->employee_id,
-                    'position'          => $employee->position,
-                    'department'        => $employee->department,
-                    'status'            => $employee->status,
-                    'phone'             => $employee->phone,
-                    'national_id'       => $employee->national_id,
-                    'address'           => $employee->address,
-                    'emergency_contact' => $employee->emergency_contact,
-                    'bank_details'      => $employee->bank_details,
-                    'profile_pic'       => $employee->profile_pic,
-                ] : null,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('EMPLOYEE_CONTROLLER: Failed to fetch profile', [
-                'user_id' => $user->id,
-                'error'   => $e->getMessage(),
-            ]);
-            return response()->json(['message' => 'Failed to load profile data'], 500);
+  public function profile(Request $request): JsonResponse
+{
+    $user = $request->user();
+    try {
+        $employee = $user->employee;
+        if ($employee) {
+            // Eager load the manager relationship
+            $employee->load(['manager', 'business', 'country']);
         }
+
+        Log::info('EMPLOYEE_CONTROLLER: Profile fetched', [
+            'user_id' => $user->id,
+            'role' => $user->role,
+            'has_employee_record' => $employee !== null,
+            'has_manager' => $employee && $employee->manager ? true : false,
+            'manager_id' => $employee ? $employee->manager_id : null,
+        ]);
+
+        return response()->json([
+            'user' => [
+                'id' => $user->id,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'email' => $user->email,
+                'role' => $user->role,
+                'account_status' => $user->account_status,
+                'current_business_id' => $user->current_business_id,
+            ],
+            'employee' => $employee ? [
+                'id' => $employee->id,
+                'employee_id' => $employee->employee_id,
+                'position' => $employee->position,
+                'department' => $employee->department,
+                'status' => $employee->status,
+                'phone' => $employee->phone,
+                'national_id' => $employee->national_id,
+                'address' => $employee->address,
+                'emergency_contact' => $employee->emergency_contact,
+                'bank_details' => $employee->bank_details,
+                'profile_pic' => $employee->profile_pic,
+                'hire_date' => $employee->hire_date,
+                'employment_type' => $employee->employment_type,
+                'manager' => $employee->manager ? [
+                    'id' => $employee->manager->id,
+                    'first_name' => $employee->manager->first_name,
+                    'last_name' => $employee->manager->last_name,
+                    'email' => $employee->manager->email,
+                ] : null,
+            ] : null,
+        ]);
+    } catch (\Exception $e) {
+        Log::error('EMPLOYEE_CONTROLLER: Failed to fetch profile', [
+            'user_id' => $user->id,
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json(['message' => 'Failed to load profile data'], 500);
     }
+}
 
     public function updateProfile(Request $request): JsonResponse
     {
@@ -1338,6 +1349,7 @@ class EmployeeController extends Controller
             ] : null,
         ];
     }
+    
 
     private function getDefaultPassword(): string
     {
