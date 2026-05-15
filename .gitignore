@@ -7,3 +7,6 @@ frontend/android/commandlinetools-linux-*.zip
 .env
 /storage
 /public/build
+node_modules/
+frontend/node_modules/
+vendor/
