@@ -10,3 +10,5 @@ frontend/android/commandlinetools-linux-*.zip
 node_modules/
 frontend/node_modules/
 vendor/
+frontend/node_modules/
+node_modules/
